@@ -670,6 +670,30 @@ using dynamic pinning schemes (possibly with caching to amortize rendezvous and
 pinning costs) or combinations of direct remote accesses and AM-based accesses.
 }
 
+@EXNOTE{
+In GASNet-EX the three distinct segment modes will be eliminated.  Rather than
+the current behavior in which all remote addresses MUST be in the GASNet
+segment, the GASNet-EX specification will allow the behavior of
+@code{GASNET_SEGMENT_EVERYTHING} in which a client may freely utilize any valid
+remote address.  However, it will still provide for the creation of a GASNet
+segment to which access should, in most implementations, be optimized to
+utilize RDMA hardware and avoid needless copies.
+@*@*
+This change is in recognition of the fact that some of our clients have been
+(or have proposed) using @code{GASNET_SEGMENT_FAST} plus their own AM-based
+verions of either some portion of the Extended API or of the VIS extensions.
+Additionally, the work required to implement support in the current collectives
+for out-of-segment accesses argues in favor of pushing the support down one
+level to the Extended API Puts and Gets.
+@*@*
+In order to help maintain optimal performance, the (newly added) @code{flags}
+argument will (similarly to the collectives) provide a mechanism for the client
+to assert that the remote address is in-segment.  The expectation is that the
+inline-able top-level of the Extended API implementation will be able to
+short-cut any in-segment range check when this assertion is present (and the
+@code{flags} are compile-time constant).
+}
+
 @menu
 * gasnet_init::
 * gasnet_attach::
@@ -715,6 +739,19 @@ acquiring network or system resources. Otherwise, it returns @code{GASNET_OK} to
 May only be called once during a process lifetime, subsequent calls will 
 return an error.
 @end deftypefn
+
+@EXNOTE{
+In GASNet-EX the init step will be split into two steps to accomodate support
+for multiple clients (e.g. hybrid UPC + SHMEM).
+The first step is a call
+to @code{gasnet_init()}, which can be made more than once (returning an
+appropriate arror code if called multiple times).  The second will be a call
+to a new @code{gasnet_initClient()} function which will return (by reference)
+a @code{gasnet_client_t}, to be used as described later.  Arguments are TBD,
+but will include at least a string to name the client (used in environment
+variable names) and possibly an integer @code{flags} argument (though no
+specific flag values have been identified).
+}
 
 @FNS gasnet_attach
 @cindex segment
@@ -832,6 +869,30 @@ access and remove extra copies - for example, pinning the program stack may
 be advisable on some systems since a large number of the data transfer 
 functions in the extended API are likely to use stack locations as the local 
 source/destination.
+}
+
+@EXNOTE{
+In GASNet-EX the attach will be more like that of AM2.  Specifically, the
+registration of AM handlers will be distinct from the creation of a
+remote-access memory segment.  Additionally, it will be possible to create
+multiple segments and destroy them as well.  Finally, it will also be possible
+for the client to provide the address of existing memory for creation of a
+segment (with the understanding that on some neworks this may have a
+performance penalty).
+@*@*
+Both handler-table and segment creation will take a @code{gasnet_client_t}
+argument.
+@*@*
+Handler-table creation will take a ``client cookie'' argument which will
+be passed to handlers (requiring a change in thier signature).  This will
+make it possible to code multi-client applications in which one has
+multiple instances of the SAME client.
+@*@*
+Type @code{gasnet_handlerentry_t} will have one or more fields added.  At
+a minimum there will be some sort of flags to indicate handlers which don't
+Reply in order the allow them to be run in circumstances when the resources
+which would be required for a Reply are not available (perhaps just
+skipping over the check for those resources).
 }
 
 @page
