@@ -2,12 +2,14 @@
 @c %**start of header
 @c   $Source: bitbucket.org:berkeleylab/gasnet.git/docs/gasnet.texi $
 @c     $Date: 2008/10/11 04:34:38 $
-@c $Revision: 1.44 $
-@c Description: GASNet specification
-@c Copyright 2004, Dan Bonachea <bonachea@cs.berkeley.edu>
+@c Description: GASNet-EX specification WIP
+@c Based on GASNet Specification, which is
+@c   Copyright 2004, Dan Bonachea <bonachea@cs.berkeley.edu>
+@c GASNet-EX material
+@c   Copyright 2013, Regents of the University of California
 @c Terms of use are as specified in license.txt
 @setfilename gasnet.info
-@settitle GASNet Specification
+@settitle GASNet-EX Specification WIP
 @syncodeindex tp fn
 
 @c define @comma if texinfi < 5.0
@@ -65,12 +67,14 @@
 @end iftex
 @end ifclear
 
+@set NONOTES 1
+
 @c %**end of header
 @c ------------------------------------------------------------------------------------
 @c Macros:
 
-@set VERSION 1.8
-@set RELEASEDATE November 2nd, 2006
+@set VERSION 1.8+ex
+@set RELEASEDATE NONE
 
 @ifnottex
 @ifhtml
@@ -108,6 +112,25 @@
 @end cartouche
 @end macro
 @end ifclear
+
+@macro EXNOTE {text}
+@cartouche
+@ifhtml
+@html
+<table border="1" width="100%"><tr><td width="100%">
+@end html
+@end ifhtml
+@strong{GASNet-EX Note:}
+@quotation
+\text\
+@end quotation
+@ifhtml
+@html
+</td></tr></table>
+@end html
+@end ifhtml
+@end cartouche
+@end macro
 
 @macro TWOTOSIXTEENTHMINUSONE
 @iftex
@@ -174,9 +197,9 @@ $2^{16}-1$
 @ifnottex
 @ifnotplaintext
 @ifinfo
-@dircategory GASNet Specification
+@dircategory GASNet-EX Specification WIP
 @direntry
-* GASNet specification, version @value{VERSION}: (gasnet).   The GASNet communication spec
+* GASNet-EX specification WIP, version @value{VERSION}: (gasnet).   The GASNet communication spec
 @end direntry
 @end ifinfo
 @end ifnotplaintext
@@ -184,7 +207,8 @@ $2^{16}-1$
 @c ------------------------------------------------------------------------------------
 
 @macro COPYRIGHTTEXT
-Copyright @copyright{} 2002-2004, Dan Bonachea.@*
+Portions Copyright @copyright{} 2002-2004, Dan Bonachea.@*
+Portions Copyright @copyright{} 2013, The Regents of the University of California.@*
 Selected portions adapted from:
 @itemize @bullet
 @item @cite{A. Mainwaring and D. Culler, "Active Message Applications Programming Interface and Communication Subsystem Organization", U.C. Berkeley Computer Science Technical Report, 1996.}
@@ -193,30 +217,30 @@ Selected portions adapted from:
 
 @quotation
 Permission is granted to freely distribute this specification and use it in 
-creating GASNet clients or implementations. The authoritative version of the GASNet specification
-is maintained by Dan Bonachea and any proposed changes should be submitted for review.
+creating GASNet-EX clients or implementations.
+The authoritative version of the GASNet-EX specification
+is maintained by Paul H. Hargrove and any proposed changes should be submitted for review.
 @end quotation
 
-Published by LBNL FTG and U.C. Berkeley
+Published by Lawrence Berkeley National Laboratory
 @end macro
 
 @c ------------------------------------------------------------------------------------
 @titlepage
-@title GASNet Specification
+@title GASNet-EX Specification WIP
 @subtitle Version @value{VERSION}
 @subtitle Released @value{RELEASEDATE}
-@subtitle $Date: 2008/10/11 04:34:38 $
 @subtitle Printed @today{}
-@subtitle $Revision: 1.44 $ 
-@author Editor: Dan Bonachea @email{bonachea@@cs.berkeley.edu}
-@uref{http://gasnet.cs.berkeley.edu/}
+@author Editor: Paul H. Hargrove @email{PHHargrove@@lbl.gov}
+@uref{http://gasnet.lbl.gov/}
 
 @c  The following two commands
 @c  start the copyright page.
 @page
 @vskip 0pt plus 1filll
 
-This the GASNet specification, version @value{VERSION}.
+This the GASNet specification, version @value{VERSION} plus annotations for work-in-progress to
+specify ``GASNet-EX''.
 
 @COPYRIGHTTEXT
 @end titlepage
@@ -229,17 +253,15 @@ This the GASNet specification, version @value{VERSION}.
 
 @ifnottex
 @node Top
-@top GASNet Specification
+@top GASNet-EX Specification WIP
 @end ifnottex
 
 @c HTML/Plain text title info
 @ifset HTMLORTEXT
 Version @value{VERSION}
 @*Released @value{RELEASEDATE}
-@*$Date: 2008/10/11 04:34:38 $
-@*$Revision: 1.44 $ 
 @ifnothtml
-@*Editor: Dan Bonachea @email{bonachea@@cs.berkeley.edu}
+@*Editor: Paul H. Hargrove @email{PHHargrove@@lbl.gov}
 @end ifnothtml
 @ifhtml
 @html
@@ -250,10 +272,10 @@ var result = "m"+"a"+"i"+"l"+"t"+"o"+":" + login + "@@" + domain;
 window.location.assign(result);
 @}
 </script>
-<br>Editor: <a href="javascript:emailto('bonachea','cs.berkeley.edu')">Dan Bonachea</a>
+<br>Editor: <a href="javascript:emailto('PHHargrove','lbl.gov')">Paul H. Hargrove</a>
 @end html
 @end ifhtml
-@*@uref{http://www.cs.berkeley.edu/~bonachea/gasnet}
+@*@uref{http://gasnet.lbl.gov/}
 @*@uref{http://upc.lbl.gov/}
 @HR
 @COPYRIGHTTEXT
