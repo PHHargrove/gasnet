@@ -601,11 +601,13 @@ in @code{gasnet_attach()}
 an opaque identifier for a GASNet client,
 unique at the scope of the GASNet process
 @*@code{gasnet_handlertable_t}
-a 0-based index for a registered table of AM Handlers,
-unique at the scope of the GASNet client
+a 1-based index for a registered table of AM Handlers,
+unique at the scope of the GASNet client.
+The value @code{0} is used to denote no handler table.
 @*@code{gasnet_segment_t}
-a 0-based index for a registered remote access region,
-unique at the scope of the GASNet client
+a 1-based index for a registered remote-access segment,
+unique at the scope of the GASNet client.
+The value @code{0} is used to denote no remote-access segment.
 @*@code{gasnet_endpoint_t}
 a 0-based index for a local communications endpoint (which
 may, at the client's discression, correspond to a thread),
@@ -853,6 +855,7 @@ The following GASNet functions are the only ones that may be called between
 @code{gasnet_exit()}
 @end example
 All other GASNet calls are prohibited until after a successful @code{gasnet_attach()}.
+@EXNOTE{Update ``@code{gasnet_attach()}'' above to what?}
 
 @code{gasnet_init()} may fail with a fatal error and implementation-defined message if 
 the nodes of the job cannot be successfully bootstrapped. It also may return 
@@ -867,7 +870,7 @@ In GASNet-EX the init step will be split into two steps to accomodate support
 for multiple clients (e.g. hybrid UPC + SHMEM).
 The first step is a call
 to @code{gasnet_init()}, which can be made more than once (returning an
-appropriate arror code if called multiple times).  The second will be a call
+appropriate error code if called multiple times).  The second will be a call
 to a new @code{gasnet_initClient()} function which will return (by reference)
 a @code{gasnet_client_t}, to be used as described later.  Arguments are TBD,
 but will include at least a string to name the client (used in environment
@@ -903,6 +906,7 @@ algorithm is deterministic: passing the same handler table on each node will
 guarantee an identical resulting assignment on each node. Handler function 
 prototypes should match the prototypes described in the Active Message 
 Interface section.
+@EXNOTE{Exploring lowering 128 reserved to 96, or even lower.}
 
 @var{segsize} and @var{minheapoffset} are used to communicate the desired size and  
 location of the remote-access memory data segment for the local node that 
@@ -934,11 +938,22 @@ GASNet will not initialize data within the memory segment in any way, nor
 will it attempt to access the memory locations within the segment until 
 directed to do so by a data transfer function or Long active message. 
 
+@EXNOTE{The replacement for attach's segment registration operation will allow
+clients to optionally specify the address and @code{flags}.  The expected use
+for the address is for optimizing Put and Get performance to regions of
+memory which are outside the client's direct control (e.g. allocated by a
+higher level, or perhaps by the linker/loader as with static data in
+OpenSHMEM).  A special flags value may @emph{eventually} be used for device
+memory which could transparently (to the client) be accessed via GASNet-EX,
+which could (for instance) use AMs which call @code{cudaMemcpy()}.}
+
 If the GASNet implementation defines the macro @code{GASNET_ALIGNED_SEGMENTS} to 1, then 
 @code{gasnet_attach()} guarantees that the base of the remote-access memory segment will be 
 aligned at the same virtual address across all nodes (and will fail if it cannot 
 provide this). Otherwise, this guarantee is not provided. Note the segment sizes may
 still differ across nodes, based on @var{segsize} and system resource availability. 
+@EXNOTE{As noted in detail elsewhere, @code{GASNET_ALIGNED_SEGMENTS} is
+likely to be removed.}
 
 In the @code{GASNET_SEGMENT_FAST} and @code{GASNET_SEGMENT_LARGE}
 configurations, GASNet guarantees that data transfer functions, 
@@ -946,6 +961,9 @@ Long active messages and local accesses referencing memory locations
 in the remote-access memory segment will succeed, even before any local activity 
 takes place on those pages 
 (i.e. in an implementation performing lazy registration, first touch = allocate). 
+@EXNOTE{Modify the paragraph above to remove limitation to the
+@code{GASNET_SEGMENT_FAST} and @code{GASNET_SEGMENT_LARGE} configurations
+and to instead apply to addresses in @emph{any} remote-access memory segment.}
 
 @var{segsize} and @var{minheapoffset} are ignored in the @code{GASNET_SEGMENT_EVERYTHING}
 configuration, as the entire virtual memory space is implicitly shared for remote access.
@@ -954,6 +972,9 @@ remote-memory references fall within the legal areas of the current heap and dat
 for the target node - 
 remote accesses or Long active messages to locations outside these areas will have undefined effects
 (for example, they @emph{may} cause a segmentation fault on the target node).
+@EXNOTE{Modify the paragraph above to remove reference to the
+@code{GASNET_SEGMENT_EVERYTHING} configuration and to instead apply to
+remote addresses @emph{outside} the remote-access memory segment.}
 
 @code{gasnet_attach()} may fail with a fatal error and implementation-defined message if 
 the network cannot be successfully initialized. It also may return 
@@ -965,6 +986,8 @@ barrier and blocks until all other nodes which are part of this parallel job
 have successfully called @code{gasnet_attach()}.
 May only be called once during a process lifetime, subsequent calls will 
 return an error.
+@EXNOTE{May remove the collective property or use a flag value to control
+it.  Will certainly remove the ``once during a process lifetime''.}
 @end deftypefn
 
 @IMPNOTE{
@@ -1012,7 +1035,7 @@ multiple instances of the SAME client.
 @*@*
 Type @code{gasnet_handlerentry_t} will have one or more fields added.  At
 a minimum there will be some sort of flags to indicate handlers which don't
-Reply in order the allow them to be run in circumstances when the resources
+Reply in order to allow them to run in circumstances when the resources
 which would be required for a Reply are not available (perhaps just
 skipping over the check for those resources).
 }
@@ -1037,8 +1060,12 @@ after attach using @code{gasnet_getSegmentInfo()}.
 On many implementations, this function will return different values in the 
 @code{GASNET_SEGMENT_FAST} and @code{GASNET_SEGMENT_LARGE} configurations.
 Under the @code{GASNET_SEGMENT_EVERYTHING} configuration, this function returns -1.
+@EXNOTE{Remove the paragraph above.}
 
 This function has undefined behavior after @code{gasnet_attach()}.
+@EXNOTE{Can probably remove the paragraph above because we'll support
+multiple segments.  Would be trivial to decrement each time we create a
+segment.}
 @end deftypefn
 
 @FNS gasnet_getMaxGlobalSegmentSize
@@ -1049,8 +1076,15 @@ Returns a global minimum value
 that would be returned by a call to @code{gasnet_getMaxLocalSegmentSize} 
 on any node of the current job (i.e. the smallest max segment size 
 estimated for any node in the job).
+@EXNOTE{@strong{OPEN ISSUE:} this semantic is only easy to retain if the
+segment creation remains collective.  So, this might remain valid only
+until the first segment creation or until the first non-collective one.
+However, we probably want a uniform behavior for @code{MaxLocal} and
+@code{MaxGlobal}.}
 
 This function has undefined behavior after @code{gasnet_attach()}.
+@EXNOTE{Remove or modify the paragraph above if the value isn't going
+to be updated at each segment creation.}
 @end deftypefn
 
 @FNS gasnet_exit
@@ -1078,6 +1112,15 @@ end the local node process). GASNet will also send a @code{SIGQUIT} signal if it
 detects that the job has received a different catchable 
 terminate-the-program signal (e.g. @code{SIGTERM}, @code{SIGINT}) since some of these other signals 
 may be meaningful (and non-fatal) to certain GASNet implementations.
+@EXNOTE{May need to drop the @code{SIGQUIT} behavior since it would not
+work with multiple clients unless they explicitly stack the signal
+handlers.}
+
+@EXNOTE{Need to document behavior with respect to @code{atexit()} and
+@code{on_exit} and @emph{maybe} provide GASNet-level calls for registering
+hooks.  This would be preferrable to having multiple clients share
+@code{SIGQUIT}, @emph{plus} avoids calling the client's handler from signal
+context unless GASNet was alerady exiting from signal context.}
 @end deftypefn
 
 @c ------------------------------------------------------------------------------------
