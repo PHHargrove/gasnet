@@ -311,6 +311,12 @@ UPC or Titanium). GASNet stands for
 @section Organization
 The interface is divided into 2 layers - the GASNet core API and the GASNet 
 extended API:
+@EXNOTE{
+Will add VIS and Collectives @emph{either} to the Extended API @emph{or} as
+a conceptually distinct layer.  The implementation of these two is
+certainly a distinct layer in GASNet, but at least the VIS extensions have
+the look-and-feel of a natural portion of the Extended API.
+}
 
 @itemize @bullet
 @item
@@ -365,6 +371,23 @@ to make the types clear, and all correct client code must type check using
 the definitions below. In no case should client code assume it can create a 
 "function pointer" to any of these operations. Any macro implementations 
 will ensure that arguments are evaluated exactly once.
+@EXNOTE{ We are hoping to provide a ``generic'' libgasnet in which all
+entry points are @emph{either} a true function or a conduit-independent
+macro (and this document will state which).  In order to get file and line
+number info in tracing builds, most will be macros that will invoke a
+layer of functions with conduit-specific implementation but
+conduit-@emph{independent} interface.  The gasnet types which are setup to
+allow conduit-dependent implementation will be either @code{uintptr_t} or
+@code{uint64_t} in this generic build.
+@*@*
+The point of this is to allow third-party
+distribution of object files not yet linked to a site-specific GASNet build.
+There is the understanding (to be stated clearly somewhere in this
+document) that this usage mode sacrifices the optimization
+opportunities that inlines and macros offer.  The entire ``generic'' layer
+will probably be documented in an appendix and is likely to be either
+non-normative or have something ``in the event of conflict, the main body
+of this document has precedence''.}
 @item Implementation-specific values in declarations are indicated using "???"
 @item Sections marked "Implementor's note" are recommendations to implementors 
 and are not part of the specification
@@ -380,6 +403,12 @@ and are not part of the specification
 @strong{node} - An OS-level process which returns from @code{gasnet_init()}, and its associated 
 local memory space and system resources. The basic unit of control when 
 interfacing with GASNet.
+@EXNOTE{
+Strongly considering use of ``rank'', ``proc'' or ``process'' in place of
+@strong{node}.  The term ``node'' has lead to confusion with the concept of
+a compute node, especially with the addition of PSHM support.  The use of
+``rank'' would be most conventional while ``proc'' or ``process' would be
+more precise.}
 
 @item
 @cindex thread
@@ -391,6 +420,18 @@ Except where otherwise noted, GASNet makes no distinction between the
 threads within a multi-threaded node, and all control functions (e.g. 
 barriers) should be executed by a single thread on the node on behalf of all 
 local threads.
+
+@EXNOTE{
+@strong{supernode} - Need to define either ``supernode'' or an alternative
+name such as ``shared memory domain'' or similar.  Supernode is the term
+we've been using in GASNet, but makes far less sense if/when @strong{node}
+is replaced with either @strong{rank} or @strong{process}.  The use of
+``shared memory domain'' (or ``PSHM domain'') are accurate and descriptive,
+but perhaps too ackward.  A single-word term would be best if we can find a
+good one.
+@*@*
+A conventional definition of ``node'' would probably be a good addition
+here as well.}
 
 @item
 @cindex job
@@ -427,6 +468,8 @@ assume that it will never be called from more than one client thread
 @emph{concurrently} (and the client must ensure this property holds). Client code 
 must still use GASNet No-Interrupt Sections and Handler-Safe Locks to ensure 
 correct operation.
+@EXNOTE{Strongly considering removal of @code{GASNET_PARSYNC} which has,
+to the best of our knowldge, never been used in any client.}
 
 @item GASNET_SEQ
 Indicates a single-threaded, non-threadsafe environment. GASNet 
@@ -434,6 +477,12 @@ may safely assume that it will only ever be called from one unique client
 thread. Client code must still use GASNet No-Interrupt Sections and 
 Handler-Safe Locks to ensure correct operation.
 @end ftable
+
+@EXNOTE{
+Plan to remove support for interrupt-driven progress and thus No-Interrupt
+sections.  This will necessitate some edits to the text above.  However,
+the client still needs to use HSLs (or some alternative?) ``to ensure
+correct operation'' in both @code{PAR} and @code{SEQ} modes.}
 
 @IMPNOTE{
 @item We may be able to make GASNet implementations independent of the 
@@ -466,9 +515,13 @@ return errors from the following list, as specified by each function:
 @item GASNET_ERR_BARRIER_MISMATCH
 @item GASNET_ERR_NOT_READY
 @end ftable
+@EXNOTE{There will be additions to this list for things like nodes becoming
+unreachable.}
 
 Except where otherwise noted, errors that occur during a call to the 
 extended API are fatal.
+@EXNOTE{Will strike the sentance above because for resilence purposes we
+will be returning error codes from every Extended API operation.}
 
 Many of the core API functions will return @code{GASNET_ERR_RESOURCE} to 
 indicate a generic failure in the hardware or communications system, 
@@ -479,6 +532,11 @@ If any node of a GASNet job crashes, aborts, or suffers a fatal hardware
 error, GASNet should make every attempt to ensure that the remaining nodes 
 of the job are terminated in a timely manner to prevent creation of orphaned 
 processes. 
+@EXNOTE{Will replace the sentance above with something along the lines of
+``GASNet should make every attempt to ensure that the remaining processes
+will return appropriate errors for all attempts to communicate with the
+failed processes while continuing to operate normally with respect to all
+other processes.''}
 
 @FNHS gasnet_ErrorName@comma{} gasnet_ErrorDesc
 @FNI gasnet_ErrorName
@@ -500,6 +558,9 @@ string returned.
 @table @code
 @item gasnet_node_t
 unsigned integer type representing a unique 0-based node index
+@EXNOTE{This will probably become @code{gasnet_rank_t} and with the
+inclusion of resilience support (and more generally the ability to grow and
+shrink a job) the space of valid values may become non-contiguous.}
 
 @item gasnet_handle_t
 an opaque type representing a non-blocking operation 
@@ -527,6 +588,56 @@ entirely in a single CPU register for the current architecture and ABI.
 struct type used to negotiate handler registration 
 in @code{gasnet_attach()}
 @end table
+
+@EXNOTE{Will add types for the following concepts:
+@*@code{gasnet_client_t}
+an opaque identifier for a GASNet client,
+unique at the scope of the GASNet process
+@*@code{gasnet_handlertable_t}
+a 0-based index for a registered table of AM Handlers,
+unique at the scope of the GASNet client
+@*@code{gasnet_segment_t}
+a 0-based index for a registered remote access region,
+unique at the scope of the GASNet client
+@*@code{gasnet_endpoint_t}
+a 0-based index for a local communications endpoint (which
+may, at the client's discression, correspond to a thread),
+unique at the scope of the GASNet client.
+Collectives will operate over collections of endpoints, rather than the
+``images'' used in the current GASNet.
+@*@*
+The following two are the current plan for how best to martial the
+information required to convey the local and remote parameters to Core and
+Extended API communcaion calls.  The hope is that just two arguments (one
+local and one remote) should suffice to replace the ``node'' arguments to
+the Core and Extended API in order to convey all the required info:
+@*@code{gasnet_context_t}
+an opaque identifier representing a tuple (client, rank, endpoint, handler
+table, segment) which represents either the local or remote ``context'' for
+a communications operation.  The closest analogue in the current GASNet
+spec is the @code{gasnet_node_t} when used as the @code{node} argument to
+the Core and Extended API communications calls.
+@*@*
+The argument against a single tuple to simultaneously convey both the
+local and remote contexts is that such a design would unnecessarily inflate
+the number of identifiers to be managed by a client with multiple local
+endpoints which may communicate with any/all remote endpoints.
+@*@*
+The use of a single @emph{type} to represent both local and
+remote contexts is appealing if one considers loopback communications which
+would otherwise require keeping multiple objects to represent a context in
+the local process.
+@*@*
+Creating a context will be light-weight and communication-free.  Since all
+fields in the tuple except the client identifier are simple indices (and
+the client probably will be too) a packed-integer format is one option.
+Address of a small struct with a few fields is another which would be good
+if any of the index types hash/address into a sparse data type rather than a
+dense array (e.g. a scalable implementation of the ranks).
+@*@*
+@strong{TODO:} most or all of this discussion of contexts should move when
+a (sub)section is created for the corresponding interfaces.
+}
 
 @c ------------------------------------------------------------------------------------
 @page
@@ -566,6 +677,10 @@ GASNet job. This value must be representable as a @code{gasnet_node_t}.
 defined by the GASNet implementation to the value 1 if @code{gasnet_attach()} 
 guarantees that the remote-access memory segment will be aligned at the same virtual 
 address on all nodes. Defined to 0 otherwise.
+@EXNOTE{This is seldom the case any longer, and the ability of multiple
+clients to register multiple segments make the exact meaning somewhat
+unclear.  The plan is to allow optional offset-based addressing by the
+client which could be a suitable replacement for aligned segments.}
 
 @item GASNET_PAGESIZE
 a preprocessor constant integer which provides the memory granularity size used for
