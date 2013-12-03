@@ -515,8 +515,15 @@ return errors from the following list, as specified by each function:
 @item GASNET_ERR_BARRIER_MISMATCH
 @item GASNET_ERR_NOT_READY
 @end ftable
-@EXNOTE{There will be additions to this list for things like nodes becoming
-unreachable.}
+@EXNOTE{
+There will @emph{at least} the following additions to this list:
+@*@code{GASNET_ERR_UNREACHABLE} -- dead peer detected.
+@*@code{GASNET_ERR_BUSY} -- operation could not be performed w/o blocking.
+@*@*
+The @code{GASNET_ERR_BARRIER_MISMATCH} may be eliminated if the barrier
+results are returned by populating a struct (more consistent with the
+collectives).
+}
 
 Except where otherwise noted, errors that occur during a call to the 
 extended API are fatal.
