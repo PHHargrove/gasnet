@@ -408,7 +408,8 @@ Strongly considering use of ``rank'', ``proc'' or ``process'' in place of
 @strong{node}.  The term ``node'' has lead to confusion with the concept of
 a compute node, especially with the addition of PSHM support.  The use of
 ``rank'' would be most conventional while ``proc'' or ``process' would be
-more precise.}
+more precise.  Currently favoring process and @code{gasnet_pid_t}.
+}
 
 @item
 @cindex thread
@@ -565,7 +566,7 @@ string returned.
 @table @code
 @item gasnet_node_t
 unsigned integer type representing a unique 0-based node index
-@EXNOTE{This will probably become @code{gasnet_rank_t} and with the
+@EXNOTE{This will probably become @code{gasnet_pid_t} and with the
 inclusion of resilience support (and more generally the ability to grow and
 shrink a job) the space of valid values may become non-contiguous.}
 
@@ -597,55 +598,81 @@ in @code{gasnet_attach()}
 @end table
 
 @EXNOTE{Will add types for the following concepts:
-@*@code{gasnet_client_t}
+@*@*@bullet{}@code{gasnet_pid_t}
+an integer identifier for a GASNet process, with uniform values across the job.
+Initial assignment is 0 to (N-1), but resilence and dynamic membership can
+change that.  Expect to never reuse values, but that needs discussion.
+@*@*
+The constant @code{GASNET_PID_SELF} may be used to express the id of the
+caller to some entry points.
+@*@*@bullet{}@code{gasnet_client_t}
 an opaque identifier for a GASNet client,
-unique at the scope of the GASNet process
-@*@code{gasnet_handlertable_t}
-a 1-based index for a registered table of AM Handlers,
-unique at the scope of the GASNet client.
-The value @code{0} is used to denote no handler table.
-@*@code{gasnet_segment_t}
-a 1-based index for a registered remote-access segment,
-unique at the scope of the GASNet client.
-The value @code{0} is used to denote no remote-access segment.
-@*@code{gasnet_endpoint_t}
-a 0-based index for a local communications endpoint (which
+unique at the scope of the GASNet process (cannot be communicated safely).
+All comms take place only with the matching client in other processes.
+GASNet-EX does not currently envision supporting inter-client comms.
+@*@*@bullet{}@code{gasnet_handlertable_t}
+an opaque identifier for a table of AM Handlers,
+unique at the scope of the GASNet process.
+@*@*
+The constant @code{GASNET_HANDLERTABLE_NONE} expresses the absence of
+a table where appropriate.
+@*@*
+It is explicitly permitted to share these objects across clients
+within the same process, but the identifiers are not meaningful
+outside the process where they are created.
+@*@*@bullet{}@code{gasnet_segment_t}
+an opaque identifier for a segment of registered memory,
+unique at the scope of the GASNet process.
+@*@*
+The constant @code{GASNET_SEGMENT_NONE} expresses the absence of
+a table where appropriate.
+@*@*
+It is explicitly permitted to share these objects across clients
+within the same process, but the identifiers are not meaningful
+outside the process where they are created.
+@*@*@bullet{}@code{gasnet_endpoint_t}
+an opaque identifier for a local communications endpoint (which
 may, at the client's discression, correspond to a thread),
 unique at the scope of the GASNet client.
 Collectives will operate over collections of endpoints, rather than the
 ``images'' used in the current GASNet.
+@*@*@bullet{}@code{gasnet_dest_t}
+an opaque identifier representing a tuple @code{(proc, client, endpoint)}
+which represents the remote ``context'' for communications.  This will
+replaceme the @code{node} argument in the Core and Extended API.
+As with the existing @code{gasnet_node_t}, a @code{gasnet_dest_t} which
+names an endpoint on the local process is explicitly permitted.
 @*@*
-The following two are the current plan for how best to martial the
-information required to convey the local and remote parameters to Core and
-Extended API communcaion calls.  The hope is that just two arguments (one
-local and one remote) should suffice to replace the ``node'' arguments to
-the Core and Extended API in order to convey all the required info:
-@*@code{gasnet_context_t}
-an opaque identifier representing a tuple (client, rank, endpoint, handler
-table, segment) which represents either the local or remote ``context'' for
-a communications operation.  The closest analogue in the current GASNet
-spec is the @code{gasnet_node_t} when used as the @code{node} argument to
-the Core and Extended API communications calls.
+Creating a dest will be light-weight and free of blocking communication.
+However, in a system using lazy-connect the creation of a dest may
+initiate a non-blocking connection setup.
 @*@*
-The argument against a single tuple to simultaneously convey both the
-local and remote contexts is that such a design would unnecessarily inflate
-the number of identifiers to be managed by a client with multiple local
-endpoints which may communicate with any/all remote endpoints.
+The AM2 API uses a translation table that maps from a client-provided
+small integer to its semantic equivalent of @code{gasnet_dest_t}. That
+choice forces the AM2 implementation to maintain that table and to
+pay the cost of lookup (if any) on every communications call.  The
+design in GASNet-EX exposes the opaque identifier to the client
+which can potentially amortize any lookup cost over multiple calls to
+GASNet-EX.  Additionally, it is reasonable to expect that many clients
+will already have some data structure containing per-peer data in which
+the @code{gasnet_dest_t} can be stored (in which case the lookup may
+hit cache).
 @*@*
-The use of a single @emph{type} to represent both local and
-remote contexts is appealing if one considers loopback communications which
-would otherwise require keeping multiple objects to represent a context in
-the local process.
+Despite the push-the-lookup-to-the-client point made above, one
+possible implementation is to encode the three-tuple as bits packed
+into a single word.  This would not require any storage as the
+pointer-to-struct design would, but at the cost of some lookups.
 @*@*
-Creating a context will be light-weight and communication-free.  Since all
-fields in the tuple except the client identifier are simple indices (and
-the client probably will be too) a packed-integer format is one option.
-Address of a small struct with a few fields is another which would be good
-if any of the index types hash/address into a sparse data type rather than a
-dense array (e.g. a scalable implementation of the ranks).
-@*@*
-@strong{TODO:} most or all of this discussion of contexts should move when
+@strong{TODO:} most or all of this discussion should move when
 a (sub)section is created for the corresponding interfaces.
+@*@*@bullet{}@code{gasnet_epindex_t}
+an integer index for a @code{gasnet_endpoint_t}, unique and 0-based
+within each @code{(proc, client)} pair.
+@*@*
+One important use of this index is naming of
+an endpoint in a remote process when creating a @code{gasnet_dest_t}.
+To facilitate this use the type will never be wider than
+@code{gasnet_handlerarg_t}, but may be narrower.
 }
 
 @c ------------------------------------------------------------------------------------
