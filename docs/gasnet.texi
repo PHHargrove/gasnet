@@ -837,12 +837,12 @@ Additionally, the work required to implement support in the current collectives
 for out-of-segment accesses argues in favor of pushing the support down one
 level to the Extended API Puts and Gets.
 @*@*
-In order to help maintain optimal performance, the (newly added) @code{flags}
+In order to help maintain optimal performance, the (newly added) @var{flags}
 argument will (similarly to the collectives) provide a mechanism for the client
 to assert that the remote address is in-segment.  The expectation is that the
 inline-able top-level of the Extended API implementation will be able to
 short-cut any in-segment range check when this assertion is present (and the
-@code{flags} are compile-time constant).
+@var{flags} are compile-time constant).
 }
 
 @menu
@@ -901,7 +901,7 @@ appropriate error code if called multiple times).  The second will be a call
 to a new @code{gasnet_initClient()} function which will return (by reference)
 a @code{gasnet_client_t}, to be used as described later.  Arguments are TBD,
 but will include at least a string to name the client (used in environment
-variable names) and possibly an integer @code{flags} argument (though no
+variable names) and possibly an integer @var{flags} argument (though no
 specific flag values have been identified).
 }
 
@@ -933,7 +933,9 @@ algorithm is deterministic: passing the same handler table on each node will
 guarantee an identical resulting assignment on each node. Handler function 
 prototypes should match the prototypes described in the Active Message 
 Interface section.
-@EXNOTE{Exploring lowering 128 reserved to 96, or even lower.}
+@EXNOTE{Exploring lowering 128 reserved to 96, or even lower.
+@*Consider putting reserved range at @strong{top} of the range to let
+client start from 1 (or even zero?).}
 
 @var{segsize} and @var{minheapoffset} are used to communicate the desired size and  
 location of the remote-access memory data segment for the local node that 
@@ -966,7 +968,7 @@ will it attempt to access the memory locations within the segment until
 directed to do so by a data transfer function or Long active message. 
 
 @EXNOTE{The replacement for attach's segment registration operation will allow
-clients to optionally specify the address and @code{flags}.  The expected use
+clients to optionally specify the address and @var{flags}.  The expected use
 for the address is for optimizing Put and Get performance to regions of
 memory which are outside the client's direct control (e.g. allocated by a
 higher level, or perhaps by the linker/loader as with static data in
@@ -1013,8 +1015,15 @@ barrier and blocks until all other nodes which are part of this parallel job
 have successfully called @code{gasnet_attach()}.
 May only be called once during a process lifetime, subsequent calls will 
 return an error.
-@EXNOTE{May remove the collective property or use a flag value to control
-it.  Will certainly remove the ``once during a process lifetime''.}
+@EXNOTE{
+Will @strong{not} impose the collective property, nor the
+``called once during a process lifetime'', on the operations which create
+or associate the endpoints, AM tables or segments.  However, (most?) operations
+to create teams from endpoints @strong{will} be collective and will have a
+flag to hint whether the client's intended usage is dense or sparse.  The dense
+hint can be used as an opportunity to collectively propogate all the internally
+required information and perform the lazy-connect, if any.
+}
 @end deftypefn
 
 @IMPNOTE{
@@ -1044,7 +1053,14 @@ source/destination.
 }
 
 @EXNOTE{
-In GASNet-EX the attach will be more like that of AM2.  Specifically, the
+There will be no @code{gasnet_attach} in GASNet-EX.
+Instead there will be operations to create endpoints,
+AM handler tables and segments; to associate the handler tables
+and segments with endpoints; and to create teams from the
+endpoints.
+@*@*
+In GASNet-EX the attach @strong{sequence}
+will be more like that of AM2.  Specifically, the
 registration of AM handlers will be distinct from the creation of a
 remote-access memory segment.  Additionally, it will be possible to create
 multiple segments and destroy them as well.  Finally, it will also be possible
@@ -1052,11 +1068,12 @@ for the client to provide the address of existing memory for creation of a
 segment (with the understanding that on some neworks this may have a
 performance penalty).
 @*@*
-Both handler-table and segment creation will take a @code{gasnet_client_t}
-argument.
+Neither handler-table nor segment creation will take a @code{gasnet_client_t}
+argument.  This facilitates (but does not require) sharing across clients
+to conserve resources.
 @*@*
 Handler-table creation will take a ``client cookie'' argument which will
-be passed to handlers (requiring a change in thier signature).  This will
+be available to handlers via a new query on the token.  This will
 make it possible to code multi-client applications in which one has
 multiple instances of the SAME client.
 @*@*
@@ -1103,15 +1120,12 @@ Returns a global minimum value
 that would be returned by a call to @code{gasnet_getMaxLocalSegmentSize} 
 on any node of the current job (i.e. the smallest max segment size 
 estimated for any node in the job).
-@EXNOTE{@strong{OPEN ISSUE:} this semantic is only easy to retain if the
-segment creation remains collective.  So, this might remain valid only
-until the first segment creation or until the first non-collective one.
-However, we probably want a uniform behavior for @code{MaxLocal} and
-@code{MaxGlobal}.}
+@EXNOTE{Plan to either remove this, or replace it with a collective
+call.  If removed, then client can use collective reduction to
+re-implement this function.}
 
 This function has undefined behavior after @code{gasnet_attach()}.
-@EXNOTE{Remove or modify the paragraph above if the value isn't going
-to be updated at each segment creation.}
+@EXNOTE{Remove or modify the paragraph above.}
 @end deftypefn
 
 @FNS gasnet_exit
@@ -1147,7 +1161,15 @@ handlers.}
 @code{on_exit} and @emph{maybe} provide GASNet-level calls for registering
 hooks.  This would be preferrable to having multiple clients share
 @code{SIGQUIT}, @emph{plus} avoids calling the client's handler from signal
-context unless GASNet was alerady exiting from signal context.}
+context unless GASNet was already exiting from signal context.
+@*@*
+Either a return code from @code{gasnet_init} or some other mechanism is
+needed to provide what MPI clients get from @code{MPI_Initialized}.
+This will allow first-in-last-out stacking of clients such that only
+the last-out client calls @code{gasnet_exit}.  Alternatively, a destructor
+for @code{gasnet_client_t} could indicate if the last client (based now
+on count, not order of creation) has been destroyed.
+}
 @end deftypefn
 
 @c ------------------------------------------------------------------------------------
