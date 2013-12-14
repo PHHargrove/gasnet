@@ -1255,16 +1255,73 @@ should never call @code{getenv()} directly. The semantics of POSIX @code{setenv(
 are undefined in GASNet jobs (specifically, it will probably fail to 
 propagate changes across nodes). 
 @end deftypefn
-@EXNOTE{No changes planned}
+@EXNOTE{No changes planned in @code{gasnet_getenv}.}
 
 @c ------------------------------------------------------------------------------------
+@*@*
 @EXNOTE{New Section: Clients (@code{gasnet_client_t})@*@*
-Briefly describe properties of a ``client'' and the proposed APIs.
+An instance of type @code{gasnet_client_t} is an opaque identifier for a
+GASNet-EX client.  In GASNet-EX a @dfn{client} defines the scope of
+resource allocation and communications.  In a properly written multi-client
+job, distinct clients cannot deadlock one another.  Several data types
+related to communications are client-scoped and thus cannot be used to
+communicate across clients.
+@*@*
+Client creation is collective across the entire job, and the passed client
+name must agree across callers.  Though specification of mechanisms (such
+as environment variables or parameter files) for controlling the behavor of
+a GASNet-EX implementation is outside the scope of this specification, it
+is expected that the client name will be used to specify parameters which
+have per-client scope.  The characters used in @var{name} ar limited to the
+capital letters, digits and underscore.
+@*
+@*@bullet{}@code{int gasnet_ClientInit(&client, const char *name, int
+flags)}
+@*@bullet{}@code{int gasnet_ClientFini(&client)}
 }
 
 @c ------------------------------------------------------------------------------------
 @EXNOTE{New Section: AM Handler Tables (@code{gasnet_handlertable_t})@*@*
-Briefly describe properties of a ``AM Handler Table'' and the proposed APIs.
+Type @code{gasnet_handlertable_t} is an opaque identifier for an Active
+Message handler table.
+@*
+@*@bullet{}@code{int gasnet_HandlerTableCreate(&htbl, int flags)}
+@*@bullet{}@code{int gasnet_HandlerTableDestroy(htbl)}
+@*@bullet{}@code{int gasnet_HandlerTableRegister(htbl, gasnet_handlerentry_t *, count)}
+@*@bullet{}@code{int gasnet_HandlerTableGetTokenData(htbl, &tdata)}
+@*@bullet{}@code{int gasnet_HandlerTableSetTokenData(htbl, tdata)}
+@*constant: @code{GASNET_HANDLERTABLE_EMPTY}
+@*@*
+Handler tables are @emph{not} specific to a client, which permits their
+sharing across clients if desired.
+@*@*
+@code{GASNET_HANDLERTABLE_EMPTY} is a table with only GASNet's internal
+entries and @code{NULL} token data.  This table is READ-ONLY (it is an
+error to pass to Register or SetTokenData).
+@*@*
+A newly created table has the same content as
+@code{GASNET_HANDLERTABLE_EMPTY}, but can be modified.
+@*@*
+Registration of handlers may be called multiple times to accumulate and
+modify a table.  Legal to specify an in-use index, which results in
+replacement.  NOT legal to specify an index reserved for use by GASNet
+(currently 0-127).  Registration with handler function @code{NULL} is
+deregistration (making the slot available for ``don't care'' handlers).
+Such deregistration on an index which is not in-use is explicitly
+permitted.
+@*@*
+Registration is @emph{element-wise} atomic with respect to handler execution.
+However, for @var{count} larger than 1 the entire update is not guaranteed
+to be atomic, nor is the order of the updates defined.
+@*@*
+The Token Data associates a single @code{void*} with the handler table
+which can be retrieved by any handler run from the table via a query
+on its @code{gasnet_token_t}.  This allows, for example, multiple instances
+of the same client code (which thus run the same handlers) to distinguish
+among themselves.
+@*@*
+Behavior of concurrent calls to Register or SetTokenData on same table is
+undefined (but this is subject to change later).
 }
 
 @c ------------------------------------------------------------------------------------
