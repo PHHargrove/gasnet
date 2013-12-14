@@ -1189,12 +1189,25 @@ on count, not order of creation) has been destroyed.
 returns the unique, 0-based node index representing this node in the current 
 GASNet job
 @end deftypefn
+@EXNOTE{To be replaced by:
+@*
+@code{gasnet_pid_t gasnet_mypid ()}
+@*
+returns the unique, 0-based index representing this process in the current 
+GASNet job.  If processes join or leave the job then the space of pids may
+become sparse.  In this case values are never recycled.
+@*@*
+For some uses, it may be more appropriate for the client to query the
+caller's rank within some team.
+}
 
 @FNS gasnet_nodes
 @deftypefn {} {gasnet_node_t} gasnet_nodes ()
 
 returns the number of nodes in the current GASNet job
 @end deftypefn
+@EXNOTE{To be removed -- clients should instead query size of the
+appropriate team.}
 
 @FNS gasnet_getSegmentInfo
 @cindex segment
@@ -1225,6 +1238,8 @@ However, in any case
 the segment sizes may differ across nodes, and specifically they may differ from the 
 size requested by the client in the @code{gasnet_attach()} size hint.
 @end deftypefn
+@EXNOTE{To be removed -- the APIs for @code{gasnet_segment_t} will replace
+this call and provide more scalable alternatives as well.}
 
 @FNS gasnet_getenv
 @cindex environment variables
@@ -1240,6 +1255,41 @@ should never call @code{getenv()} directly. The semantics of POSIX @code{setenv(
 are undefined in GASNet jobs (specifically, it will probably fail to 
 propagate changes across nodes). 
 @end deftypefn
+@EXNOTE{No changes planned}
+
+@c ------------------------------------------------------------------------------------
+@EXNOTE{New Section: Clients (@code{gasnet_client_t})@*@*
+Briefly describe properties of a ``client'' and the proposed APIs.
+}
+
+@c ------------------------------------------------------------------------------------
+@EXNOTE{New Section: AM Handler Tables (@code{gasnet_handlertable_t})@*@*
+Briefly describe properties of a ``AM Handler Table'' and the proposed APIs.
+}
+
+@c ------------------------------------------------------------------------------------
+@EXNOTE{New Section: Remote-access Segments (@code{gasnet_segment_t})@*@*
+Briefly describe properties of a ``Remote-access Segment'' and the proposed APIs.
+}
+
+@c ------------------------------------------------------------------------------------
+@EXNOTE{New Section: Endpoints (@code{gasnet_endpoint_t} and
+@code{gasnet_epindex_t})@*@*
+Briefly describe properties of an ``Endpoint'' and the proposed APIs.
+}
+
+@c ------------------------------------------------------------------------------------
+@EXNOTE{New Section: Destinations (@code{gasnet_dest_t})@*@*
+Briefly describe properties of a ``Destination'' and the proposed APIs.
+@*@*
+@strong{TBD}: Is there a better term we can use than ``destination''?
+Maybe ``peer''?
+}
+
+@c ------------------------------------------------------------------------------------
+@EXNOTE{New Section: Teams (@code{gasnet_team_t})@*@*
+Briefly describe properties of a ``Team'' and the proposed APIs.
+}
 
 @c ------------------------------------------------------------------------------------
 @node Active Messaging Interface
