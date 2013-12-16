@@ -1329,11 +1329,13 @@ undefined (but this is subject to change later).
 An instance of @code{gasnet_segment_t} is an opaque identifier for a region
 of virtual memory which has been ``Registered'' with GASNet-EX.
 @*
-@*@bullet{}@code{int gasnet_SegmentCreate(&segment, team, addr, len, minheapoffset, flags)}
+@*@bullet{}@code{int gasnet_SegmentCreate(&segment, client, addr, len, minheapoffset, flags)}
+@*@bullet{}@code{int gasnet_SegmentTeamCreate(&segment, team, addr, len, minheapoffset, flags)}
 @*@bullet{}@code{int gasnet_SegmentDestroy(segment, team)}
 @*@bullet{}@code{int gasnet_SegmentQuery(segment, &seginfo, &flags)}
-@*@bullet{}@code{int gasnet_SegmentQueryTeam(segment, team, &seginfo_v, &flags)}
+@*@bullet{}@code{int gasnet_SegmentTeamQuery(segment, team, &seginfo_v, &flags)}
 @*constant: @code{GASNET_SEGMENT_NONE}
+@*constant: @code{GASNET_FLAG_@{SPARSE,DENSE@}} -- if used then better names TBD
 @*@*
 @code{GASNET_SEGMENT_NONE} is constant value representing the lack of
 a segment.
@@ -1341,79 +1343,82 @@ a segment.
 Creation of a segment is an indication that the client wants preferential
 treatment with respect to communications performance.  However, under
 GASNet-EX all ``normal memory'' in the address space of a remote process
-may be accessed via GASNet-EX calls regardless of registration..
+may be accessed via GASNet-EX calls regardless of registration.
 @*@*
-Segments are @emph{not} specific to a client, which permits their
-sharing across clients if desired.
+Segments are @emph{not} specific to a client, which permits sharing them
+across clients if desired.  The @var{client} argument to Create (and the
+team->client association) is used only to enforce per-client resource
+limits, if any.
 @*@*
 Typically an endpoint [forward reference] will have an associated segment.
 However, a quality implementation of GASNet will accelerate communications
 to and from memory in any segment regardless which endpoints, if any, the
-segment has been associated with.
+segment has been associated with, and regardless of which client performed
+the registration.
 @*@*
-Creation a segment is a collective operation, being called by all members
-of a given @var{team} [forward reference].  The constant
-@code{GASNET_TEAM_SELF} represents a team containing only the caller, and
-can be used for non-collective segment creation.
+Creation of a segment has both collective and non-collective variants.  Use
+of the collective SegmentTeamCreate call is a @emph{hint} to GASNet-EX to
+GatherAll the segment information across all members of the team,
+populating the data structures (interval trees or similar) used to lookup
+registration info when it is not already associated with the
+@code{gasnet_dest_t}.  However, collective creation of @code{gasnet_dest_t}
+also enables the implementation to propogate associated registration
+information, and doing both might be redundant.  When neither is done
+collectively the implementation can ``learn'' of remote registrations via
+specialized Replies in AM-based Extended API implementation.
 @*@*
-The value of the @var{addr} argument to Create selects between two possible
-behaviors (1) registration of a client-provided segment or (2) creation of
-a segment by GASNet.
+The value of the @var{addr} argument to either Create call selects between
+two possible behaviors (1) registration of a client-provided segment or (2)
+creation of a segment by GASNet.
 @*@*
-When the @var{addr} argument to Create is non-@code{NULL} it, together with
-the @code{len} argument, define a region of client-provided memory to be
-registered with GASNet as a remote-access segment.  The actual registration
-may include memory outside of the client's region (for instance rounding to
+When the @var{addr} argument to either Create call is non-@code{NULL}, then
+together with the @code{len} argument it defines a region of
+client-provided memory to be registered with GASNet as a remote-access
+segment.  The actual registration with the underlying network API may
+include memory outside of the client's region (for instance rounding to
 page granularity), but this cannot effect correctness.  When registering
 client-provided memory, the @var{minheapoffset} argument is unused.
 @*@*
-When the @var{addr} argument to Create is @code{NULL} the @var{len} and
-@var{minheapoffset} arguments have the same meaning as in the current
-@code{gasnet_attach} call.  Specifically, the @var{len} value is a
+When the @var{addr} argument to either Create call is @code{NULL}, the
+@var{len} and @var{minheapoffset} arguments have the same meaning as in the
+current @code{gasnet_attach} call.  Specifically, the @var{len} value is a
 @emph{request} and when the requested memory is not available, an
 implementation is permitted to either allocate less or to fail.
-@*@*
-Among other uses the @var{flags} will (via constants TBD) indicate if the
-clients's expected use of the segment being created is dense (all-to-all,
-or nearly so) or sparse with respect to use of Put, Get or Long among
-members of the team.  This tells GASNet-EX whether it should GatherAll
-the segment information across all members of the team. [TBD: stored
-where?]
 @*@*
 Eventually the @var{flags} might be used with client-provided memory to
 indicate device memory, which GASNet could access via AM handlers which
 use, for instance, @code{cudaMemcpy()}.
 @*@*
-Destruction of a segment is also a collective operation.  The @var{team}
-may be the same as at creation or a superset thereof.  It must include
-@emph{at least} all procs which participated in the creation of the segment
-@emph{plus} any which have communicated with the segment since its
-creation.  In this context ``communicated with'' is defined to include both
-the initiator or target of any communication operation with its source or
-destination in the segment.  For the superset case, a client should pass
-@code{GASNET_SEGMENT_NONE} from the procs which did not participate in the
-creation. [Open Issue: the page (or higher?) alignment of client-provided
-memory could lead to cases where a given process ``communicates with'' a
-given segment @emph{accidentally} unless we always do strict bounds
-checking.  Is there a semantic we can define that would allow lax bounds
-checks without unintended communication with the segment?]
+Destruction of a segment is always a collective operation over all
+processes which might possibly have used the registration information.  The
+@var{team} must include @emph{at least} all procs which participated in the
+creation of the segment @emph{plus} any which have communicated with the
+segment since its creation.  In this context ``communicated with'' is
+defined to include both the initiator and target of any communication
+operation with its source or destination in the segment.  For the superset
+case, a client should pass @code{GASNET_SEGMENT_NONE} from the procs which
+don't have a segment to destroy in this call.
 @*@*
-Creation of a segment creates a ``reference'' to the team.  It is illegal
-to destroy a team prior to destruction of all segements created from it.
-TODO: can this be relaxed?
+Explicitly legal to Destroy segments created by separate calls over
+multiple non-overlapping subsets of the team passed to Destroy (e.g.
+red+black, several/all row teams, or all non-collective).
 @*@*
 It is illegal to destroy a segment while any GASNet operations are
 communicating with it (as defined above).
 @*@*
-TBD: with collectives in the spec, is there any advantage to a collective
-segment query?  Yes, if the call can be leveraged to communcate the opaque
-portions of the segment data structure -- but to be stored where?
+The client cannot assume any synchronization occurs on the collective
+calls.  For instance, when the underlying network API does not have any form
+of memory registration, there may be no need for any communication in the
+collective calls.
 @*@*
-TBD: allow or disallow collective destruction of segments created
-separately by multiple non-overlapping subsets of the team passed to
-Destroy (e.g. red+black, several/all row teams, or all GASNET_TEAM_SELF)?
-One likely implementation of Destroy would ``just work'', but that doesn't
-mean the same for all reasonable implementations.
+Open Issue: our internal page (or higher?) alignment of client-provided
+memory could lead to cases where a given process ``communicates with'' a
+given segment @emph{accidentally} unless we always do strict bounds
+checking.  Is there a semantic we can define that would allow lax bounds
+checks without unintended communication with the segment?  If not, then
+what is the problem?  Need to perform range-based query to identify the
+proper segment (or even sub-segment) anyway?  So, with proper awareness
+this is probably a non-issue.
 @*@*
 TBD: What to do when given an attempt to register too much memory?
 @*@bullet{}could fail silently in the sense of creating a segment operation
@@ -1422,7 +1427,21 @@ but not doing anything to accelerate the RDMA
 the available resources
 @*@bullet{}could fail.
 @*If there is not an obvious winner, then we should devote some bits in
-@var{flags} to allow the client to chose the behavior they want.  }
+@var{flags} to allow the client to chose the behavior they want.
+@*@*
+TBD: Could provide flag to force synchronization in the collective
+operations if there is any likely need.  Should be done consistent with the
+collectives API when that is written up.
+@*@*
+Open Issue: Want to deal intelligently with the case of a segment with
+bounds identical to an existing one, or a proper subset.  For conduits
+in which a single GASNet-level registration might be implemented using
+multiple low-level registrations, the case of (sufficiently large) overlap
+might also be constructed to share the overlapping sub-segments.  Currently
+there is no obvious may that the Segment API might be used to make this
+sharing either easier or harder.  However, this goal is worth keeping in
+mind.
+}
 
 @c ------------------------------------------------------------------------------------
 @EXNOTE{New Section: Endpoints (@code{gasnet_endpoint_t} and
