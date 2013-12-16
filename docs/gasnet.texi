@@ -1455,9 +1455,86 @@ mind.
 }
 
 @c ------------------------------------------------------------------------------------
-@EXNOTE{New Section: Endpoints (@code{gasnet_endpoint_t} and
-@code{gasnet_epindex_t})@*@*
-Briefly describe properties of an ``Endpoint'' and the proposed APIs.
+@EXNOTE{New Section: Endpoints (@code{gasnet_endpoint_t})@*@*
+An instance of type @code{gasnet_endpoint_t} is an opaque representation of
+local communication context, which can optionally have an associated AM
+handler table and a remote-access segment (at most one of each).  Each
+endpoint has an associated non-negativeindex of type @code{int32_t}, which
+is zero-based and unique per @code{(proc, client)} pair.
+@*
+@*@bullet{}@code{ int gasnet_EpLookup(&ep, client, epidx) }
+@*@bullet{}@code{ int gasnet_EpCreate(&ep, client, scope, flags) }
+@*@bullet{}@code{ int gasnet_EpDestroy(ep) }
+@*
+@*@bullet{}@code{ int gasnet_EpGetIndex(ep, &epidx) }
+@*
+@*@bullet{}@code{ int gasnet_EpSetAMTbl(ep, amtbl) }
+@*@bullet{}@code{ int gasnet_EpGetAMTbl(ep, &amtbl) }
+@*
+@*@bullet{}@code{ int gasnet_EpSetSegment(ep, segment) }
+@*@bullet{}@code{ int gasnet_EpGetSegment(ep, &segment) }
+@*
+@*@bullet{}@code{ int gasnet_EpSetPollScope(ep, scope, tid) }
+@*@bullet{}@code{ int gasnet_EpGetPollScope(ep, &scope, &tid) }
+@*@*
+Every client begins with one endpoint (created implicitly and known as
+@code{Ep0}) and may create additional endpoints as desired.  The implicitly
+created endpoint has index zero and each client-created endpoint is
+assigned the lowest free index, reusing indicies freed by EpDestroy.  This
+deterministic assignment of endpoint indicies will allow most clients (at
+least those lacking multi-threaded races) to entirely avoid the use of
+EpGetIndex and all communication of indices.  However, the choice of
+@code{int32_t} for type of the index ensures it can conveniently be passed
+as an AM argument.
+@*@*
+The EpLookup call allows one to get the @code{gasnet_endpoint_t} for an
+existing Endpoint and is currently the only means specified to get the
+client's implicitly created endpoint, @code{Ep0}.
+@*@*
+Polling operations [forward reference] are used to advance communications
+on groups of endpoints defined by the ``scope'' of an endpoint:
+@*@bullet{}@code{GASNET_EPSCOPE_ANY} - endpoints with this scope are advanced
+by all @code{gasnet_Poll} calls from @emph{any} thread.
+@*@bullet{}@code{GASNET_EPSCOPE_ONE} - endpoints with this scope are
+advanced by @code{gasnet_Poll} calls from a @emph{specific} thread
+(initially the one which created endpoint).
+@*@bullet{}@code{GASNET_EPSCOPE_NONE} - endpoints with this scope are
+@emph{not} advanced by @code{gasnet_Poll} calls and must instead be
+advanced by calls to @code{gasnet_PollEp}.
+@*@*
+Use of the @code{ANY} scope means, for instance, that handlers for incoming
+Active Messages may be run by any thread which polls for progress,
+including any implementation-provided progress threads.  Use of the
+@code{ONE} scope ensures incomming Active Messages arriving on the endpoint
+will only be executed by the one thread selected by the client and never by
+an implementation-provided progress thread.  Use of the @code{NONE} scope
+ensures Active Messages arriving on the endpoint will never be run by a
+progress thread nor from any call to @code{gasnet_Poll}.  Only when the
+endpoint is named by the arguments to @code{gasnet_PollEp} will the
+endpoint progress.  This choice allows (and requires) the client to assume
+complete control over when progress is made on the endpoint.
+@*@*
+It is illegal to destoy an Ep which has outstanding operations including
+inbound ones.  It is illegal to destroy @code{Ep0} under any circumstances.
+@*@*
+@code{Ep0} has scope @code{ANY}, which cannot be changed.  For all other
+Eps the initial scope is passed at creation and may be changed as many times
+as desired.  For instance this allows threads to take or pass ownership of
+an endpoint with the @code{ONE} scope, or for a client to move Eps to
+@code{NONE} when they become idle.
+@*@*
+Every Ep begins with an AM handler table of
+@code{GASNET_HANDLERTABLE_EMPTY} and a segment of
+@code{GASNET_SEGMENT_NONE}.  The handler table and segment may each be
+changed @emph{at most} once over the life of an Endpoint.  Creation of
+teams [forward reference] which include an Endpoint and collective
+operations over such teams are possible prior to setting the AM handler
+table or segment.  Thus collectives can be used to make decisions regarding
+what values to set (e.g. collective choice of a segment size).
+@*@*
+Endpoint Creation and Destruction and the Set operations are all atomic with
+respect to communication (both incomming and outgoing), polling operations and
+the other Ep operations.
 }
 
 @c ------------------------------------------------------------------------------------
