@@ -636,41 +636,18 @@ may, at the client's discression, correspond to a thread),
 unique at the scope of the GASNet client.
 Collectives will operate over collections of endpoints, rather than the
 ``images'' used in the current GASNet.
-@*@*@bullet{}@code{gasnet_dest_t}
+@*@*@bullet{}@code{gasnet_peer_t}
 an opaque identifier representing a tuple @code{(proc, client, endpoint)}
 which represents the remote ``context'' for communications.  This will
 replaceme the @code{node} argument in the Core and Extended API.
-As with the existing @code{gasnet_node_t}, a @code{gasnet_dest_t} which
+As with the existing @code{gasnet_node_t}, a @code{gasnet_peer_t} which
 names an endpoint on the local process is explicitly permitted.
-@*@*
-Creating a dest will be light-weight and free of blocking communication.
-However, in a system using lazy-connect the creation of a dest may
-initiate a non-blocking connection setup.
-@*@*
-The AM2 API uses a translation table that maps from a client-provided
-small integer to its semantic equivalent of @code{gasnet_dest_t}. That
-choice forces the AM2 implementation to maintain that table and to
-pay the cost of lookup (if any) on every communications call.  The
-design in GASNet-EX exposes the opaque identifier to the client
-which can potentially amortize any lookup cost over multiple calls to
-GASNet-EX.  Additionally, it is reasonable to expect that many clients
-will already have some data structure containing per-peer data in which
-the @code{gasnet_dest_t} can be stored (in which case the lookup may
-hit cache).
-@*@*
-Despite the push-the-lookup-to-the-client point made above, one
-possible implementation is to encode the three-tuple as bits packed
-into a single word.  This would not require any storage as the
-pointer-to-struct design would, but at the cost of some lookups.
-@*@*
-@strong{TODO:} most or all of this discussion should move when
-a (sub)section is created for the corresponding interfaces.
 @*@*@bullet{}@code{gasnet_epindex_t}
 an integer index for a @code{gasnet_endpoint_t}, unique and 0-based
 within each @code{(proc, client)} pair.
 @*@*
 One important use of this index is naming of
-an endpoint in a remote process when creating a @code{gasnet_dest_t}.
+an endpoint in a remote process when creating a @code{gasnet_peer_t}.
 To facilitate this use the type will never be wider than
 @code{gasnet_handlerarg_t}, but may be narrower.
 }
@@ -1361,7 +1338,7 @@ of the collective SegmentTeamCreate call is a @emph{hint} to GASNet-EX to
 GatherAll the segment information across all members of the team,
 populating the data structures (interval trees or similar) used to lookup
 registration info when it is not already associated with the
-@code{gasnet_dest_t}.  However, collective creation of @code{gasnet_dest_t}
+@code{gasnet_peer_t}.  However, collective creation of @code{gasnet_peer_t}
 also enables the implementation to propogate associated registration
 information, and doing both might be redundant.  When neither is done
 collectively the implementation can ``learn'' of remote registrations via
@@ -1538,11 +1515,58 @@ the other Ep operations.
 }
 
 @c ------------------------------------------------------------------------------------
-@EXNOTE{New Section: Destinations (@code{gasnet_dest_t})@*@*
-Briefly describe properties of a ``Destination'' and the proposed APIs.
+@EXNOTE{New Section: Peers (@code{gasnet_peer_t})@*@*
+An instance of type @code{gasnet_peer_t} is an opaque identifier
+representing a communication context (client+ep) on a (possibly) remote
+proc.  A peer on the local process is explicitly permitted.
+@*
+@*@bullet{}@code{ int gasnet_PeerFromPids(&peer_v, client, count, &pid_v, &epidx_v) }
+@*@bullet{}@code{ int gasnet_PeerFromTeam(&peer_v, team, count, &rank_v) }
+@*
+@*@bullet{}@code{ int gasnet_PeerDestroy(&peer_v, count) }
 @*@*
-@strong{TBD}: Is there a better term we can use than ``destination''?
-Maybe ``peer''?
+Passing @code{GASNET_PID_SELF} as a pid to PeerFromPids will produce a Peer
+for the calling process, to be used in loopback operations.
+@*@*
+A call to PeerFromTeam with @code{NULL} for @var{rank_v} will produce a
+Peer for the first @var{team} members of the team, in rank order.  If
+@var{count} is larger than the size of @var{team}, then the extra trailing
+entries in @var{peer_v} are undefined upon return.
+@*@*
+Illegal to destroy a Peer in use by the client.
+@*@*
+Creating a peer will be light-weight and free of blocking communication.
+However, in a system using lazy-connect the creation of a peer may
+initiate a non-blocking connection setup.
+@*@*
+Multiple PeerFrom calls which specify the same effective (client,pid,ep)
+tuple will produce the same @code{gasnet_peer_t} until it is Destroyed.
+Such equality can be tested with @code{==} (@code{gasnet_peer_t} must be a
+scalar type).
+@*@*
+TBD: Collective versions?  Had considered use of a ``pre-connect'' flag (name
+TBD) to team creation to pre-populate the internal tables to ensure that
+subsequent PeerFromTeam calls can operate without communication.  However, if the
+client needs to create the team prior to associating a segment with the
+endpoint(s), then the pre-connect wouldn't be able to propogate the segment
+info.  This would be the case, for instance, if a MIN() reduction is required
+to choose the segment size.  NOTE: segment section already claims that we have
+this option.
+@*@*
+The AM2 API uses a translation table that maps from a client-provided small
+integer to the semantic equivalent of @code{gasnet_peer_t}.  That choice
+forces the AM2 implementation to maintain that table and to pay the cost of
+lookup (if any) on every communications call.  The design in GASNet-EX
+exposes the opaque identifier to the client which can potentially amortize
+any lookup cost over multiple calls to GASNet-EX.  Additionally, it is
+reasonable to expect that many clients will already have some per-peer data
+structure in which the @code{gasnet_peer_t} can be stored (in which case
+the lookup may hit cache).
+@*@*
+Despite the push-the-lookup-to-the-client point made above, one possible
+implementation is to encode the (client,pid,ep) tuple as bits packed into a
+single word.  This would not require any storage as the pointer-to-struct
+design would, but at the cost of some lookups.
 }
 
 @c ------------------------------------------------------------------------------------
