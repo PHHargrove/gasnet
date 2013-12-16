@@ -1529,7 +1529,7 @@ Passing @code{GASNET_PID_SELF} as a pid to PeerFromPids will produce a Peer
 for the calling process, to be used in loopback operations.
 @*@*
 A call to PeerFromTeam with @code{NULL} for @var{rank_v} will produce a
-Peer for the first @var{team} members of the team, in rank order.  If
+Peer for the first @var{count} members of @var{team}, in rank order.  If
 @var{count} is larger than the size of @var{team}, then the extra trailing
 entries in @var{peer_v} are undefined upon return.
 @*@*
