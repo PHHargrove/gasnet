@@ -1389,6 +1389,10 @@ Eventually the @var{flags} might be used with client-provided memory to
 indicate device memory, which GASNet could access via AM handlers which
 use, for instance, @code{cudaMemcpy()}.
 @*@*
+Similarly the @var{flags} might indicate that client-provided memory was
+obtained from a yet-to-be-designed interface for allocation of
+shared/sharable memory, thus permiting access via PSHM.
+@*@*
 Destruction of a segment is always a collective operation over all
 processes which might possibly have used the registration information.  The
 @var{team} must include @emph{at least} all procs which participated in the
@@ -1410,6 +1414,13 @@ The client cannot assume any synchronization occurs on the collective
 calls.  For instance, when the underlying network API does not have any form
 of memory registration, there may be no need for any communication in the
 collective calls.
+@*@*
+Open Issue: currently it might appear that only the collective variant of
+Create has the required information and control to create PSHM bypass
+mappings.  However, for all current PSHM implementations it should be
+possible to perform a lazy/late attach in lieu of exchanging registration
+keys for any PSHM-eligible segment.  Need to fully specify the behavior
+w.r.t. shared memory.
 @*@*
 Open Issue: our internal page (or higher?) alignment of client-provided
 memory could lead to cases where a given process ``communicates with'' a
