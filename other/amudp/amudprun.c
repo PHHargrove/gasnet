@@ -10,6 +10,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <dirent.h>
+
 #ifdef HAVE_GASNET_TOOLS
 #define GASNETT_LITE_MODE /* preserves AMUDP's threading neutrality */
 #include <gasnet_tools.h> /* for ctype.h wrappers */
@@ -28,9 +33,13 @@ static void Usage(const char *msg) {
     "  -spawn F  Use spawning function F\n"
     "  -depth D  Use network depth D\n"
     "  -v        Enable verbose mode spawn\n"
-    "  -h        Show this help\n"
-    "\n"
+    "  -h        Show this help\n\n"
     , argvzero, _STRINGIFY(AMUDP_LIBRARY_VERSION), argvzero);
+#ifdef AMUDP_BLCR_ENABLED
+  fprintf(stderr, 
+    "Usage: %s -restart <checkpoint_directory>\n\n"
+    , argvzero);
+#endif
   fprintf (stderr, "Available spawn functions:\n");
   for (i=0; AMUDP_Spawnfn_Desc[i].abbrev; i++) {
     fprintf(stderr, "    '%c'  %s\n",  
@@ -62,6 +71,85 @@ int main(int argc, char **argv) {
   int nproc = 0;
   int networkdepth = 0;
 
+#ifdef AMUDP_BLCR_ENABLED
+  int procid = AMUDP_SPMDRestartProcId(argv);
+  if (procid >= 0) {
+    char filename[32];
+    int magicfd = -1;
+
+    /* Save opaque "magic" (argv[2]) in a temporary file */
+    { size_t len;
+      char *tempname;
+      const char *tmpdir;
+      const char *magic = argv[2];
+      int rc;
+
+      tmpdir = getenv("TMPDIR");
+      if (!tmpdir) tmpdir = (const char *)"/tmp";
+      tempname = (char *)malloc(13 + strlen(tmpdir));
+      strcpy(tempname, tmpdir);
+      strcat(tempname, "/amudpXXXXXX");
+      magicfd = mkstemp(tempname);
+      if (magicfd < 0) {
+        perror("Failed to mkstemp()");
+        exit(1);
+      }
+      (void)unlink(tempname);
+      len = 1 + strlen(magic);
+      rc = (int)write(magicfd, magic, len);
+      if (rc < (ssize_t)len) {
+        perror("Failed to write() restart magic file");
+        exit(1);
+      }
+      if ((off_t)0 != lseek(magicfd, 0, SEEK_SET)) {
+        perror("Failed to rewind restart magic file");
+        exit(1);
+      }
+    }
+
+    /* Open context file and dup() magic to its reserved fd */
+    snprintf(filename, sizeof(filename), "context.%d", (int)procid);
+    { int fd, restart_fd;
+      ssize_t bytesread;
+
+      if (0 != chdir(argv[1])) {
+        fprintf(stderr, "ERROR: failed to change to restart directory '%s'\n", argv[1]);
+        return 1;
+      }
+
+      fd = open(filename, O_RDONLY);
+      if (fd < 0) {
+        perror("Failed to open() context file");
+        exit(1);
+      }
+      if ((off_t)(-1) == lseek(fd, -(off_t)sizeof(int), SEEK_END)) {
+        perror("Failed to lseek() context file");
+        exit(1);
+      }
+      bytesread = read(fd, &restart_fd, sizeof(int));
+      if (bytesread != (ssize_t)sizeof(int)) {
+        perror("Failed to read() context file");
+        exit(1);
+      }
+      (void)close(fd);
+      if (magicfd != restart_fd) {
+        if (0 > dup2(magicfd, restart_fd)) {
+          perror("Failed to dup2() magic file");
+          exit(1);
+        }
+        (void)close(magicfd);
+      }
+    }
+
+    /* BLCR-TODO: close any "stray" files or mark them close-on-exec */
+
+    /* Now the actual restart */
+    execlp("cr_restart", "cr_restart", filename, (char*)NULL);
+    perror("Failed execlp() restart command");
+    exit(1);
+  }
+#endif /* AMUDP_BLCR_ENABLED */
+
   if (AMUDP_SPMDIsWorker(argv)) Usage("launcher cannot be invoked as target program");
 
   argvzero = argv[0];
@@ -92,6 +180,48 @@ int main(int argc, char **argv) {
                !strcmp(arg,"-H") || 
                !strcmp(arg,"-help")) {
       Usage(NULL);
+#ifdef AMUDP_BLCR_ENABLED
+    } else if (!strcmp(arg,"-restart")) {
+      if (argc < 2) Usage("Missing directory name for -restart");
+      { /* determine nproc by counting context files, and check for gaps */
+        int rc, maxN = -1;
+        DIR *dir;
+        struct dirent *d;
+
+        dir = opendir(argv[1]);
+        if (NULL == dir) {
+          fprintf(stderr, "ERROR: failed to open restart directory '%s'\n", argv[1]);
+          return 1;
+        }
+        nproc = 0;
+        while (NULL != (d = readdir(dir))) {
+          static char pattern[] = "context.";
+          const size_t len = sizeof(pattern) - 1;
+          if (0 == strncmp(d->d_name, pattern, len)) {
+            int id = atoi(d->d_name + len);
+            char tmpname[32];
+            snprintf(tmpname, sizeof(tmpname)-1, "context.%d", id);
+            if (0 == strcmp(d->d_name, tmpname)) {
+              ++nproc;
+              maxN = (id>maxN) ? id : maxN;
+            }
+          }
+        }
+        closedir(dir);
+        if (nproc == 0) {
+          fprintf(stderr, "ERROR: failed to find context files in restart directory '%s'\n", argv[1]);
+          return 1;
+        } else if (nproc != maxN+1) {
+          fprintf(stderr, "ERROR: missing one or more context files in restart directory '%s'\n", argv[1]);
+          return 1;
+        }
+      }
+      /* BLCR-TODO: need an absolute path (or should we *require* one?) */
+      AMUDP_SPMDRunRestart(strdup(argvzero), argv[1], nproc);
+      /* should never return */
+      fprintf(stderr, "ERROR: AMUDP_SPMDRunRestart failed\n");
+      return 1;
+#endif /* AMUDP_BLCR_ENABLED */
     } else Usage("unknown option");
     argv++; argc--;
   }

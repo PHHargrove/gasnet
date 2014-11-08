@@ -75,6 +75,7 @@ static void freezeForDebugger() {
 
 #define AMUDP_SPMDSLAVE_FLAG "__AMUDP_SLAVE_PROCESS__"
 #define AMUDP_SPMDSLAVE_FLAG_VERBOSE "__AMUDP_SLAVE_PROCESS_VERBOSE__"
+#define AMUDP_SPMDRESTART_FLAG "__AMUDP_SLAVE_PROCESS_RESTART__"
 
 static int AMUDP_SPMDShutdown(int exitcode);
 
@@ -111,6 +112,16 @@ static int AMUDP_SPMDShutdown(int exitcode);
   static int AMUDP_SPMDStartupCalled = 0;
   static int AMUDP_SPMDNUMPROCS = -1;
   static char *AMUDP_SPMDMasterEnvironment = NULL;
+
+#ifdef AMUDP_BLCR_ENABLED
+/* checkpoint/restart */
+  int AMUDP_SPMDRestartActive = 0;
+  static int AMUDP_SPMDNetworkDepth = 0;
+  static uint64_t AMUDP_SPMDCheckpointGuid = -1;
+  static char *AMUDP_SPMDCheckpointArgv0 = NULL;
+#else
+  #define AMUDP_SPMDRestartActive 0
+#endif
 
 // used to pass info - always stored in network byte order
 // fields carefully ordered by size to avoid cross-platform struct packing differences
@@ -312,8 +323,9 @@ extern int AMUDP_SPMDStartup(int *argc, char ***argv,
   /* ------------------------------------------------------------------------------------ 
    *  I'm a master 
    * ------------------------------------------------------------------------------------ */
-  if ((*argc) < 2 || 
-    (strcmp((*argv)[1], AMUDP_SPMDSLAVE_FLAG) && strcmp((*argv)[1], AMUDP_SPMDSLAVE_FLAG_VERBOSE))) { 
+  if ((*argc) < 2 || (strcmp((*argv)[1], AMUDP_SPMDSLAVE_FLAG) &&
+                      strcmp((*argv)[1], AMUDP_SPMDSLAVE_FLAG_VERBOSE) &&
+                      strcmp((*argv)[1], AMUDP_SPMDRESTART_FLAG))) {
     int usingdefaultdegree = 0;
     uint64_t npid;
     if (nproc < 0 || nproc > AMUDP_MAX_SPMDPROCS) AMUDP_RETURN_ERR(BAD_ARG);
@@ -496,7 +508,8 @@ extern int AMUDP_SPMDStartup(int *argc, char ***argv,
     const char **slaveargv = (const char**)AMUDP_malloc(sizeof(const char*)*((*argc)+3));
     int slaveargc = (*argc)+2;
     slaveargv[0] = (*argv)[0];
-    slaveargv[1] = (AMUDP_SilentMode?AMUDP_SPMDSLAVE_FLAG:AMUDP_SPMDSLAVE_FLAG_VERBOSE);
+    slaveargv[1] = (AMUDP_SPMDRestartActive?AMUDP_SPMDRESTART_FLAG:
+                    (AMUDP_SilentMode?AMUDP_SPMDSLAVE_FLAG:AMUDP_SPMDSLAVE_FLAG_VERBOSE));
     if (*masterIPstr) slaveargv[2] = masterAddr.FTPStr();
     else {
       #if USE_NUMERIC_MASTER_ADDR
@@ -900,25 +913,38 @@ extern int AMUDP_SPMDStartup(int *argc, char ***argv,
    *  I'm a worker slave 
    * ------------------------------------------------------------------------------------ */
   else {  
+    #ifdef AMUDP_BLCR_ENABLED
+      // Restart Step 1: Gets procid from master and restarts corresponding context file
+      const int doRunRestart = !strcmp((*argv)[1], AMUDP_SPMDRESTART_FLAG);
+      // Not either of the restart cases:
+      const int doFullBoostrap = !(doRunRestart || AMUDP_SPMDRestartActive);
+    #else
+      #define doRunRestart 0
+      #define doFullBoostrap 1
+    #endif
+
     int temp;
 
     /* propagate verbosity setting from master */
-    AMUDP_SilentMode = !strcmp((*argv)[1], AMUDP_SPMDSLAVE_FLAG);
+    AMUDP_SilentMode = !strcmp((*argv)[1], AMUDP_SPMDSLAVE_FLAG) || doRunRestart;
 
+    if (doFullBoostrap) {
     #if FREEZE_SLAVE
       freezeForDebugger();
     #else
       /* do *not* use prefixed getenv here - want an independent freeze point */
       if (getenv("AMUDP_FREEZE")) freezeForDebugger();
     #endif
+    }
 
     if (!eb || !ep) AMUDP_RETURN_ERR(BAD_ARG);
-    if (AM_Init() != AM_OK) {
+    if (doFullBoostrap && AM_Init() != AM_OK) {
       AMUDP_Err("Failed to AM_Init() in AMUDP_SPMDStartup");
       AMUDP_RETURN_ERRFR(RESOURCE, AMUDP_SPMDStartup, "AM_Init() failed");
     }
 
     // parse special args 
+    char *master = doRunRestart ? strdup((*argv)[2]) : NULL;
     SockAddr masterAddr;
     #if HAVE_GETIFADDRS
       const char *network = "";
@@ -977,6 +1003,27 @@ extern int AMUDP_SPMDStartup(int *argc, char ***argv,
       }
       #endif
 
+      #ifdef AMUDP_BLCR_ENABLED
+        if (doRunRestart) {
+          // reconstruct args for use by the caller
+          (*argv) -= 2;
+          (*argc) = 3;
+          (*argv)[1] = (*argv)[3]; // DIR
+          (*argv)[2] = master;
+          (*argv)[3] = NULL;
+
+          // Get procid from master and return it to the caller
+          int32_t procid_nb = hton32(AMUDP_PROCID_ALLOC);
+          sendAll(AMUDP_SPMDControlSocket, &procid_nb, sizeof(procid_nb));
+          sendAll(AMUDP_SPMDControlSocket, &AMUDP_SPMDName, sizeof(AMUDP_SPMDName));
+          recvAll(AMUDP_SPMDControlSocket, &procid_nb, sizeof(procid_nb));
+          shutdown(AMUDP_SPMDControlSocket, SHUT_RDWR);
+          close_socket(AMUDP_SPMDControlSocket);
+
+          return ntoh32(procid_nb);
+        }
+      #endif // AMUDP_BLCR_ENABLED
+
       #ifndef UETH
         /* here we assume the interface used to contact the master is the same 
            one to be used for UDP endpoints */
@@ -1025,8 +1072,19 @@ extern int AMUDP_SPMDStartup(int *argc, char ***argv,
       recvAll(AMUDP_SPMDControlSocket, &bootstrapinfo, sizeof(AMUDP_SPMDBootstrapInfo_t));
       
       // unpack the bootstrapping info
-      AMUDP_SPMDNUMPROCS = ntoh32(bootstrapinfo.numprocs);
-      AMUDP_SPMDMYPROC = ntoh32(bootstrapinfo.procid);
+      if (doFullBoostrap) {
+        AMUDP_SPMDNUMPROCS = ntoh32(bootstrapinfo.numprocs);
+        AMUDP_SPMDMYPROC = ntoh32(bootstrapinfo.procid);
+      } else {
+        if (AMUDP_SPMDNUMPROCS != (int32_t)ntoh32(bootstrapinfo.numprocs)) {
+          AMUDP_Err("Restarting with wrong numprocs in AMUDP_SPMDStartup");
+          AMUDP_RETURN_ERR(BAD_ARG);
+        }
+        if (AMUDP_SPMDMYPROC != (int32_t)ntoh32(bootstrapinfo.procid)) {
+          AMUDP_Err("Restarting with wrong procid in AMUDP_SPMDStartup");
+          AMUDP_RETURN_ERR(BAD_ARG);
+        }
+      }
       if (networkpid) *networkpid = ntoh64(bootstrapinfo.networkpid);
 
       // sanity checking on bootstrap info
@@ -1058,16 +1116,27 @@ extern int AMUDP_SPMDStartup(int *argc, char ***argv,
 
       // receive snapshot of master environment
       int environtablesz = ntoh32(bootstrapinfo.environtablesz);
-      AMUDP_SPMDMasterEnvironment = (char *)AMUDP_malloc(environtablesz);
-      AMUDP_assert(AMUDP_SPMDMasterEnvironment != NULL);
-      recvAll(AMUDP_SPMDControlSocket, AMUDP_SPMDMasterEnvironment, environtablesz);
+      char *tempEnvironment = (char *)AMUDP_malloc(environtablesz);
+      AMUDP_assert(tempEnvironment != NULL);
+      recvAll(AMUDP_SPMDControlSocket, tempEnvironment, environtablesz);
+      if (doFullBoostrap) {
+        AMUDP_SPMDMasterEnvironment = tempEnvironment;
+      } else  {
+        // On restart we keep the environment from the initial run
+        AMUDP_assert(AMUDP_SPMDMasterEnvironment != NULL);
+        AMUDP_free(tempEnvironment);
+      }
       
       /* allocate network buffers */
-      temp = AM_SetExpectedResources(AMUDP_SPMDEndpoint, AMUDP_SPMDNUMPROCS, ntoh32(bootstrapinfo.depth));
+      if (doFullBoostrap) networkdepth = ntoh32(bootstrapinfo.depth);
+      temp = AM_SetExpectedResources(AMUDP_SPMDEndpoint, AMUDP_SPMDNUMPROCS, networkdepth);
       if (temp != AM_OK) {
         AMUDP_Err("Failed to AM_SetExpectedResources() in AMUDP_SPMDStartup");
         AMUDP_RETURN(temp);
       }
+      #ifdef AMUDP_BLCR_ENABLED
+        AMUDP_SPMDNetworkDepth = networkdepth;
+      #endif
       
       // set tag
       temp = AM_SetTag(AMUDP_SPMDEndpoint, ntoh64(bootstrapinfo.tag));
@@ -1076,6 +1145,7 @@ extern int AMUDP_SPMDStartup(int *argc, char ***argv,
         AMUDP_RETURN(temp);
       }
 
+      // BLCR-TODO: problems if we change spawner?
       #if !DISABLE_STDSOCKET_REDIRECT
         if (bootstrapinfo.stdinMaster) {
             // perform stdin/out/err redirection
@@ -1136,6 +1206,15 @@ extern int AMUDP_SPMDStartup(int *argc, char ***argv,
           100.0 * AMUDP_FaultInjectionRate);
         fflush(stderr);
       }
+
+      #ifdef AMUDP_BLCR_ENABLED
+        // Preserve data required at checkpoint time
+        if (doFullBoostrap) {
+          // BLCR-TODO: Preserve entire argv?
+          AMUDP_SPMDCheckpointArgv0 = strdup((*argv)[0]);
+          AMUDP_SPMDCheckpointGuid = ntoh64(bootstrapinfo.networkpid);
+        }
+      #endif
     } catch (xSocket& exn) {
       AMUDP_FatalErr("Got an xSocket while spawning slave process: %s", exn.why());
     }
@@ -1749,5 +1828,197 @@ extern char *AMUDP_getenv_prefixed_withdefault(const char *basekey, const char *
 #endif
   return retval;
 }
-/* ------------------------------------------------------------------------------------ */
 
+#ifdef AMUDP_BLCR_ENABLED
+/* ------------------------------------------------------------------------------------
+ *  checkpoint/restart
+ * ------------------------------------------------------------------------------------ */
+extern void AMUDP_SPMDRunRestart(char *argv0, char *dir, int nproc) {
+  // BLCR-TODO: return errors on bad args?
+  AMUDP_assert(argv0 != NULL);
+  AMUDP_assert(dir != NULL);
+  AMUDP_assert(nproc > 0);
+  {
+    eb_t eb; ep_t ep;
+    int argc = 2;
+    char **argv = (char**)AMUDP_malloc(3*sizeof(char*));
+    argv[0] = argv0;
+    argv[1] = dir;
+    argv[2] = NULL;
+    AMUDP_SPMDRestartActive = 1;
+    AMUDP_SPMDStartup(&argc, &argv, nproc, 0, NULL, NULL, &eb, &ep);
+    AMUDP_FatalErr("never reach here");
+  }
+}
+extern int AMUDP_SPMDRestartProcId(char **argv) {
+  AMUDP_assert(argv != NULL);
+  if (!AMUDP_SPMDStartupCalled && argv[1] && !strcmp(argv[1], AMUDP_SPMDRESTART_FLAG)) {
+    eb_t eb; ep_t ep;
+    int argc = 4;
+    return AMUDP_SPMDStartup(&argc, &argv, 0, 0, NULL, NULL, &eb, &ep);
+  }
+  return -1;
+}
+static int AMUDP_SPMDReStartup(int fd, eb_t *eb, ep_t *ep) {
+  struct stat st;
+  int temp;
+
+  AMUDP_SPMDRestartActive = 1;
+
+  // Get location of new master from our special fd
+  temp = fstat(fd, &st);
+  if (temp < 0) {
+    AMUDP_Err("Failed to read restart-master");
+    exit(1);
+  }
+  size_t len = st.st_size;
+  char *master = (char*)AMUDP_malloc(sizeof(char)*len);
+  size_t rc = read(fd, master, len);
+  if (rc != len) {
+    AMUDP_Err("Failed to read restart-master");
+    AMUDP_RETURN(temp);
+  }
+  AMUDP_assert(master[len-1] == '\0');
+
+  // Free old bundle
+  temp = AM_FreeBundle(AMUDP_SPMDBundle);
+  if (temp != AM_OK) {
+    AMUDP_Err("Failed to free bundle in AMUDP_SPMDStartup");
+    AMUDP_RETURN(temp);
+  }
+
+  // Setup new argc & argv
+  int argc = 3;
+  char **argv = (char**)AMUDP_malloc(4*sizeof(char*));
+  argv[0] = (char*)"RESTART";
+  argv[1] = (char*)(AMUDP_SilentMode?AMUDP_SPMDSLAVE_FLAG:AMUDP_SPMDSLAVE_FLAG_VERBOSE);
+  argv[2] = master;
+  argv[3] = NULL;
+
+  // Re-bootstrap from the new master
+  AMUDP_SPMDStartupCalled = 0;
+  temp = AMUDP_SPMDStartup(&argc, &argv,
+                           0, AMUDP_SPMDNetworkDepth,
+                           NULL, NULL, eb, ep);
+
+  AMUDP_SPMDRestartActive = 0;
+  return temp;
+}
+/* ------------------------------------------------------------------------------------ */
+#include "libcr.h"
+int AMUDP_SPMDCheckpoint(eb_t *eb, ep_t *ep, const char *dir) {
+  static char * default_dir = NULL;
+  static int sequence_no = 0;
+
+  cr_checkpoint_args_t cr_args;
+  cr_checkpoint_handle_t cr_handle;
+  int masterFd = -1;
+  int contextFd = -1;
+  int retval;
+  int rc;
+
+  if (!dir) dir = default_dir;
+
+  if (!dir) { // First time using default_dir
+    // BLCR-TODO: enforce use of absolute paths?
+    default_dir = AMUDP_getenv_prefixed("CHECKPOINT_DIR");
+    if (!default_dir) {
+      char *base = AMUDP_getenv_prefixed("CHECKPOINT_BASEDIR");
+      if (!base) {
+        const char * home = getenv("HOME");
+        const char * rest = "/amudp-checkpoint";
+        size_t len = strlen(home) + strlen(rest) + 1;
+        base = (char*)AMUDP_malloc(len);
+        strcpy(base, home);
+        strcat(base, rest);
+      }
+      default_dir = (char*)AMUDP_malloc(strlen(base) + 19);
+      sprintf(default_dir, "%s/%08x.%08x", base,
+                           (uint32_t)(AMUDP_SPMDCheckpointGuid >> 32),
+                           (uint32_t)(AMUDP_SPMDCheckpointGuid & 0xFFFFFFFF));
+    }
+    dir = default_dir;
+  }
+
+  char *buf = (char*)AMUDP_malloc(strlen(dir) + 29);
+  sprintf(buf, "%s/%d/", dir, sequence_no++);
+  { // Implements "mkdir -p" (requires the trailing '/').
+    char *p = buf;
+    while (NULL != (p = strchr(p+1, '/'))) {
+      *p = '\0';
+      rc = mkdir(buf, S_IRWXU);
+      if ((rc < 0) && (errno != EEXIST)) {
+        fprintf(stderr, "Failed to mkdir('%s') %d:%s\n", buf, errno, strerror(errno));
+        // BLCR-TODO: error handling
+      }
+      *p = '/';
+    }
+  }
+  char *q = strchr(buf,0); // The '\0' at the end
+  if (!AMUDP_SPMDMYPROC) {
+    strcat(buf, "metadata");
+    FILE *md = fopen(buf, "w");
+    if (md) {
+      fprintf(md, "argv0:\t%s\n", AMUDP_SPMDCheckpointArgv0);
+      fprintf(md, "nproc:\t%d\n", AMUDP_SPMDNUMPROCS);
+      fprintf(md, "guid:\t%08x.%08x\n",
+                          (uint32_t)(AMUDP_SPMDCheckpointGuid >> 32),
+                          (uint32_t)(AMUDP_SPMDCheckpointGuid & 0xFFFFFFFF));
+      struct timeval tv;
+      gettimeofday(&tv,NULL);
+      fprintf(md, "time:\t%lu\n", (unsigned long)tv.tv_sec);
+      fclose(md);
+    }
+    // BLCR-TODO: error detection or silent failure?
+  }
+  sprintf(q, "context.%d", AMUDP_SPMDMYPROC);
+  {
+    const int flags = O_WRONLY|O_APPEND|O_CREAT|O_EXCL|O_LARGEFILE|O_TRUNC;
+    const int mode = S_IRUSR;
+    contextFd = open(buf, flags, mode); // BLCR-TODO: error checking
+    if (contextFd < 0) {
+      fprintf(stderr, "Failed to create '%s' errno=%d(%s)\n", buf, errno, strerror(errno));
+      AMUDP_free(buf);
+      return -1;
+    }
+  }
+  AMUDP_free(buf);
+
+  cr_initialize_checkpoint_args_t(&cr_args);
+  cr_args.cr_scope  = CR_SCOPE_TREE;
+  cr_args.cr_target = 0; /* self */
+  cr_args.cr_fd = contextFd;
+
+  masterFd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  // BLCR-TODO: error checking for socket()
+
+  rc = cr_request_checkpoint(&cr_args, &cr_handle);
+  // BLCR-TODO: error checking for cr_request_checkpoint()
+
+  do { // This loop is necessary because checkpointing self causes EINTR
+    rc = cr_wait_checkpoint(&cr_handle, NULL);
+    // BLCR-TODO: error checking for cr_wait_checkpoint()
+  } while ((rc < 0) && (errno == EINTR));
+
+  rc = cr_reap_checkpoint(&cr_handle);
+  if (rc >= 0) { // Continue case
+    // Continue case - append the special fd to the context file
+    write(cr_args.cr_fd, &masterFd, sizeof(masterFd));
+    // BLCR-TODO: error checking for write()
+    (void)close(cr_args.cr_fd);
+    retval = 0;
+  } else if (errno == CR_ERESTARTED) { // Restart case
+    AMUDP_SPMDReStartup(masterFd, eb, ep);
+    // BLCR-TODO: error checking for ReStartup
+    retval = 1;
+  } else { // ERROR case
+    // BLCR-TODO: error handling/reporting
+    retval = -1;
+  }
+
+  (void)close(masterFd);
+
+  return retval;
+}
+#endif // AMUDP_BLCR_ENABLED
+/* ------------------------------------------------------------------------------------ */
