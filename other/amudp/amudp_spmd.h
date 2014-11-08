@@ -130,6 +130,10 @@ extern amudp_spawnfn_desc_t const AMUDP_Spawnfn_Desc[];
 #define AMX_SPMDStartup(pargc, pargv, networkdepth, pnetworkpid, peb, pep) \
       AMUDP_SPMDStartup((pargc), (pargv), 0, (networkdepth), NULL, (pnetworkpid), (peb), (pep))
 
+/* ------------------------------------------------------------------------------------ */
+/* non-standard extensions */
+extern int AMUDP_SPMDAllChangeId(int32_t newid);
+
 SOCK_END_EXTERNC
 
 #endif

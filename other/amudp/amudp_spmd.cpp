@@ -1633,6 +1633,59 @@ extern int AMUDP_SPMDAllGather(void *source, void *dest, size_t len) {
   DEBUG_SLAVE("Leaving gather");
   return AM_OK;
 }
+extern int AMUDP_SPMDAllChangeId(int32_t newid) {
+  int temp;
+
+  if (newid >= AMUDP_SPMDNUMPROCS || newid < 0) AMUDP_RETURN_ERR(BAD_ARG);
+
+  const size_t len = sizeof(int32_t);
+  int32_t *newids = (int32_t *)AMUDP_malloc(len*AMUDP_SPMDNUMPROCS);
+  int32_t newid_nb = hton32(newid);
+
+  temp = AMUDP_SPMDAllGather(&newid_nb, newids, len);
+  if (temp != AM_OK) {
+    AMUDP_Err("Failed to permute procids");
+    AMUDP_RETURN(temp);
+  }
+
+  for (int i = 0; i < AMUDP_SPMDNUMPROCS; i++) {
+    newids[i] = ntoh32(newids[i]);
+  }
+
+  // Permute the endpoints
+  for (int i = 0; i < AMUDP_SPMDBundle->n_endpoints; i++) {
+    ep_t ep = AMUDP_SPMDBundle->endpoints[i];
+    AMUDP_assert(ep);
+    AMUDP_assert(ep->P == AMUDP_SPMDNUMPROCS);
+
+    size_t len = sizeof(amudp_translation_t) * AMUDP_SPMDNUMPROCS;
+    amudp_translation_t *tempTranslation = (amudp_translation_t *)AMUDP_malloc(len);
+    memcpy(tempTranslation, ep->translation, len);
+    for (int j = 0; j < AMUDP_SPMDNUMPROCS; j++) {
+      ep->translation[newids[j]] = tempTranslation[j];
+    }
+    AMUDP_free(tempTranslation);
+
+    /*  compact a copy of the translation table into our perproc info array */
+    { int procid = 0;
+      for (int j=0; j < AMUDP_MAX_NUMTRANSLATIONS; j++) {
+        if (ep->translation[j].inuse) {
+          ep->perProcInfo[procid].remoteName = ep->translation[j].name;
+          ep->perProcInfo[procid].tag = ep->translation[j].tag;
+          ep->translation[j].id = (uint16_t)procid;
+          procid++;
+          if (procid == ep->P) break; /*  should have all of them now */
+        }
+      }
+    }
+  }
+  AMUDP_free(newids);
+
+  AMUDP_SPMDMYPROC = newid;
+  AMUDP_SPMDBarrier();
+
+  return AM_OK;
+}
 
 /* ------------------------------------------------------------------------------------ 
  *  global getenv()
