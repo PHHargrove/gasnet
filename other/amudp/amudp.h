@@ -59,6 +59,9 @@
 #ifndef AMUDP_COLLECT_LATENCY_STATS
 #define AMUDP_COLLECT_LATENCY_STATS   1
 #endif
+
+#define AMUDP_PROCID_NEXT -1  /* Use next unallocated procid */
+#define AMUDP_PROCID_ALLOC -2 /* Allocate and return next procis, but do not bootstrap */
 /* ------------------------------------------------------------------------------------ */
 /* Simple user-visible types */
 

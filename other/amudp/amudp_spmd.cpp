@@ -98,7 +98,7 @@ static int AMUDP_SPMDShutdown(int exitcode);
   static SOCKET newstdin = INVALID_SOCKET;
   static SOCKET newstdout = INVALID_SOCKET;
   static SOCKET newstderr = INVALID_SOCKET;
-  static int AMUDP_SPMDMYPROC = -1;
+  static int AMUDP_SPMDMYPROC = AMUDP_PROCID_NEXT; /* -1 requests next avail procid */
   static volatile int AMUDP_SPMDBarrierDone = 0; /* flag barrier as complete */
   static volatile int AMUDP_SPMDGatherDone = 0;  /* flag gather as complete */
   static volatile int AMUDP_SPMDGatherLen = 0;
@@ -137,7 +137,11 @@ typedef struct {
 /*
   Protocol for TCP bootstrapping/control sockets
   initialization: 
+    slave->master (int32) - send my procid for init
     slave->master (en_t) - send my endpoint name for init
+   if received procid == AMUDP_PROCID_ALLOC
+    master->slave (int32 next_rank++)
+   else
     master->slave (int32 sizeof(AMUDP_SPMDBootstrapInfo_t))
     master->slave (AMUDP_SPMDBootstrapInfo_t) 
     master->slave (AMUDP_SPMDTranslation_name (variable size)) 
@@ -622,8 +626,6 @@ extern int AMUDP_SPMDStartup(int *argc, char ***argv,
           if (numSlavesAttached < AMUDP_SPMDNUMPROCS) { // attach a slave
             SockAddr remoteAddr;
             SOCKET newcoord = accept_socket(AMUDP_SPMDListenSocket, remoteAddr);
-            coordList.insert(newcoord);
-            allList.insert(newcoord);
 
             #if USE_COORD_KEEPALIVE
             { // make sure we get connection termination notification in a timely manner
@@ -633,11 +635,32 @@ extern int AMUDP_SPMDStartup(int *argc, char ***argv,
             }
             #endif
 
-            // receive bootstrapping info
-            AMUDP_SPMDSlaveSocket[numSlavesAttached] = newcoord;
-            recvAll(newcoord, &(AMUDP_SPMDTranslation_name[numSlavesAttached]), sizeof(en_t));
+            { // receive bootstrapping info
+              static int32_t next_procid = 0;
+              int32_t procid, procid_nb;
+              en_t name;
 
-            numSlavesAttached++;
+              recvAll(newcoord, &procid_nb, sizeof(procid_nb));
+              recvAll(newcoord, &name, sizeof(name));
+              procid = ntoh32(procid_nb);
+              if (procid == AMUDP_PROCID_ALLOC) {
+                // This is a request (e.g. by a spawner) for a procid assignment
+                procid = next_procid++;
+                procid_nb = hton32(procid);
+                sendAll(newcoord, &procid_nb, sizeof(procid_nb));
+                shutdown(newcoord, SHUT_RDWR);
+                close_socket(newcoord);
+              } else {
+                // This is a slave connecting
+                if (procid == AMUDP_PROCID_NEXT) procid = next_procid++;
+                AMUDP_SPMDSlaveSocket[procid] = newcoord;
+                AMUDP_SPMDTranslation_name[procid] = name;
+                coordList.insert(newcoord);
+                allList.insert(newcoord);
+                numSlavesAttached++;
+              }
+            }
+
             if (numSlavesAttached == AMUDP_SPMDNUMPROCS) { // all have now reported in, so we can begin computation
               // close listener
               close_socket(AMUDP_SPMDListenSocket);
@@ -987,7 +1010,9 @@ extern int AMUDP_SPMDStartup(int *argc, char ***argv,
         AMUDP_RETURN(temp);
       }
 
-      // send our endpoint name to the master
+      // send our procid and endpoint name to the master
+      int32_t procid_nb = hton32(AMUDP_SPMDMYPROC);
+      sendAll(AMUDP_SPMDControlSocket, &procid_nb, sizeof(procid_nb));
       sendAll(AMUDP_SPMDControlSocket, &AMUDP_SPMDName, sizeof(AMUDP_SPMDName));
 
       // get information from master 
