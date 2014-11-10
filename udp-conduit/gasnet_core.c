@@ -32,9 +32,9 @@ ep_t gasnetc_endpoint;
 gasneti_mutex_t gasnetc_AMlock = GASNETI_MUTEX_INITIALIZER; /*  protect access to AMUDP */
 volatile int gasnetc_AMLockYield = 0;
 
-#if GASNET_PSHM
+#ifdef GASNETC_MAX_NUMHANDLERS
   gasneti_handler_fn_t gasnetc_handler[GASNETC_MAX_NUMHANDLERS]; /* shadow handler table */
-#endif /* GASNET_PSHM */
+#endif /* GASNETC_MAX_NUMHANDLERS */
 
 #if GASNET_TRACE
   extern void gasnetc_enteringHandler_hook(amudp_category_t cat, int isReq, int handlerId, void *token, 
@@ -321,8 +321,8 @@ static int gasnetc_reghandlers(gasnet_handlerentry_t *table, int numentries,
     /* register the handler */
     if (AM_SetHandler(gasnetc_endpoint, (handler_t)newindex, table[i].fnptr) != AM_OK) 
       GASNETI_RETURN_ERRR(RESOURCE, "AM_SetHandler() failed while registering handlers");
-#if GASNET_PSHM
-    /* Maintain a shadown handler table for AMPSHM */
+#ifdef GASNETC_MAX_NUMHANDLERS
+    /* Maintain a shadow handler table */
     gasnetc_handler[(gasnet_handler_t)newindex] = (gasneti_handler_fn_t)table[i].fnptr;
 #endif
 
@@ -372,8 +372,8 @@ extern int gasnetc_attach(gasnet_handlerentry_t *table, int numentries,
 
     /* ------------------------------------------------------------------------------------ */
     /*  register handlers */
-#if GASNET_PSHM
-    /* Initialize AMPSHM's shadow handler table */
+#ifdef GASNETC_MAX_NUMHANDLERS
+    /* Initialize shadow handler table */
     { int i;
       for (i=0; i<GASNETC_MAX_NUMHANDLERS; i++)
           gasnetc_handler[i]=(gasneti_handler_fn_t)&gasneti_defaultAMHandler;
@@ -983,6 +983,63 @@ extern int  gasnetc_hsl_trylock(gasnet_hsl_t *hsl) {
   }
 #endif
 
+/* ------------------------------------------------------------------------------------ */
+/*
+  Checkpoint/restart
+  ==================
+  thin wrappers around AMUDP-level support
+*/
+
+#ifdef GASNET_BLCR_ENABLED
+/* NON-collective checkpoint request */
+int gasnet_checkpoint(const char *dir) {
+  int i, rc;
+
+  gasneti_flush_streams();
+
+  AMLOCK();
+  rc = AMUDP_SPMDCheckpoint(&gasnetc_bundle, &gasnetc_endpoint, dir);
+  if (rc > 0) {
+    /* Handlers */
+    for (i=0; i<GASNETC_MAX_NUMHANDLERS; i++) {
+      if (gasnetc_handler[i] != (gasneti_handler_fn_t)&gasneti_defaultAMHandler) {
+        AM_SetHandler(gasnetc_endpoint, (handler_t)i, gasnetc_handler[i]);
+        /* BLCR-TODO: error-checking */
+      }
+    }
+
+    /* Segment */
+    i = AM_SetSeg(gasnetc_endpoint,
+                  gasneti_seginfo[gasneti_mynode].addr,
+                  gasneti_seginfo[gasneti_mynode].size);
+    /* BLCR-TODO: error-checking */
+
+    #if GASNET_TRACE
+      if (GASNETI_TRACE_ENABLED(A))
+        GASNETI_AM_SAFE(AMUDP_SetHandlerCallbacks(gasnetc_endpoint,
+          gasnetc_enteringHandler_hook, gasnetc_leavingHandler_hook));
+    #endif
+  }
+  AMUNLOCK();
+
+#if GASNET_DEBUG_VERBOSE
+  fprintf(stderr, "Node %d %s checkpoint\n", gasneti_mynode, rc?"restart from":"continue after");
+#endif
+
+  return rc;
+}
+
+/* Collective checkpoint request */
+
+int gasnet_all_checkpoint(const char *dir) {
+  int rc;
+  gasnet_barrier(0, GASNET_BARRIERFLAG_ANONYMOUS);
+  rc = gasnet_checkpoint(dir);
+  gasnet_barrier(0, GASNET_BARRIERFLAG_ANONYMOUS);
+  return rc;
+}
+
+#endif /* GASNET_BLCR_ENABLED */
 /* ------------------------------------------------------------------------------------ */
 /*
   Private Handlers:

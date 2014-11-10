@@ -29,7 +29,7 @@ CONDUIT_SOURCELIST =          \
 
 # additional -I or -D directives needed by this specific conduit
 # other than the standard GASNet includes and flags
-CONDUIT_EXTRALIBCFLAGS = -I$(top_srcdir)/other/amudp
+CONDUIT_EXTRALIBCFLAGS = -I$(top_srcdir)/other/amudp @BLCR_CPPFLAGS@
 
 # additional conduit header files to install from external, non-standard directories
 CONDUIT_EXTRAHEADERS = \
