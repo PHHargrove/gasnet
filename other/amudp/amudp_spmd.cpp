@@ -1909,16 +1909,6 @@ static int AMUDP_SPMDReStartup(int fd, eb_t *eb, ep_t *ep) {
     AMUDP_RETURN(temp);
   }
 
-  // Setup new argc & argv  // QQQ
-#if 0
-  int argc = 3;
-  char **argv = (char**)AMUDP_malloc(4*sizeof(char*));
-  argv[0] = (char*)"RESTART";
-  argv[1] = (char*)(AMUDP_SilentMode?AMUDP_SPMDSLAVE_FLAG:AMUDP_SPMDSLAVE_FLAG_VERBOSE);
-  argv[2] = master;
-  argv[3] = NULL;
-#endif
-
   // Re-bootstrap from the new master
   AMUDP_SPMDStartupCalled = 0;
   temp = AMUDP_SPMDStartup(NULL, NULL,
