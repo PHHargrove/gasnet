@@ -317,6 +317,11 @@ application-specific support.
  into a shared-memory "supernode", as reported by gasnet_getNodeInfo() and used
  by shared-memory communication (PSHM).  A value of zero means no limit.
 
+* GASNET_NO_CATCH_EXIT - set to 1 to instruct GASNet not to force global job
+ termination (via atexit() or on_exit()) when a process calls exit() or returns
+ from main().  The client code (or other entity) must assume responsibility for
+ ensuring no orphan processes are left behind.
+
 * GASNET_NO_CATCH_SIGNAL - specify a comma separated list of signals
  to exclude from GASNet default signal handling. Formats "SIGSEGV",
  "SEGV", "sigsegv", "segv", and "11" are accepted. If the value of

@@ -822,11 +822,15 @@ extern int gasnetc_attach(gasnet_handlerentry_t *table, int numentries,
 
   /* set the number of seconds we poll until forceful shutdown. */
   gasnetc_shutdown_seconds = gasneti_get_exittimeout(120., 3., 0.125, 0.);
+
+  /* establish handler for non-collective exit() or return from main() */
+  if (! gasneti_getenv_yesno_withdefault("GASNET_NO_CATCH_EXIT", 0)) {
   #if HAVE_ON_EXIT
     on_exit(gasnetc_on_exit, NULL);
   #else
     atexit(gasnetc_atexit);
   #endif
+  }
 
   /* ------------------------------------------------------------------------------------ */
   /*  register segment  */

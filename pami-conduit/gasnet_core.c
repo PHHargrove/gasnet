@@ -508,11 +508,14 @@ static int gasnetc_exit_init(int use_exit_geom) {
   memset(&gasnetc_exit_reduce_op, 0, sizeof(gasnetc_exit_reduce_op));
   gasnetc_dflt_coll_alg(gasnetc_exit_geom, PAMI_XFER_ALLREDUCE, &gasnetc_exit_reduce_op.algorithm);
 
+  /* establish handler for non-collective exit() or return from main() */
+  if (! gasneti_getenv_yesno_withdefault("GASNET_NO_CATCH_EXIT", 0)) {
 #if HAVE_ON_EXIT
-  on_exit(gasnetc_on_exit, NULL);
+    on_exit(gasnetc_on_exit, NULL);
 #else
-  atexit(gasnetc_atexit);
+    atexit(gasnetc_atexit);
 #endif
+  }
 
   return GASNET_OK;
 }

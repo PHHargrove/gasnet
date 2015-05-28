@@ -2873,12 +2873,14 @@ static void gasnetc_atexit(void) {
 #endif
 
 static void gasnetc_exit_init(void) {
-  /* Handler for non-collective returns from main() */
+  /* establish handler for non-collective exit() or return from main() */
+  if (! gasneti_getenv_yesno_withdefault("GASNET_NO_CATCH_EXIT", 0)) {
   #if HAVE_ON_EXIT
     on_exit(gasnetc_on_exit, NULL);
   #else
     atexit(gasnetc_atexit);
   #endif
+  }
 
 #if GASNET_PSHM
   /* Extract info from nodemap that we'll need at exit */
