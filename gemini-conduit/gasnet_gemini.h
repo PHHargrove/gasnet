@@ -294,6 +294,10 @@ void gasnetc_rdma_put_buff(gasnet_node_t node,
 		 void *dest_addr, void *source_addr,
 		 size_t nbytes, gasnetc_post_descriptor_t *gpd);
 
+void gasnetc_rdma_put_long(gasnet_node_t node,
+		 void *dest_addr, void *source_addr,
+		 size_t nbytes, gasnetc_post_descriptor_t *gpd);
+
 size_t gasnetc_rdma_get(gasnet_node_t node,
 		 void *dest_addr, void *source_addr,
 		 size_t nbytes, gasnetc_post_descriptor_t *gpd) GASNETI_WARN_UNUSED_RESULT;

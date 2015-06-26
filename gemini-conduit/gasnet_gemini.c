@@ -197,7 +197,8 @@ enum notify_type {
   notify_request = 0x01000000,
   notify_reply   = 0x02000000,
   notify_credit  = 0x03000000,
-  notify_ctrl    = 0x04000000
+  notify_ctrl    = 0x04000000,
+  notify_long    = 0x05000000,
 }; 
 
 #define build_notify(_type, _initiator, _target)\
@@ -772,8 +773,8 @@ uintptr_t gasnetc_init_messaging(void)
     gasneti_assert_always (status == GNI_RC_SUCCESS);
   }
 
-  /* Determine size of per-peer notify ring: Req + Rep + shutdown */
-  notify_ring_size = GASNETI_ALIGNUP(gasnetc_next_power_of_2(2*am_maxcredit + 1),
+  /* Determine size of per-peer notify ring: (Header+Long)*(Req + Rep) + shutdown */
+  notify_ring_size = GASNETI_ALIGNUP(gasnetc_next_power_of_2(4*am_maxcredit + 1),
                                      (GASNETC_CACHELINE_SIZE / sizeof(gasnetc_notify_t)));
   notify_ring_mask = notify_ring_size - 1;
 
@@ -1414,6 +1415,8 @@ int poll_for_message(peer_struct_t * const peer, int is_slow)
       gasnetc_recv_am(peer, peer->local_request_base + target_slot, n);
     } else if_pf (type == notify_ctrl) {
       dispatch_ctrl(peer, n);
+    } else if_pf (type == notify_long) {
+      /* Nothing to do */
     } else {
       gasnetc_mailbox_t *mb = local_reply_base + initiator_slot;
 
@@ -1861,6 +1864,68 @@ void gasnetc_rdma_put_buff(gasnet_node_t node,
     print_post_desc("Put", pd);
     gasnetc_GNIT_Abort("Put failed with %s", gni_return_string(status));
   }
+}
+
+/* Perform an rdma/fma xfer of a Long payload, without concern for
+ * local completion, using an FMA_PUT_W_SYNCFLAG operation.
+ * Return 1 on success, or 0 on failure.
+ */
+void gasnetc_rdma_put_long(gasnet_node_t node,
+		 void *dest_addr, void *source_addr,
+		 size_t nbytes, gasnetc_post_descriptor_t *gpd)
+{
+  GASNETC_DIDX_POST(gpd->domain_idx);
+  DOMAIN_SPECIFIC_VAR(gni_mem_handle_t, my_mem_handle);
+  DOMAIN_SPECIFIC_VAR(peer_struct_t * const, peer_data);
+  peer_struct_t * const peer = &peer_data[node];
+  gni_post_descriptor_t * const pd = &gpd->pd;
+  gni_return_t status;
+  const int max_trials = 4;
+  int trial = 0;
+  int slot;
+
+  gasneti_assert(!node_is_local(node));
+
+  /* confirm that the destination is in-segment on the far end */
+  gasneti_boundscheck(node, dest_addr, nbytes);
+
+  /*  bzero(&pd, sizeof(gni_post_descriptor_t)); */
+  pd->cq_mode = GNI_CQMODE_GLOBAL_EVENT | GNI_CQMODE_REMOTE_EVENT;
+  pd->dlvr_mode = GNI_DLVMODE_PERFORMANCE;
+  pd->remote_addr = (uint64_t) dest_addr;
+  pd->remote_mem_hndl = peer->mem_handle; // <-- this is a problem
+  pd->length = nbytes;
+  pd->local_addr = (uint64_t) source_addr;
+  pd->local_mem_hndl = my_mem_handle;
+  pd->type = GNI_POST_FMA_PUT_W_SYNCFLAG;
+#if FIX_HT_ORDERING
+  pd->cq_mode = gasnetc_fma_put_cq_mode;
+#endif
+  pd->sync_flag_value = notify_long;
+
+  GASNETC_LOCK_GNI();
+
+  slot = fetch_inc_notify_pointer(peer->remote_notify_write);
+  pd->sync_flag_addr = (uint64_t)(peer->remote_notify_base + slot);
+
+  for (;;) {
+    status = GNI_PostFma(peer->ep_handle, pd);
+    GASNETC_UNLOCK_GNI();
+
+    if_pt (status == GNI_RC_SUCCESS) {
+      break;
+    }
+
+    if_pf ((++trial == max_trials) || (status != GNI_RC_ERROR_RESOURCE)) {
+      gasnetc_GNIT_Abort("PostFma for Long Payload returned error %s", gni_return_string(status));
+    }
+
+    GASNETI_WAITHOOK();
+    gasnetc_poll_local_queue(GASNETC_DIDX_PASS_ALONE);
+    GASNETC_LOCK_GNI();
+  }
+
+  if_pf (trial) GASNETC_STAT_EVENT_VAL(LONG_SEND_RETRY, trial);
 }
 
 /* initiate a Get according to fma/rdma cutover */

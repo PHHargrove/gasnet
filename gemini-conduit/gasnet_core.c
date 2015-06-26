@@ -1271,6 +1271,13 @@ int gasnetc_put_long_payload( gasnet_node_t dest,
   size_t chunk = nbytes;
   
   gasneti_suspend_spinpollers();
+  if (nbytes <= 4096) { /* want tunable param */
+    gasnetc_post_descriptor_t *gpd = gasnetc_alloc_post_descriptor(GASNETC_DIDX_PASS_ALONE);
+    gpd->gpd_completion = (uintptr_t) completed_p;
+    gpd->flags = GC_POST_COMPLETION_CNTR;
+    gasnetc_rdma_put_long(dest, dst_addr, src_addr, chunk, gpd);
+    initiated = 0;
+  } else
   for (;;) {
     gasnetc_post_descriptor_t *gpd = gasnetc_alloc_post_descriptor(GASNETC_DIDX_PASS_ALONE);
     gpd->gpd_completion = (uintptr_t) completed_p;
@@ -1408,7 +1415,7 @@ extern int gasnetc_AMRequestLongM( gasnet_node_t dest,        /* destination nod
 #endif
   {
     GASNETC_DIDX_POST((gasnete_mythread())->domain_idx);
-    int initiated = 0;
+    int initiated = -1;
     gasneti_weakatomic_t completed = gasneti_weakatomic_init(0);
     const int is_packed = (nbytes <= GASNETC_MAX_PACKED_LONG(numargs));
     const size_t head_len = GASNETC_HEADLEN(long, numargs);
@@ -1427,11 +1434,14 @@ extern int gasnetc_AMRequestLongM( gasnet_node_t dest,        /* destination nod
 
     if (is_packed) {
       memcpy((void*)(gpd->gpd_am_packet + head_len), source_addr, nbytes);
-    } else {
+    } else if (initiated) {
       /* Poll for the RDMA completion */
       gasnetc_wait_long_payload(initiated, &completed GASNETC_DIDX_PASS);
     }
     retval = gasnetc_general_am_send(gpd);
+    if (!initiated) {
+      gasnetc_wait_long_payload(1, &completed GASNETC_DIDX_PASS);
+    }
   }
   va_end(argptr);
   GASNETI_RETURN(retval);
@@ -1575,7 +1585,7 @@ extern int gasnetc_AMReplyLongM(
 #endif
   {
     GASNETC_DIDX_POST((gasnete_mythread())->domain_idx);
-    int initiated = 0;
+    int initiated = -1;
     gasneti_weakatomic_t completed = gasneti_weakatomic_init(0);
     const int is_packed = (nbytes <= GASNETC_MAX_PACKED_LONG(numargs));
     const size_t head_len = GASNETC_HEADLEN(long, numargs);
@@ -1593,11 +1603,14 @@ extern int gasnetc_AMReplyLongM(
 
     if (is_packed) {
       memcpy((void*)(gpd->gpd_am_packet + head_len), source_addr, nbytes);
-    } else {    
+    } else if (initiated) {
       /* Poll for the RDMA completion */
       gasnetc_wait_long_payload(initiated, &completed GASNETC_DIDX_PASS);
     }
     retval = gasnetc_general_am_send(gpd);
+    if (!initiated) {
+      gasnetc_wait_long_payload(1, &completed GASNETC_DIDX_PASS);
+    }
   }
   va_end(argptr);
   GASNETI_RETURN(retval);

@@ -95,6 +95,7 @@ extern int gasnetc_pthread_create(gasnetc_pthread_create_fn_t *create_fn, pthrea
         VAL(C, POST_FMA_RETRY, retries) \
         VAL(C, POST_RDMA_RETRY, retries) \
         VAL(C, SMSG_SEND_RETRY, retries) \
+        VAL(C, LONG_SEND_RETRY, retries) \
         VAL(C, MEM_REG_RETRY, retries) \
         /* blank */
 
