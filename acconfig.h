@@ -277,6 +277,10 @@
 /* has __func__ function name defined */
 #undef HAVE_FUNC
 
+/* have various __builtin functions */
+#undef HAVE_BUILTIN_CLZ
+#undef HAVE_BUILTIN_CTZ
+
 /* portable inttypes support */
 #undef HAVE_INTTYPES_H
 #undef HAVE_STDINT_H

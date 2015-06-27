@@ -212,11 +212,17 @@ void gasnete_coll_team_init(gasnet_team_handle_t team,
   if (total_ranks > 1 && !team->peers.num) {
     unsigned int count = 0;
     for (i=1; i<total_ranks; i*=2) ++count;
-    team->peers.num = count;
-    team->peers.fwd = gasneti_malloc(sizeof(gasnet_node_t) * count);
+    team->peers.num = team->rel_peers.num = count;
+    team->peers.fwd = gasneti_malloc(sizeof(gasnet_node_t) * count * 4);
+    team->peers.bwd = team->peers.fwd + count;
+    team->rel_peers.fwd = team->peers.fwd + count * 2;
+    team->rel_peers.bwd = team->peers.fwd + count * 3;
     for (i=0; i<count; i++) {
       unsigned int dist = 1 << i;
-      team->peers.fwd[i] = rel2act_map[(myrank + dist) % total_ranks];
+      team->rel_peers.fwd[i] = (myrank + dist) % total_ranks;
+      team->peers.fwd[i] = rel2act_map[team->rel_peers.fwd[i]];
+      team->rel_peers.bwd[i] = (myrank + total_ranks - dist) % total_ranks;
+      team->peers.bwd[i] = rel2act_map[team->rel_peers.bwd[i]];
     }
   }
 
@@ -276,10 +282,12 @@ void gasnete_coll_team_init(gasnet_team_handle_t team,
       unsigned int len = 0;
       for (i=1; i<count; i*=2) ++len;
       team->supernode_peers.num = len;
-      team->supernode_peers.fwd = gasneti_malloc(sizeof(gasnet_node_t) * len);
+      team->supernode_peers.fwd = gasneti_malloc(sizeof(gasnet_node_t) * len * 2);
+      team->supernode_peers.bwd = team->supernode_peers.fwd + len;
       for (i=0; i<len; i++) {
         unsigned int dist = 1 << i;
         team->supernode_peers.fwd[i] = supernodes[(rank + dist) % count];
+        team->supernode_peers.bwd[i] = supernodes[(rank + count - dist) % count];
       }
     }
   }
@@ -319,9 +327,9 @@ void gasnete_coll_team_fini(gasnet_team_handle_t team)
   gasneti_assert(team != NULL);
   /* free data members of the team, such as scratch space and etc. */
   gasneti_free(team->rel2act_map);
-  gasneti_free(team->peers.fwd);
+  gasneti_free(team->peers.fwd); /* includes bwd and rel_peers, too */
 #if GASNET_PSHM
-  gasneti_free(team->supernode_peers.fwd);
+  gasneti_free(team->supernode_peers.fwd); /* includes bwd */
 #endif
 
   gasneti_assert(team_dir != NULL);

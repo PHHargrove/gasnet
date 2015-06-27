@@ -27,9 +27,13 @@ typedef enum {GASNETE_COLL_FLAT_TREE=0, GASNETE_COLL_KNOMIAL_TREE,
               /*insert more specialized trees here*/
               GASNETE_COLL_RECURSIVE_TREE,
               GASNETE_COLL_FORK_TREE, 
-              GASNETE_COLL_HIERARCHICAL_TREE, GASNETE_COLL_NUM_TREE_CLASSES_TOTAL} gasnete_coll_tree_class_t;
+              GASNETE_COLL_HIERARCHICAL_TREE,
+              /*conduit-specific tree classes, if any*/
+#ifdef GASNETE_COLL_TREE_CLASS_EXTRA
+              GASNETE_COLL_TREE_CLASS_EXTRA,
+#endif
+              GASNETE_COLL_NUM_TREE_CLASSES} gasnete_coll_tree_class_t;
 
-#define GASNETE_COLL_NUM_TREE_CLASSES (GASNETE_COLL_NUM_TREE_CLASSES_TOTAL - 1)
 
 typedef enum  {
   GASNETE_COLL_TREE_RADIX, GASNETE_COLL_TREE_DIMS

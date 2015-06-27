@@ -71,7 +71,7 @@ struct gasnete_coll_scratch_config_t_ {
   gasnete_coll_scratch_config_t *prev;
   
   /* this should be ignored when the config is waiting*/
-  /*nodes that will send to me*/
+  /* nodes that will send to me - stored as absolute (not team-relative) ranks */
   int numpeers;
   gasnet_node_t *peers;
   
@@ -132,11 +132,9 @@ void gasnete_coll_scratch_send_updates(gasnete_coll_team_t team, int seq) {
   int i;
   gasnete_coll_scratch_status_t *stat = team->scratch_status;
   
-  /*Becareful with the teams here and how the peer list is specified*/
-  /*for gasnet team all it doesn't matter but in other cases it does
-  stat->active_config_and_ops->peers[i] needs to be translated to an absolute rank*/
+  /* stat->active_config_and_ops->peers[i] was already translated to an absolute rank*/
   for(i=0; i<stat->active_config_and_ops->numpeers; i++) {
-    GASNETI_SAFE(SHORT_REQ(2,2,(GASNETE_COLL_REL2ACT(team, stat->active_config_and_ops->peers[i]),
+    GASNETI_SAFE(SHORT_REQ(2,2,(stat->active_config_and_ops->peers[i],
                                 gasneti_handleridx(gasnete_coll_scratch_update_reqh),
                                 team->team_id, team->myrank)));
 #if GASNETE_COLL_SCRATCH_DEBUG_PRINTS
@@ -306,6 +304,8 @@ void gasnete_coll_scratch_reconfigure(gasnete_coll_scratch_status_t *stat,
     flag = 1;
   }
   if(flag || !gasnete_coll_scratch_compare_config(stat->active_config_and_ops, req)) {
+    int i;
+
     config = stat->active_config_and_ops;
     config->op_type = new_config->op_type;
     config->tree_type = new_config->tree_type;
@@ -317,10 +317,17 @@ void gasnete_coll_scratch_reconfigure(gasnete_coll_scratch_status_t *stat,
       gasneti_free(config->peers);    
     }
   
-    /* set the new config and the information about who weill send to me*/
+    /* set the new config and the information about who will send to me
+     * if necessary, translate to absolute ranks once here rather than on every use */
     config->numpeers = req->num_in_peers;
     config->peers = gasneti_malloc(sizeof(gasnet_node_t)*config->numpeers);
-    GASNETE_FAST_UNALIGNED_MEMCPY_CHECK(config->peers, req->in_peers, sizeof(gasnet_node_t)*config->numpeers);
+    if (req->in_peers_absolute) {
+      memcpy(config->peers, req->in_peers, sizeof(gasnet_node_t)*config->numpeers);
+    } else {
+      for (i=0; i < config->numpeers; ++i) {
+          config->peers[i] = GASNETE_COLL_REL2ACT(req->team, req->in_peers[i]);
+      }
+    }
   }
 }
 

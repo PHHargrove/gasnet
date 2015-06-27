@@ -84,7 +84,9 @@ gasnete_coll_bcast_RVGet(gasnet_team_handle_t team,
 
   return gasnete_coll_generic_broadcast_nb(team, dst, srcimage, src, nbytes, flags,
 					   &gasnete_coll_pf_bcast_RVGet, options,
-                                           0, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           NULL, NULL, sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 
 /*
@@ -204,11 +206,13 @@ gasnete_coll_bcast_TreeRVGet(gasnet_team_handle_t team,
 
   
   return gasnete_coll_generic_broadcast_nb(team, dst, srcimage, src, nbytes, flags,
-                                           &gasnete_coll_pf_bcast_TreeRVGet, options,
+                                           &gasnete_coll_pf_bcast_TreeRVGet, options, NULL,
                                            gasnete_coll_tree_init(coll_params->tree_type, 
                                                                   gasnete_coll_image_node(team, srcimage), team
                                                                   GASNETE_THREAD_PASS),
-                                           sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 
 /* bcast RVous: root node uses AM Mediums to send to addrs provided by each node */
@@ -277,7 +281,8 @@ gasnete_coll_bcast_RVous(gasnet_team_handle_t team,
 
   return gasnete_coll_generic_broadcast_nb(team, dst, srcimage, src, nbytes, flags,
 					   &gasnete_coll_pf_bcast_RVous, options,
-                                           NULL, sequence, coll_params->num_params, coll_params->param_list
+                                           NULL, NULL, sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
  GASNETE_THREAD_PASS);
 }
 
@@ -354,7 +359,9 @@ gasnete_coll_bcastM_RVGet(gasnet_team_handle_t team,
 
   return gasnete_coll_generic_broadcastM_nb(team, dstlist, srcimage, src, nbytes, flags,
 					    &gasnete_coll_pf_bcastM_RVGet, options,
-					    NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+					    NULL, NULL, sequence, NULL,
+                                            coll_params->num_params, coll_params->param_list
+                                            GASNETE_THREAD_PASS);
 }
 
 static int gasnete_coll_pf_bcastM_TreeRVGet(gasnete_coll_op_t *op GASNETE_THREAD_FARG) {
@@ -460,11 +467,13 @@ gasnete_coll_bcastM_TreeRVGet(gasnet_team_handle_t team,
     GASNETE_COLL_GENERIC_OPT_OUTSYNC_IF(flags & GASNET_COLL_OUT_ALLSYNC) | GASNETE_COLL_GENERIC_OPT_P2P;
 
   return gasnete_coll_generic_broadcastM_nb(team, dstlist, srcimage, src, nbytes, flags,
-                                            &gasnete_coll_pf_bcastM_TreeRVGet, options,
+                                            &gasnete_coll_pf_bcastM_TreeRVGet, options, NULL,
                                             gasnete_coll_tree_init(coll_params->tree_type, 
                                                                    gasnete_coll_image_node(team, srcimage), team
                                                                    GASNETE_THREAD_PASS),
-                                            sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                            sequence, NULL,
+                                            coll_params->num_params, coll_params->param_list
+                                            GASNETE_THREAD_PASS);
   
 }
 
@@ -542,7 +551,9 @@ gasnete_coll_bcastM_RVous(gasnet_team_handle_t team,
 
   return gasnete_coll_generic_broadcastM_nb(team, dstlist, srcimage, src, nbytes, flags,
 					    &gasnete_coll_pf_bcastM_RVous, options,
-					    NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+					    NULL, NULL, sequence, NULL,
+                                            coll_params->num_params, coll_params->param_list
+                                            GASNETE_THREAD_PASS);
 }
 
 /*---------------------------------------------------------------------------------*/
@@ -615,7 +626,9 @@ gasnete_coll_scat_RVGet(gasnet_team_handle_t team,
 
   return gasnete_coll_generic_scatter_nb(team, dst, srcimage, src, nbytes, dist, flags,
 					 &gasnete_coll_pf_scat_RVGet, options,
-					 NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+					 NULL, NULL, sequence, NULL,
+                                         coll_params->num_params, coll_params->param_list
+                                         GASNETE_THREAD_PASS);
 }
 
 /* scat RVous: root node uses AM Mediums to send to addrs provided by each node */
@@ -688,7 +701,9 @@ gasnete_coll_scat_RVous(gasnet_team_handle_t team,
 
   return gasnete_coll_generic_scatter_nb(team, dst, srcimage, src, nbytes, dist, flags,
 					 &gasnete_coll_pf_scat_RVous, options,
-					 NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+					 NULL, NULL, sequence, NULL,
+                                         coll_params->num_params, coll_params->param_list
+                                         GASNETE_THREAD_PASS);
 }
 
 /*---------------------------------------------------------------------------------*/
@@ -765,7 +780,9 @@ gasnete_coll_scatM_RVGet(gasnet_team_handle_t team,
 
   return gasnete_coll_generic_scatterM_nb(team, dstlist, srcimage, src, nbytes, dist, flags,
 					  &gasnete_coll_pf_scatM_RVGet, options,
-					  NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+					  NULL, NULL, sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
+                                          GASNETE_THREAD_PASS);
 }
 
 /* scatM RVous: root node uses AM Mediums to send to addrs provided by each node */
@@ -846,7 +863,9 @@ gasnete_coll_scatM_RVous(gasnet_team_handle_t team,
 
   return gasnete_coll_generic_scatterM_nb(team, dstlist, srcimage, src, nbytes, dist, flags,
 					  &gasnete_coll_pf_scatM_RVous, options,
-					  NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+					  NULL, NULL, sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
+                                          GASNETE_THREAD_PASS);
 }
 
 /*---------------------------------------------------------------------------------*/
@@ -911,7 +930,9 @@ GASNETE_COLL_DECLARE_GATHER_ALG(RVPut) {
 
   return gasnete_coll_generic_gather_nb(team, dstimage, dst, src, nbytes, nbytes, flags,
 					&gasnete_coll_pf_gath_RVPut, options,
-					NULL, sequence,coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+					NULL, NULL, sequence, NULL,
+                                        coll_params->num_params, coll_params->param_list
+                                        GASNETE_THREAD_PASS);
 }
 
 /* gath RVous: non-root nodes use AM Mediums to send to addrs provided by root */
@@ -973,7 +994,9 @@ GASNETE_COLL_DECLARE_GATHER_ALG(RVous) {
 
   return gasnete_coll_generic_gather_nb(team, dstimage, dst, src, nbytes, dist, flags,
 					&gasnete_coll_pf_gath_RVous, options,
-					NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+					NULL, NULL, sequence, NULL,
+                                        coll_params->num_params, coll_params->param_list
+                                        GASNETE_THREAD_PASS);
 }
 
 /*---------------------------------------------------------------------------------*/
@@ -1041,7 +1064,9 @@ GASNETE_COLL_DECLARE_GATHERM_ALG(RVPut) {
 
   return gasnete_coll_generic_gatherM_nb(team, dstimage, dst, srclist, nbytes, dist, flags,
 					 &gasnete_coll_pf_gathM_RVPut, options,
-					 NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+					 NULL, NULL, sequence, NULL,
+                                         coll_params->num_params, coll_params->param_list
+                                         GASNETE_THREAD_PASS);
 }
 
 /* gathM RVous: non-root nodes use AM Mediums to send to addrs provided by root */
@@ -1114,7 +1139,9 @@ GASNETE_COLL_DECLARE_GATHERM_ALG(RVous) {
 
   return gasnete_coll_generic_gatherM_nb(team, dstimage, dst, srclist, nbytes, dist, flags,
 					 &gasnete_coll_pf_gathM_RVous, options,
-					 NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+					 NULL, NULL, sequence, NULL,
+                                         coll_params->num_params, coll_params->param_list
+                                         GASNETE_THREAD_PASS);
 }
 
 /*---------------------------------------------------------------------------------*/
@@ -1197,7 +1224,9 @@ gasnete_coll_exchg_RVPut(gasnet_team_handle_t team,
     
   return gasnete_coll_generic_exchange_nb(team, dst, src, nbytes, flags,
                                           &gasnete_coll_pf_exchg_RVPut, options,
-                                          NULL, NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                          NULL, NULL, sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
+                                          GASNETE_THREAD_PASS);
 }
 
 /*---------------------------------------------------------------------------------*/

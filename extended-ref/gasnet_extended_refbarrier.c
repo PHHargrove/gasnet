@@ -2146,11 +2146,17 @@ void gasnete_barrier_init(void) {
     unsigned int count = 0;
     for (i=1; i<gasneti_nodes; i*=2) ++count;
     team->peers.num = count;
-    team->peers.fwd = gasneti_malloc(sizeof(gasnet_node_t) * count);
+    team->peers.fwd = gasneti_malloc(sizeof(gasnet_node_t) * count * 2);
+    team->peers.bwd = team->peers.fwd + count;
     for (i=0; i<count; i++) {
       unsigned int dist = 1 << i;
       team->peers.fwd[i] = (gasneti_mynode + dist) % gasneti_nodes;
+      team->peers.bwd[i] = (gasneti_mynode + gasneti_nodes - dist) % gasneti_nodes;
     }
+    /* relative are the same as absolute */
+    team->rel_peers.num = count;
+    team->rel_peers.fwd = team->peers.fwd;
+    team->rel_peers.bwd = team->peers.bwd;
   }
 
 #if GASNET_PSHM
@@ -2158,11 +2164,14 @@ void gasnete_barrier_init(void) {
     unsigned int count = 0;
     for (i=1; i<gasneti_nodemap_global_count; i*=2) ++count;
     team->supernode_peers.num = count;
-    team->supernode_peers.fwd = gasneti_malloc(sizeof(gasnet_node_t) * count);
+    team->supernode_peers.fwd = gasneti_malloc(sizeof(gasnet_node_t) * count * 2);
+    team->supernode_peers.bwd = team->supernode_peers.fwd + count;
     for (i=0; i<count; i++) {
       unsigned int dist = 1 << i;
-      unsigned int peer = (gasneti_nodemap_global_rank + dist) % gasneti_nodemap_global_count;
-      team->supernode_peers.fwd[i] = gasneti_pshm_firsts[peer];
+      unsigned int fwd = gasneti_nodemap_global_rank + dist;
+      unsigned int bwd = gasneti_nodemap_global_rank + gasneti_nodemap_global_count - dist;
+      team->supernode_peers.fwd[i] = gasneti_pshm_firsts[fwd % gasneti_nodemap_global_count];
+      team->supernode_peers.bwd[i] = gasneti_pshm_firsts[bwd % gasneti_nodemap_global_count];
     }
   }
 

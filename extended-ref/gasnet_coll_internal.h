@@ -237,9 +237,7 @@ typedef enum {
 typedef struct {
   unsigned int   num; /* ceil(log_2(ranks)) */
   gasnet_node_t *fwd; /* fwd[i] is global rank of member (myrank + 2^i) */
-#if 0 /* Not used yet */
   gasnet_node_t *bwd; /* bwd[i] is global rank of member (myrank - 2^i) */
-#endif
 } gasnete_coll_peer_list_t;
 
 /* Type for collective teams: */
@@ -272,7 +270,8 @@ struct gasnete_coll_team_t_ {
   gasnet_node_t *rel2act_map; /* need to be initialized */
 
   /* nodes in the team at distances +/- powers of two */
-  gasnete_coll_peer_list_t peers;
+  gasnete_coll_peer_list_t peers;     /* As absolute node numbers */
+  gasnete_coll_peer_list_t rel_peers; /* As team-relative ranks */
 
 #if GASNET_PSHM
   /* Info about the supernode(s) */
@@ -1323,15 +1322,8 @@ struct gasnete_coll_generic_data_t_ {
 
 extern gasnete_coll_generic_data_t *gasnete_coll_generic_alloc(GASNETE_THREAD_FARG_ALONE);
 void gasnete_coll_generic_free(gasnete_coll_team_t team, gasnete_coll_generic_data_t *data GASNETE_THREAD_FARG);
-#if 0
-extern gasnet_coll_handle_t gasnete_coll_op_generic_init(gasnete_coll_team_t team, int flags,
-							 gasnete_coll_generic_data_t *data,
-							 gasnete_coll_poll_fn poll_fn,
-							 uint32_t sequence
-							 GASNETE_THREAD_FARG);
-#endif
 extern gasnet_coll_handle_t
-gasnete_coll_op_generic_init_with_scratch(gasnete_coll_team_t team, int flags,
+gasnete_coll_op_generic_init(gasnete_coll_team_t team, int flags,
                                           gasnete_coll_generic_data_t *data,
                                           gasnete_coll_poll_fn poll_fn,
                                           uint32_t sequence,
@@ -1436,8 +1428,9 @@ gasnete_coll_generic_broadcast_nb(gasnet_team_handle_t team,
                                   void *dst,
                                   gasnet_image_t srcimage, void *src,
                                   size_t nbytes, int flags,
-                                  gasnete_coll_poll_fn poll_fn, int options,
+                                  gasnete_coll_poll_fn poll_fn, int options, void *private_data,
                                   gasnete_coll_tree_data_t *tree_info, uint32_t sequence,
+                                  gasnete_coll_scratch_req_t *scratch_req,
                                   int num_params, uint32_t *param_list
                                   GASNETE_THREAD_FARG);
 
@@ -1446,8 +1439,9 @@ gasnete_coll_generic_broadcastM_nb(gasnet_team_handle_t team,
                                    void * const dstlist[],
                                    gasnet_image_t srcimage, void *src,
                                    size_t nbytes, int flags,
-                                   gasnete_coll_poll_fn poll_fn, int options,
+                                   gasnete_coll_poll_fn poll_fn, int options, void *private_data,
                                    gasnete_coll_tree_data_t *tree_info, uint32_t sequence,
+                                   gasnete_coll_scratch_req_t *scratch_req,
                                    int num_params, uint32_t *param_list
                                    GASNETE_THREAD_FARG);
 
@@ -1456,8 +1450,9 @@ gasnete_coll_generic_scatter_nb(gasnet_team_handle_t team,
                                 void *dst,
                                 gasnet_image_t srcimage, void *src,
                                 size_t nbytes, size_t dist, int flags,
-                                gasnete_coll_poll_fn poll_fn, int options,
+                                gasnete_coll_poll_fn poll_fn, int options, void *private_data,
                                 gasnete_coll_tree_data_t *tree_info, uint32_t sequence,
+                                gasnete_coll_scratch_req_t *scratch_req,
                                 int num_params, uint32_t *param_list
                                 GASNETE_THREAD_FARG);
 
@@ -1466,8 +1461,9 @@ gasnete_coll_generic_scatterM_nb(gasnet_team_handle_t team,
                                  void * const dstlist[],
                                  gasnet_image_t srcimage, void *src,
                                  size_t nbytes, size_t dist, int flags,
-                                 gasnete_coll_poll_fn poll_fn, int options,
+                                 gasnete_coll_poll_fn poll_fn, int options, void *private_data,
                                  gasnete_coll_tree_data_t *tree_info, uint32_t sequence,
+                                 gasnete_coll_scratch_req_t *scratch_req,
                                  int num_params, uint32_t *param_list
                                  GASNETE_THREAD_FARG);
 
@@ -1476,8 +1472,9 @@ gasnete_coll_generic_gather_nb(gasnet_team_handle_t team,
                                gasnet_image_t dstimage, void *dst,
                                void *src,
                                size_t nbytes, size_t dist, int flags,
-                               gasnete_coll_poll_fn poll_fn, int options,
+                               gasnete_coll_poll_fn poll_fn, int options, void *private_data,
                                gasnete_coll_tree_data_t *tree_info, uint32_t sequence,
+                               gasnete_coll_scratch_req_t *scratch_req,
                                int num_params, uint32_t *param_list
                                GASNETE_THREAD_FARG);
 
@@ -1486,8 +1483,9 @@ gasnete_coll_generic_gatherM_nb(gasnet_team_handle_t team,
                                 gasnet_image_t dstimage, void *dst,
                                 void * const srclist[],
                                 size_t nbytes, size_t dist, int flags,
-                                gasnete_coll_poll_fn poll_fn, int options,
+                                gasnete_coll_poll_fn poll_fn, int options, void *private_data,
                                 gasnete_coll_tree_data_t *tree_info, uint32_t sequence,
+                                gasnete_coll_scratch_req_t *scratch_req,
                                 int num_params, uint32_t *param_list
                                 GASNETE_THREAD_FARG);
 
@@ -1497,6 +1495,7 @@ gasnete_coll_generic_gather_all_nb(gasnet_team_handle_t team,
                                    size_t nbytes, int flags,
                                    gasnete_coll_poll_fn poll_fn, int options,
                                    void *private_data, uint32_t sequence,
+                                   gasnete_coll_scratch_req_t *scratch_req,
                                    int num_params, uint32_t *param_list
                                    GASNETE_THREAD_FARG);
 
@@ -1506,6 +1505,7 @@ gasnete_coll_generic_gather_allM_nb(gasnet_team_handle_t team,
                                     size_t nbytes, int flags,
                                     gasnete_coll_poll_fn poll_fn, int options,
                                     void *private_data, uint32_t sequence,
+                                    gasnete_coll_scratch_req_t *scratch_req,
                                     int num_params, uint32_t *param_list
                                     GASNETE_THREAD_FARG);
 
@@ -1515,6 +1515,7 @@ gasnete_coll_generic_exchange_nb(gasnet_team_handle_t team,
                                  size_t nbytes, int flags,
                                  gasnete_coll_poll_fn poll_fn, int options,
                                  void *private_data, gasnete_coll_dissem_info_t *dissem, uint32_t sequence,
+                                 gasnete_coll_scratch_req_t *scratch_req,
                                  int num_params, uint32_t *param_list
                                  GASNETE_THREAD_FARG);
 
@@ -1524,6 +1525,7 @@ gasnete_coll_generic_exchangeM_nb(gasnet_team_handle_t team,
                                   size_t nbytes, int flags,
                                   gasnete_coll_poll_fn poll_fn, int options,
                                   void *private_data, gasnete_coll_dissem_info_t *dissem, uint32_t sequence,
+                                  gasnete_coll_scratch_req_t *scratch_req,
                                   int num_params, uint32_t *param_list
                                   GASNETE_THREAD_FARG);
 
@@ -1535,7 +1537,8 @@ gasnete_coll_generic_reduce_nb(gasnet_team_handle_t team,
                                gasnet_coll_fn_handle_t func, int func_arg, int flags,
                                gasnete_coll_poll_fn poll_fn, int options,
                                gasnete_coll_tree_data_t *tree_info, uint32_t sequence,
-                               int num_params, uint32_t *param_list, gasnete_coll_scratch_req_t *scratch_req
+                               gasnete_coll_scratch_req_t *scratch_req,
+                               int num_params, uint32_t *param_list
                                GASNETE_THREAD_FARG);
 
 extern gasnet_coll_handle_t
@@ -1546,7 +1549,8 @@ gasnete_coll_generic_reduceM_nb(gasnet_team_handle_t team,
                                gasnet_coll_fn_handle_t func, int func_arg, int flags,
                                gasnete_coll_poll_fn poll_fn, int options,
                                gasnete_coll_tree_data_t *tree_info, uint32_t sequence,
-                               int num_params, uint32_t *param_list, gasnete_coll_scratch_req_t *scratch_req
+                               gasnete_coll_scratch_req_t *scratch_req,
+                               int num_params, uint32_t *param_list
                                GASNETE_THREAD_FARG);
 
 

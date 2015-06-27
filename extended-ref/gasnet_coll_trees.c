@@ -156,7 +156,8 @@ char* gasnete_coll_tree_type_to_str(char *buffer, gasnete_coll_tree_type_t tree_
       strcpy(buffer, "FLAT_TREE");
       break;
     default:
-      gasneti_fatalerror("Unknown tree class: %d", tree_type->tree_class);
+      sprintf(buffer, "UNK_TREE_%d", tree_type->tree_class);
+      break;
   }
   for(i=0; i<tree_type->num_params; i++ ) {
     gasneti_assert(strlen(buffer) < GASNETE_COLL_MAX_TREE_TYPE_STRLEN);

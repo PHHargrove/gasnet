@@ -11,6 +11,10 @@ CONDUIT_NAME=udp
 # any conduit-specific subdirectories containing Makefile.am's
 SUBDIRS = .
 
+if !USE_PSHM
+coll_srcs = $(top_srcdir)/extended-ref/gasnet_coll_log.c
+endif
+
 # complete list of files in the conduit directory
 # include all headers, documentation, etc. 
 # and any subdirectories not containing Makefile.am's
@@ -19,11 +23,13 @@ CONDUIT_FILELIST =           \
       gasnet_core.h          \
       gasnet_core_fwd.h      \
       gasnet_core_help.h     \
-      gasnet_core_internal.h 
+      gasnet_core_internal.h \
+      gasnet_coll_fwd.h
 
 # list of conduit core and extended .c source files 
 # to be compiled into libgasnet on the compiled command line
 CONDUIT_SOURCELIST =          \
+      $(coll_srcs)            \
       $(srcdir)/gasnet_core.c \
       $(top_srcdir)/extended-ref/gasnet_extended.c 
 

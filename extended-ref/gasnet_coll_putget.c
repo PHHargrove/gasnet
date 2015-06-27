@@ -83,7 +83,10 @@ gasnete_coll_bcast_Get(gasnet_team_handle_t team,
   gasneti_assert(flags & GASNET_COLL_SRC_IN_SEGMENT);
   gasneti_assert(coll_params->num_params == 0);
   return gasnete_coll_generic_broadcast_nb(team, dst, srcimage, src, nbytes, flags,
-                                           &gasnete_coll_pf_bcast_Get, options, NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           &gasnete_coll_pf_bcast_Get, options,
+                                           NULL, NULL, sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 
 /* bcast Put: root node performs carefully ordered puts */
@@ -164,7 +167,9 @@ gasnete_coll_bcast_Put(gasnet_team_handle_t team,
   gasneti_assert(flags & GASNET_COLL_DST_IN_SEGMENT);
   return gasnete_coll_generic_broadcast_nb(team, dst, srcimage, src, nbytes, flags,
                                            &gasnete_coll_pf_bcast_Put, options,
-                                           NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           NULL, NULL, sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 
 
@@ -285,11 +290,12 @@ gasnete_coll_bcast_TreePut(gasnet_team_handle_t team,
   gasneti_assert(nbytes <= gasnet_AMMaxLongRequest());
 
   return gasnete_coll_generic_broadcast_nb(team, dst, srcimage, src, nbytes, flags,
-                                           &gasnete_coll_pf_bcast_TreePut, options,
+                                           &gasnete_coll_pf_bcast_TreePut, options, NULL,
                                            gasnete_coll_tree_init(coll_params->tree_type, 
                                                                   gasnete_coll_image_node(team,srcimage), team
                                                                   GASNETE_THREAD_PASS),
-                                           sequence, coll_params->num_params, coll_params->param_list
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
                                            GASNETE_THREAD_PASS);
 }
 
@@ -389,11 +395,12 @@ gasnete_coll_bcast_TreePutScratch(gasnet_team_handle_t team,
   gasneti_assert(nbytes <= gasnet_AMMaxLongRequest());
 
   return gasnete_coll_generic_broadcast_nb(team, dst, srcimage, src, nbytes, flags,
-                                           &gasnete_coll_pf_bcast_TreePutScratch, options,
+                                           &gasnete_coll_pf_bcast_TreePutScratch, options, NULL,
                                            gasnete_coll_tree_init(coll_params->tree_type, 
                                                                   gasnete_coll_image_node(team,srcimage), team
                                                                   GASNETE_THREAD_PASS),
-                                           sequence, coll_params->num_params, coll_params->param_list
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
                                            GASNETE_THREAD_PASS);
 	
 }
@@ -525,11 +532,12 @@ gasnete_coll_bcast_TreePutSeg(gasnet_team_handle_t team,
 
 
   return gasnete_coll_generic_broadcast_nb(team, dst, srcimage, src, nbytes, flags,
-                                           &gasnete_coll_pf_bcast_TreePutSeg, options,
+                                           &gasnete_coll_pf_bcast_TreePutSeg, options, NULL,
                                            gasnete_coll_tree_init(coll_params->tree_type, 
                                                                   gasnete_coll_image_node(team,srcimage), team
                                                                   GASNETE_THREAD_PASS), 
-                                           (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs), coll_params->num_params, coll_params->param_list
+                                           (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs), NULL,
+                                           coll_params->num_params, coll_params->param_list
                                            GASNETE_THREAD_PASS);
 }
 
@@ -641,11 +649,11 @@ gasnete_coll_bcast_ScatterAllgather(gasnet_team_handle_t team,
   gasneti_assert(!(flags & GASNETE_COLL_SUBORDINATE));
   return gasnete_coll_generic_broadcast_nb(team, dst, srcimage, src, nbytes, flags,
                                            &gasnete_coll_pf_bcast_ScatterAllgather, options,
-                                           NULL, 
+                                           NULL, NULL,
                                            3 + 2*GASNETE_COLL_MAX_NUM_SEGS +team->total_ranks, /*scatter and broadcast can initiate upto GASNETE_COLL_MAX_NUM_SEGS sub scatters, broadcasts and 
    all gather can initiate upto total ranks sub collectives*/
                                            
-                                           coll_params->num_params, coll_params->param_list
+                                           NULL, coll_params->num_params, coll_params->param_list
                                            GASNETE_THREAD_PASS);
 }
 
@@ -718,7 +726,9 @@ gasnete_coll_bcastM_Get(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_broadcastM_nb(team, dstlist, srcimage, src, nbytes, flags,
                                             &gasnete_coll_pf_bcastM_Get, options,
-                                            NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                            NULL, NULL, sequence, NULL,
+                                            coll_params->num_params, coll_params->param_list
+                                            GASNETE_THREAD_PASS);
 }
 
 /* bcastM Put: root node performs carefully ordered puts */
@@ -814,7 +824,9 @@ gasnete_coll_bcastM_Put(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_broadcastM_nb(team, dstlist, srcimage, src, nbytes, flags,
                                             &gasnete_coll_pf_bcastM_Put, options,
-                                            NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                            NULL, NULL, sequence, NULL,
+                                            coll_params->num_params, coll_params->param_list
+                                            GASNETE_THREAD_PASS);
 }
 
 static int gasnete_coll_pf_bcastM_TreePut(gasnete_coll_op_t *op GASNETE_THREAD_FARG) {
@@ -977,8 +989,9 @@ gasnete_coll_bcastM_TreePut(gasnet_team_handle_t team,
 
   return gasnete_coll_generic_broadcastM_nb(team, dstlist, srcimage, src, nbytes, flags,
                                             &gasnete_coll_pf_bcastM_TreePut, options,
-                                            tree_info,
-                                            sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                            NULL, tree_info, sequence, NULL,
+                                            coll_params->num_params, coll_params->param_list
+                                            GASNETE_THREAD_PASS);
 }
 
 
@@ -1121,11 +1134,13 @@ gasnete_coll_bcastM_TreePutScratch(gasnet_team_handle_t team,
   GASNETE_COLL_GENERIC_OPT_P2P | GASNETE_COLL_USE_SCRATCH;
   
   return gasnete_coll_generic_broadcastM_nb(team, dstlist, srcimage, src, nbytes, flags,
-                                            &gasnete_coll_pf_bcastM_TreePutScratch, options,
+                                            &gasnete_coll_pf_bcastM_TreePutScratch, options, NULL,
                                             gasnete_coll_tree_init(coll_params->tree_type, 
                                                                    gasnete_coll_image_node(team,srcimage), team
                                                                    GASNETE_THREAD_PASS),
-                                            sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                            sequence, NULL,
+                                            coll_params->num_params, coll_params->param_list
+                                            GASNETE_THREAD_PASS);
 }
 
 
@@ -1253,11 +1268,12 @@ gasnete_coll_bcastM_TreePutSeg(gasnet_team_handle_t team,
 
 
   return gasnete_coll_generic_broadcastM_nb(team, dstlist, srcimage, src, nbytes, flags,
-                                            &gasnete_coll_pf_bcastM_TreePutSeg, options,
+                                            &gasnete_coll_pf_bcastM_TreePutSeg, options, NULL,
                                             gasnete_coll_tree_init(coll_params->tree_type, 
                                                                    gasnete_coll_image_node(team,srcimage), team
                                                                    GASNETE_THREAD_PASS), 
-                                            (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs), coll_params->num_params, coll_params->param_list
+                                            (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs), NULL,
+                                            coll_params->num_params, coll_params->param_list
                                             GASNETE_THREAD_PASS);
 }
 
@@ -1379,8 +1395,8 @@ gasnete_coll_bcastM_ScatterAllgather(gasnet_team_handle_t team,
   gasneti_assert(!(flags & GASNETE_COLL_SUBORDINATE));
   return gasnete_coll_generic_broadcastM_nb(team, dstlist, srcimage, src, nbytes, flags,
                                             &gasnete_coll_pf_bcastM_ScatterAllgather, options,
-                                            NULL, 
-                                            3+team->total_ranks, coll_params->num_params, coll_params->param_list 
+                                            NULL, NULL, 3+team->total_ranks, NULL,
+                                            coll_params->num_params, coll_params->param_list 
                                             GASNETE_THREAD_PASS);
 }
 
@@ -1451,7 +1467,9 @@ gasnete_coll_scat_Get(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_scatter_nb(team, dst, srcimage, src, nbytes, dist, flags,
                                          &gasnete_coll_pf_scat_Get, options,
-                                         NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                         NULL, NULL, sequence, NULL,
+                                         coll_params->num_params, coll_params->param_list
+                                         GASNETE_THREAD_PASS);
 }
 
 /* scat Put: root node performs carefully ordered puts */
@@ -1538,7 +1556,9 @@ gasnete_coll_scat_Put(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_scatter_nb(team, dst, srcimage, src, nbytes, dist, flags,
                                          &gasnete_coll_pf_scat_Put, options,
-                                         NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                         NULL, NULL, sequence, NULL,
+                                         coll_params->num_params, coll_params->param_list
+                                         GASNETE_THREAD_PASS);
 }
 
 
@@ -1744,11 +1764,13 @@ gasnete_coll_scat_TreePut(gasnet_team_handle_t team,
   GASNETE_COLL_USE_SCRATCH | GASNETE_COLL_GENERIC_OPT_P2P_IF(1);
   
   return gasnete_coll_generic_scatter_nb(team, dst, srcimage, src, nbytes, dist, flags,
-                                         &gasnete_coll_pf_scat_TreePut, options,
+                                         &gasnete_coll_pf_scat_TreePut, options, NULL,
                                          gasnete_coll_tree_init(coll_params->tree_type,
                                                                 gasnete_coll_image_node(team,srcimage), team
                                                                 GASNETE_THREAD_PASS),
-                                         sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                         sequence, NULL,
+                                         coll_params->num_params, coll_params->param_list
+                                         GASNETE_THREAD_PASS);
 }  
 
 /*like the scatter treePut but data is not resuffled, instead it is sent from
@@ -1917,11 +1939,13 @@ gasnete_coll_scat_TreePutNoCopy(gasnet_team_handle_t team,
     GASNETE_COLL_USE_SCRATCH | GASNETE_COLL_GENERIC_OPT_P2P_IF(1);
     
     return gasnete_coll_generic_scatter_nb(team, dst, srcimage, src, nbytes, dist, flags,
-                                           &gasnete_coll_pf_scat_TreePutNoCopy, options,
+                                           &gasnete_coll_pf_scat_TreePutNoCopy, options, NULL,
                                            gasnete_coll_tree_init(coll_params->tree_type,
                                                                   gasnete_coll_image_node(team,srcimage), team
                                                                   GASNETE_THREAD_PASS),
-                                           sequence,coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
   }
 }  
 
@@ -2025,11 +2049,11 @@ gasnete_coll_scat_TreePutSeg(gasnet_team_handle_t team,
 
 
     return gasnete_coll_generic_scatter_nb(team, dst, srcimage, src, nbytes, dist, flags,
-                                           &gasnete_coll_pf_scat_TreePutSeg, options,
+                                           &gasnete_coll_pf_scat_TreePutSeg, options, NULL,
                                            gasnete_coll_tree_init(coll_params->tree_type,
                                                                   gasnete_coll_image_node(team,srcimage), team
                                                                   GASNETE_THREAD_PASS),
-                                           (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs),
+                                           (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs), NULL,
                                            coll_params->num_params, coll_params->param_list
                                            GASNETE_THREAD_PASS);
 }  
@@ -2101,7 +2125,9 @@ gasnete_coll_scatM_Get(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_scatterM_nb(team, dstlist, srcimage, src, nbytes, dist, flags,
                                           &gasnete_coll_pf_scatM_Get, options,
-                                          NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                          NULL, NULL, sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
+                                          GASNETE_THREAD_PASS);
 }
 
 /* scatM Put: root node performs carefully ordered puts */
@@ -2216,7 +2242,9 @@ gasnete_coll_scatM_Put(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_scatterM_nb(team, dstlist, srcimage, src, nbytes, dist, flags,
                                           &gasnete_coll_pf_scatM_Put, options,
-                                          NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                          NULL, NULL, sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
+                                          GASNETE_THREAD_PASS);
 }
 
 /* scat Put: root node performs carefully ordered puts */
@@ -2419,11 +2447,13 @@ gasnete_coll_scatM_TreePut(gasnet_team_handle_t team,
   GASNETE_COLL_USE_SCRATCH | GASNETE_COLL_GENERIC_OPT_P2P;
   
   return gasnete_coll_generic_scatterM_nb(team, dstlist, srcimage, src, nbytes, dist, flags,
-                                          &gasnete_coll_pf_scatM_TreePut, options,
+                                          &gasnete_coll_pf_scatM_TreePut, options, NULL,
                                           gasnete_coll_tree_init(coll_params->tree_type,
                                                                  gasnete_coll_image_node(team,srcimage), team
                                                                  GASNETE_THREAD_PASS),
-                                          sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                          sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
+                                          GASNETE_THREAD_PASS);
 }  
 
 static int gasnete_coll_pf_scatM_TreePutNoCopy(gasnete_coll_op_t *op GASNETE_THREAD_FARG) {
@@ -2573,11 +2603,13 @@ gasnete_coll_scatM_TreePutNoCopy(gasnet_team_handle_t team,
     GASNETE_COLL_USE_SCRATCH | GASNETE_COLL_GENERIC_OPT_P2P;
  
   return gasnete_coll_generic_scatterM_nb(team, dstlist, srcimage, src, nbytes, dist, flags,
-                                          &gasnete_coll_pf_scatM_TreePutNoCopy, options,
+                                          &gasnete_coll_pf_scatM_TreePutNoCopy, options, NULL,
                                           gasnete_coll_tree_init(coll_params->tree_type,
                                                                  gasnete_coll_image_node(team,srcimage), team
                                                                  GASNETE_THREAD_PASS),
-                                          sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                          sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
+                                          GASNETE_THREAD_PASS);
 }  
 
 static int gasnete_coll_pf_scatM_TreePutSeg(gasnete_coll_op_t *op GASNETE_THREAD_FARG) {
@@ -2686,11 +2718,12 @@ gasnete_coll_scatM_TreePutSeg(gasnet_team_handle_t team,
 
 
   return gasnete_coll_generic_scatterM_nb(team, dstlist, srcimage, src, nbytes, dist, flags,
-                                          &gasnete_coll_pf_scatM_TreePutSeg, options,
+                                          &gasnete_coll_pf_scatM_TreePutSeg, options, NULL,
                                           gasnete_coll_tree_init(coll_params->tree_type,
                                                                  gasnete_coll_image_node(team,srcimage), team
                                                                  GASNETE_THREAD_PASS),
-                                          (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs), coll_params->num_params, coll_params->param_list
+                                          (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs), NULL,
+                                          coll_params->num_params, coll_params->param_list
                                           GASNETE_THREAD_PASS);
   
 }
@@ -2771,7 +2804,9 @@ GASNETE_COLL_DECLARE_GATHER_ALG(Get)
   
   return gasnete_coll_generic_gather_nb(team, dstimage, dst, src, nbytes, nbytes, flags,
                                         &gasnete_coll_pf_gath_Get, options,
-                                        NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                        NULL, NULL, sequence, NULL,
+                                        coll_params->num_params, coll_params->param_list
+                                        GASNETE_THREAD_PASS);
 }
 
 /* gath Put: all nodes perform uncoordinated puts */
@@ -2829,7 +2864,9 @@ GASNETE_COLL_DECLARE_GATHER_ALG(Put)
   
   return gasnete_coll_generic_gather_nb(team, dstimage, dst, src, nbytes, nbytes, flags,
                                         &gasnete_coll_pf_gath_Put, options,
-                                        NULL, sequence,coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                        NULL, NULL, sequence, NULL,
+                                        coll_params->num_params, coll_params->param_list
+                                        GASNETE_THREAD_PASS);
 }
 /* gath Put: all nodes perform uncoordinated puts */
 /* Valid for SINGLE and LOCAL, any size < scratch size ... remote threads will not touch user buffers*/
@@ -3009,11 +3046,13 @@ GASNETE_COLL_DECLARE_GATHER_ALG(TreePut) {
   GASNETE_COLL_USE_SCRATCH | GASNETE_COLL_GENERIC_OPT_P2P_IF(1);
   
   return gasnete_coll_generic_gather_nb(team, dstimage, dst, src, nbytes, dist, flags,
-                                        &gasnete_coll_pf_gath_TreePut, options,
+                                        &gasnete_coll_pf_gath_TreePut, options, NULL,
                                         gasnete_coll_tree_init(coll_params->tree_type, 
                                                                gasnete_coll_image_node(team,dstimage), team
-                                                               GASNETE_THREAD_PASS), sequence, 
-                                        coll_params->num_params, coll_params->param_list  GASNETE_THREAD_PASS);
+                                                               GASNETE_THREAD_PASS),
+                                        sequence, NULL,
+                                        coll_params->num_params, coll_params->param_list
+                                        GASNETE_THREAD_PASS);
 }
 
 static int gasnete_coll_pf_gath_TreePutNoCopy(gasnete_coll_op_t *op GASNETE_THREAD_FARG) {
@@ -3248,10 +3287,12 @@ GASNETE_COLL_DECLARE_GATHER_ALG(TreePutNoCopy)
     int options = GASNETE_COLL_GENERIC_OPT_INSYNC_IF ((flags & GASNET_COLL_IN_ALLSYNC)) |
     GASNETE_COLL_USE_SCRATCH | GASNETE_COLL_GENERIC_OPT_P2P_IF(1);
     return gasnete_coll_generic_gather_nb(team, dstimage, dst, src, nbytes, dist, flags,
-                                          &gasnete_coll_pf_gath_TreePutNoCopy, options,
+                                          &gasnete_coll_pf_gath_TreePutNoCopy, options, NULL,
                                           gasnete_coll_tree_init(coll_params->tree_type, 
                                                                  gasnete_coll_image_node(team,dstimage), team
-                                                                 GASNETE_THREAD_PASS), sequence, coll_params->num_params, coll_params->param_list
+                                                                 GASNETE_THREAD_PASS),
+                                          sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
                                           GASNETE_THREAD_PASS);
   }
 }
@@ -3351,11 +3392,11 @@ GASNETE_COLL_DECLARE_GATHER_ALG(TreePutSeg) {
 
 
   return gasnete_coll_generic_gather_nb(team, dstimage, dst, src, nbytes, nbytes, flags,
-                                        &gasnete_coll_pf_gath_TreePutSeg, options,
+                                        &gasnete_coll_pf_gath_TreePutSeg, options, NULL,
                                         gasnete_coll_tree_init(coll_params->tree_type, 
                                                                gasnete_coll_image_node(team,dstimage), team
                                                                GASNETE_THREAD_PASS), 
-                                        (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs), 
+                                        (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs), NULL,
                                         coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
 }  
 
@@ -3464,7 +3505,9 @@ GASNETE_COLL_DECLARE_GATHERM_ALG(Get) {
   
   return gasnete_coll_generic_gatherM_nb(team, dstimage, dst, srclist, nbytes, dist, flags,
                                          &gasnete_coll_pf_gathM_Get, options,
-                                         NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                         NULL, NULL, sequence, NULL,
+                                         coll_params->num_params, coll_params->param_list
+                                         GASNETE_THREAD_PASS);
 }
 
 /* gathM Put: all nodes perform uncoordinated puts */
@@ -3526,7 +3569,9 @@ GASNETE_COLL_DECLARE_GATHERM_ALG(Put) {
   
   return gasnete_coll_generic_gatherM_nb(team, dstimage, dst, srclist, nbytes, dist, flags,
                                          &gasnete_coll_pf_gathM_Put, options,
-                                         NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                         NULL, NULL, sequence, NULL,
+                                         coll_params->num_params, coll_params->param_list
+                                         GASNETE_THREAD_PASS);
 }
 
 static int gasnete_coll_pf_gathM_TreePut(gasnete_coll_op_t *op GASNETE_THREAD_FARG) {
@@ -3625,10 +3670,13 @@ GASNETE_COLL_DECLARE_GATHERM_ALG(TreePut) {
   GASNETE_COLL_GENERIC_OPT_P2P | GASNETE_COLL_USE_SCRATCH; 
   
   return gasnete_coll_generic_gatherM_nb(team, dstimage, dst, srclist, nbytes, dist, flags,
-                                         &gasnete_coll_pf_gathM_TreePut, options,
+                                         &gasnete_coll_pf_gathM_TreePut, options, NULL,
                                          gasnete_coll_tree_init(coll_params->tree_type, 
                                                                 gasnete_coll_image_node(team,dstimage), team
-                                                                GASNETE_THREAD_PASS), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                                                GASNETE_THREAD_PASS),
+                                         sequence, NULL,
+                                         coll_params->num_params, coll_params->param_list
+                                         GASNETE_THREAD_PASS);
   
   
 }
@@ -3732,11 +3780,13 @@ GASNETE_COLL_DECLARE_GATHERM_ALG(TreePutSeg) {
 
 
   return gasnete_coll_generic_gatherM_nb(team, dstimage, dst, srclist, nbytes, dist, flags,
-                                         &gasnete_coll_pf_gathM_TreePutSeg, options,
+                                         &gasnete_coll_pf_gathM_TreePutSeg, options, NULL,
                                          gasnete_coll_tree_init(coll_params->tree_type,
                                                                 gasnete_coll_image_node(team,dstimage), team
                                                                 GASNETE_THREAD_PASS),
-                                         (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs), coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                         (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs), NULL,
+                                         coll_params->num_params, coll_params->param_list
+                                         GASNETE_THREAD_PASS);
   
   
 }
@@ -3887,7 +3937,7 @@ gasnete_coll_gall_TreePut(gasnet_team_handle_t team,
                                             gasnete_coll_tree_init(tree_type, 
                                                                    gasnete_coll_image_node(team,GASNETE_COLL_TREE_ALL_GATHER_ALL_ROOT), team
                                                                    GASNETE_THREAD_PASS), 
-                                            sequence GASNETE_THREAD_PASS);
+                                            sequence, NULL GASNETE_THREAD_PASS);
 }
 #undef GASNETE_COLL_TREE_ALL_GATHER_ALL_ROOT
 
@@ -3983,8 +4033,9 @@ gasnete_coll_gall_RingPut(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_gather_all_nb(team, dst, src, nbytes, flags,
                                             &gasnete_coll_pf_gall_RingPut, options,
-                                            NULL, 
-                                            sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                            NULL, sequence, NULL,
+                                            coll_params->num_params, coll_params->param_list
+                                            GASNETE_THREAD_PASS);
 }
 #endif
 
@@ -4070,8 +4121,9 @@ gasnete_coll_gall_FlatPut(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_gather_all_nb(team, dst, src, nbytes, flags,
                                             &gasnete_coll_pf_gall_FlatPut, options,
-                                            NULL, 
-                                            sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                            NULL, sequence, NULL,
+                                            coll_params->num_params, coll_params->param_list
+                                            GASNETE_THREAD_PASS);
 }
 
 /*GASNET_COLL_SINGLE and GASNET_SRC_IN_SEG*/
@@ -4158,8 +4210,9 @@ gasnete_coll_gall_FlatGet(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_gather_all_nb(team, dst, src, nbytes, flags,
                                             &gasnete_coll_pf_gall_FlatGet, options,
-                                            NULL, 
-                                            sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                            NULL, sequence, NULL,
+                                            coll_params->num_params, coll_params->param_list
+                                            GASNETE_THREAD_PASS);
 }
 
 
@@ -4276,8 +4329,9 @@ gasnete_coll_gall_Dissem(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_gather_all_nb(team, dst, src, nbytes, flags,
                                             &gasnete_coll_pf_gall_Dissem, options,
-                                            NULL, 
-                                            sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                            NULL, sequence, NULL,
+                                            coll_params->num_params, coll_params->param_list
+                                            GASNETE_THREAD_PASS);
 }
 
 static int gasnete_coll_pf_gall_DissemNoScratch(gasnete_coll_op_t *op GASNETE_THREAD_FARG) {
@@ -4385,8 +4439,9 @@ gasnete_coll_gall_DissemNoScratch(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_gather_all_nb(team, dst, src, nbytes, flags,
                                             &gasnete_coll_pf_gall_DissemNoScratch, options,
-                                            NULL, 
-                                            sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                            NULL, sequence, NULL,
+                                            coll_params->num_params, coll_params->param_list
+                                            GASNETE_THREAD_PASS);
 }
 
 /*---------------------------------------------------------------------------------*/
@@ -4477,9 +4532,9 @@ gasnete_coll_gallM_FlatPut(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_gather_allM_nb(team, dstlist, srclist, nbytes, flags,
                                              &gasnete_coll_pf_gallM_FlatPut, options,
-                                             NULL, 
-                                             sequence, coll_params->num_params, 
-                                             coll_params->param_list GASNETE_THREAD_PASS);
+                                             NULL, sequence, NULL,
+                                             coll_params->num_params, coll_params->param_list
+                                             GASNETE_THREAD_PASS);
 }
 
 static int gasnete_coll_pf_gallM_Dissem(gasnete_coll_op_t *op GASNETE_THREAD_FARG) {
@@ -4604,8 +4659,9 @@ gasnete_coll_gallM_Dissem(gasnet_team_handle_t team,
 
     return gasnete_coll_generic_gather_allM_nb(team, dstlist, srclist, nbytes, flags,
                                                &gasnete_coll_pf_gallM_Dissem, options,
-                                               NULL, 
-                                               sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                               NULL, sequence, NULL,
+                                               coll_params->num_params, coll_params->param_list
+                                               GASNETE_THREAD_PASS);
 }
 
 static int gasnete_coll_pf_gallM_DissemNoScratch(gasnete_coll_op_t *op GASNETE_THREAD_FARG) {
@@ -4722,8 +4778,9 @@ gasnete_coll_gallM_DissemNoScratch(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_gather_allM_nb(team, dstlist, srclist, nbytes, flags,
                                              &gasnete_coll_pf_gallM_DissemNoScratch, options,
-                                             NULL, 
-                                             sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                             NULL, sequence, NULL,
+                                             coll_params->num_params, coll_params->param_list
+                                             GASNETE_THREAD_PASS);
 }
 
 static int gasnete_coll_pf_gallM_DissemNoScratchSeg(gasnete_coll_op_t *op GASNETE_THREAD_FARG) {
@@ -4871,8 +4928,9 @@ gasnete_coll_gallM_DissemNoScratchSeg(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_gather_allM_nb(team, dstlist, srclist, nbytes, flags,
                                              &gasnete_coll_pf_gallM_DissemNoScratchSeg, options,
-                                             NULL, 
-                                             sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                             NULL, sequence, NULL,
+                                             coll_params->num_params, coll_params->param_list
+                                             GASNETE_THREAD_PASS);
 }
 
 
@@ -5089,7 +5147,10 @@ gasnete_coll_exchg_Dissem2(gasnet_team_handle_t team,
 
   return gasnete_coll_generic_exchange_nb(team, dst, src, nbytes, flags,
                                           &gasnete_coll_pf_exchg_Dissem, options,
-                                          NULL, gasnete_coll_fetch_dissemination(radix ,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                          NULL, gasnete_coll_fetch_dissemination(radix ,team),
+                                          sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
+                                          GASNETE_THREAD_PASS);
 }
 extern gasnet_coll_handle_t
 gasnete_coll_exchg_Dissem3(gasnet_team_handle_t team,
@@ -5106,7 +5167,10 @@ gasnete_coll_exchg_Dissem3(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_exchange_nb(team, dst, src, nbytes, flags,
                                           &gasnete_coll_pf_exchg_Dissem, options,
-                                          NULL, gasnete_coll_fetch_dissemination(radix ,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                          NULL, gasnete_coll_fetch_dissemination(radix ,team),
+                                          sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
+                                          GASNETE_THREAD_PASS);
 }
 extern gasnet_coll_handle_t
 gasnete_coll_exchg_Dissem4(gasnet_team_handle_t team,
@@ -5123,7 +5187,10 @@ gasnete_coll_exchg_Dissem4(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_exchange_nb(team, dst, src, nbytes, flags,
                                           &gasnete_coll_pf_exchg_Dissem, options,
-                                          NULL, gasnete_coll_fetch_dissemination(radix ,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                          NULL, gasnete_coll_fetch_dissemination(radix ,team),
+                                          sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
+                                          GASNETE_THREAD_PASS);
 }
 
 extern gasnet_coll_handle_t
@@ -5141,7 +5208,10 @@ gasnete_coll_exchg_Dissem8(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_exchange_nb(team, dst, src, nbytes, flags,
                                           &gasnete_coll_pf_exchg_Dissem, options,
-                                          NULL, gasnete_coll_fetch_dissemination(radix ,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                          NULL, gasnete_coll_fetch_dissemination(radix ,team),
+                                          sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
+                                          GASNETE_THREAD_PASS);
 }
 
 extern gasnet_coll_handle_t
@@ -5159,7 +5229,10 @@ gasnete_coll_exchg_FlatScratch(gasnet_team_handle_t team,
   
   return gasnete_coll_generic_exchange_nb(team, dst, src, nbytes, flags,
                                           &gasnete_coll_pf_exchg_Dissem, options,
-                                          NULL, gasnete_coll_fetch_dissemination(radix ,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                          NULL, gasnete_coll_fetch_dissemination(radix ,team),
+                                          sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
+                                          GASNETE_THREAD_PASS);
 }
 
 
@@ -5227,7 +5300,9 @@ gasnete_coll_exchg_Put(gasnet_team_handle_t team,
   gasneti_assert(flags & GASNET_COLL_SINGLE);
   return gasnete_coll_generic_exchange_nb(team, dst, src, nbytes, flags,
                                           &gasnete_coll_pf_exchg_Put, options,
-                                          NULL, NULL, sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                          NULL, NULL, sequence, NULL,
+                                          coll_params->num_params, coll_params->param_list
+                                          GASNETE_THREAD_PASS);
 }
 /*---------------------------------------------------------------------------------*/
 /* gasnete_coll_exchangeM_nb() */
@@ -5403,7 +5478,10 @@ gasnete_coll_exchgM_Dissem2(gasnet_team_handle_t team,
   radix = 2;
   return gasnete_coll_generic_exchangeM_nb(team, dstlist, srclist, nbytes, flags,
                                            &gasnete_coll_pf_exchgM_Dissem, options,
-                                           NULL, gasnete_coll_fetch_dissemination(radix,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           NULL, gasnete_coll_fetch_dissemination(radix,team),
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 
 extern gasnet_coll_handle_t
@@ -5420,7 +5498,10 @@ gasnete_coll_exchgM_Dissem3(gasnet_team_handle_t team,
   radix = 3;
   return gasnete_coll_generic_exchangeM_nb(team, dstlist, srclist, nbytes, flags,
                                            &gasnete_coll_pf_exchgM_Dissem, options,
-                                           NULL, gasnete_coll_fetch_dissemination(radix,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           NULL, gasnete_coll_fetch_dissemination(radix,team),
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 
 extern gasnet_coll_handle_t
@@ -5437,7 +5518,10 @@ gasnete_coll_exchgM_Dissem4(gasnet_team_handle_t team,
   radix = 4;
   return gasnete_coll_generic_exchangeM_nb(team, dstlist, srclist, nbytes, flags,
                                            &gasnete_coll_pf_exchgM_Dissem, options,
-                                           NULL, gasnete_coll_fetch_dissemination(radix,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           NULL, gasnete_coll_fetch_dissemination(radix,team),
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 extern gasnet_coll_handle_t
 gasnete_coll_exchgM_Dissem8(gasnet_team_handle_t team,
@@ -5453,7 +5537,10 @@ gasnete_coll_exchgM_Dissem8(gasnet_team_handle_t team,
   radix = 8;
   return gasnete_coll_generic_exchangeM_nb(team, dstlist, srclist, nbytes, flags,
                                            &gasnete_coll_pf_exchgM_Dissem, options,
-                                           NULL, gasnete_coll_fetch_dissemination(radix,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           NULL, gasnete_coll_fetch_dissemination(radix,team),
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 extern gasnet_coll_handle_t
 gasnete_coll_exchgM_FlatScratch(gasnet_team_handle_t team,
@@ -5469,7 +5556,10 @@ gasnete_coll_exchgM_FlatScratch(gasnet_team_handle_t team,
   radix = team->total_ranks;
   return gasnete_coll_generic_exchangeM_nb(team, dstlist, srclist, nbytes, flags,
                                            &gasnete_coll_pf_exchgM_Dissem, options,
-                                           NULL, gasnete_coll_fetch_dissemination(radix,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           NULL, gasnete_coll_fetch_dissemination(radix,team),
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 
 static int gasnete_coll_pf_exchgM_Dissem_Segmented(gasnete_coll_op_t *op GASNETE_THREAD_FARG) {
@@ -5655,7 +5745,10 @@ gasnete_coll_exchgM_DissemSeg2(gasnet_team_handle_t team,
   radix = 2;
   return gasnete_coll_generic_exchangeM_nb(team, dstlist, srclist, nbytes, flags,
                                            &gasnete_coll_pf_exchgM_Dissem_Segmented, options,
-                                           NULL, gasnete_coll_fetch_dissemination(radix,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           NULL, gasnete_coll_fetch_dissemination(radix,team),
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 
 extern gasnet_coll_handle_t
@@ -5672,7 +5765,10 @@ gasnete_coll_exchgM_DissemSeg3(gasnet_team_handle_t team,
   radix = 3;
   return gasnete_coll_generic_exchangeM_nb(team, dstlist, srclist, nbytes, flags,
                                            &gasnete_coll_pf_exchgM_Dissem_Segmented, options,
-                                           NULL, gasnete_coll_fetch_dissemination(radix,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           NULL, gasnete_coll_fetch_dissemination(radix,team),
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 
 extern gasnet_coll_handle_t
@@ -5689,7 +5785,10 @@ gasnete_coll_exchgM_DissemSeg4(gasnet_team_handle_t team,
   radix = 4;
   return gasnete_coll_generic_exchangeM_nb(team, dstlist, srclist, nbytes, flags,
                                            &gasnete_coll_pf_exchgM_Dissem_Segmented, options,
-                                           NULL, gasnete_coll_fetch_dissemination(radix,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           NULL, gasnete_coll_fetch_dissemination(radix,team),
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 extern gasnet_coll_handle_t
 gasnete_coll_exchgM_DissemSeg8(gasnet_team_handle_t team,
@@ -5705,7 +5804,10 @@ gasnete_coll_exchgM_DissemSeg8(gasnet_team_handle_t team,
   radix = 8;
   return gasnete_coll_generic_exchangeM_nb(team, dstlist, srclist, nbytes, flags,
                                            &gasnete_coll_pf_exchgM_Dissem_Segmented, options,
-                                           NULL, gasnete_coll_fetch_dissemination(radix,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           NULL, gasnete_coll_fetch_dissemination(radix,team),
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 extern gasnet_coll_handle_t
 gasnete_coll_exchgM_FlatScratchSeg(gasnet_team_handle_t team,
@@ -5721,7 +5823,10 @@ gasnete_coll_exchgM_FlatScratchSeg(gasnet_team_handle_t team,
   radix = team->total_ranks;
   return gasnete_coll_generic_exchangeM_nb(team, dstlist, srclist, nbytes, flags,
                                            &gasnete_coll_pf_exchgM_Dissem_Segmented, options,
-                                           NULL, gasnete_coll_fetch_dissemination(radix,team), sequence, coll_params->num_params, coll_params->param_list GASNETE_THREAD_PASS);
+                                           NULL, gasnete_coll_fetch_dissemination(radix,team),
+                                           sequence, NULL,
+                                           coll_params->num_params, coll_params->param_list
+                                           GASNETE_THREAD_PASS);
 }
 
 /*---------------------------------------------------------------------------------*/
@@ -5901,7 +6006,8 @@ gasnete_coll_reduce_TreePut(gasnet_team_handle_t team,
   return gasnete_coll_generic_reduce_nb(team, dstimage, dst, src, src_blksz, src_offset,
                                         elem_size, elem_count, func, func_arg, flags, 
                                         &gasnete_coll_pf_reduce_TreePut, options,
-                                        tree_info, sequence, coll_params->num_params, coll_params->param_list, scratch_req
+                                        tree_info, sequence, scratch_req,
+                                        coll_params->num_params, coll_params->param_list
                                         GASNETE_THREAD_PASS);
   
 }
@@ -6103,7 +6209,8 @@ gasnete_coll_reduce_TreeGet(gasnet_team_handle_t team,
   return gasnete_coll_generic_reduce_nb(team, dstimage, dst, src, src_blksz, src_offset,
                                         elem_size, elem_count, func, func_arg, flags, 
                                         &gasnete_coll_pf_reduce_TreeGet, options,
-                                        tree_info, sequence, coll_params->num_params, coll_params->param_list, scratch_req
+                                        tree_info, sequence, scratch_req,
+                                        coll_params->num_params, coll_params->param_list
                                         GASNETE_THREAD_PASS);
   
 }
@@ -6238,9 +6345,9 @@ gasnete_coll_reduce_TreePutSeg(gasnet_team_handle_t team,
   return gasnete_coll_generic_reduce_nb(team, dstimage, dst, src, src_blksz, src_offset,
                                         elem_size, elem_count, func, func_arg, flags, 
                                         &gasnete_coll_pf_reduce_TreePutSeg, options,
-                                        tree_info, (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs), coll_params->num_params, coll_params->param_list, NULL
+                                        tree_info, (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs),
+                                        NULL, coll_params->num_params, coll_params->param_list
                                         GASNETE_THREAD_PASS);
-  
 }
 
 
@@ -6430,7 +6537,8 @@ gasnete_coll_reduceM_TreePut(gasnet_team_handle_t team,
   return gasnete_coll_generic_reduceM_nb(team, dstimage, dst, srclist, src_blksz, src_offset,
                                         elem_size, elem_count, func, func_arg, flags, 
                                         &gasnete_coll_pf_reduceM_TreePut, options,
-                                        tree_info, sequence, coll_params->num_params, coll_params->param_list, scratch_req
+                                        tree_info, sequence, scratch_req,
+                                        coll_params->num_params, coll_params->param_list
                                         GASNETE_THREAD_PASS);
   
 }
@@ -6631,7 +6739,8 @@ gasnete_coll_reduceM_TreeGet(gasnet_team_handle_t team,
   return gasnete_coll_generic_reduceM_nb(team, dstimage, dst, srclist, src_blksz, src_offset,
                                         elem_size, elem_count, func, func_arg, flags, 
                                         &gasnete_coll_pf_reduceM_TreeGet, options,
-                                        tree_info, sequence, coll_params->num_params, coll_params->param_list, scratch_req
+                                        tree_info, sequence, scratch_req,
+                                        coll_params->num_params, coll_params->param_list
                                         GASNETE_THREAD_PASS);
   
 }
@@ -6773,7 +6882,8 @@ gasnete_coll_reduceM_TreePutSeg(gasnet_team_handle_t team,
   return gasnete_coll_generic_reduceM_nb(team, dstimage, dst, srclist, src_blksz, src_offset,
                                         elem_size, elem_count, func, func_arg, flags, 
                                         &gasnete_coll_pf_reduceM_TreePutSeg, options,
-                                        tree_info, (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs), coll_params->num_params, coll_params->param_list, NULL
+                                        tree_info, (flags & GASNETE_COLL_SUBORDINATE ? sequence : num_segs),
+                                        NULL, coll_params->num_params, coll_params->param_list
                                         GASNETE_THREAD_PASS);
   
 }
