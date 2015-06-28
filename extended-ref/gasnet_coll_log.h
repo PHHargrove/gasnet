@@ -14,7 +14,7 @@
 #if GASNET_SEQ  /* No threads support in this proof-of-concept */
 
 /* Register the replacement dispatchers: */
-/* NONE YET */
+#define gasnete_coll_broadcast_nb gasnete_coll_broadcast_nb_log
 
 #endif
 
