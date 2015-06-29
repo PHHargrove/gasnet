@@ -15,7 +15,15 @@
 
 /* Register the replacement dispatchers: */
 #define gasnete_coll_broadcast_nb gasnete_coll_broadcast_nb_log
+#define gasnete_coll_scatter_nb gasnete_coll_scatter_nb_log
 
 #endif
+
+/* Add tree types: */
+#define GASNETE_COLL_TREE_CLASS_EXTRA \
+        GASNETE_COLL_TREE_CLASS_LOG_SCAT1, \
+        GASNETE_COLL_TREE_CLASS_LOG_SCAT2, \
+        GASNETE_COLL_TREE_CLASS_LOG_SCAT3
+
 
 #endif
