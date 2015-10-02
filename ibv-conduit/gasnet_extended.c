@@ -345,6 +345,8 @@ void gasneti_iop_markdone(gasneti_iop_t *iop, unsigned int noperations, int isge
 */
 /* ------------------------------------------------------------------------------------ */
 
+#ifdef USE_TRUE_RDMA
+
 /* Conduits not using the gasnete_amref_ versions should implement at least the following:
      gasnete_get_nb_bulk
      gasnete_put_nb
@@ -392,6 +394,8 @@ extern gasnet_handle_t gasnete_put_nb_bulk (gasnet_node_t node, void *dest, void
   return (gasnet_handle_t)op;
  }
 }
+
+#endif  /* USE_TRUE_RDMA */
 
 /* ------------------------------------------------------------------------------------ */
 /*
@@ -497,6 +501,8 @@ extern int  gasnete_try_syncnb_all (gasnet_handle_t *phandle, size_t numhandles)
 */
 /* ------------------------------------------------------------------------------------ */
 
+#ifdef USE_TRUE_RDMA
+
 /* Conduits not using the gasnete_amref_ versions should implement at least the following:
      gasnete_get_nbi_bulk
      gasnete_put_nbi
@@ -542,6 +548,8 @@ extern void gasnete_put_nbi_bulk (gasnet_node_t node, void *dest, void *src, siz
   gasnetc_rdma_put(node, src, dest, nbytes, NULL, GASNETE_IOP_CNTRS(op,put) GASNETE_THREAD_PASS);
  }
 }
+
+#endif  /* USE_TRUE_RDMA */
 
 /* ------------------------------------------------------------------------------------ */
 /*
@@ -633,6 +641,8 @@ extern gasnet_handle_t gasnete_end_nbi_accessregion(GASNETE_THREAD_FARG_ALONE) {
   ===================================
 */
 
+#ifdef USE_TRUE_RDMA
+
 #define GASNETE_REQ_CNTRS(_req) \
         &(_req).initiated, &(_req).completed
 
@@ -655,6 +665,8 @@ extern void gasnete_put_bulk (gasnet_node_t node, void* dest, void *src,
   gasnetc_counter_wait(&req_oust, 0);
  }
 }   
+
+#endif  /* USE_TRUE_RDMA */
 
 /* ------------------------------------------------------------------------------------ */
 /*
