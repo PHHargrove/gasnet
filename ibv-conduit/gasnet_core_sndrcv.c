@@ -3524,6 +3524,50 @@ extern void gasnetc_sndrcv_attach_peer(gasnet_node_t node, gasnetc_cep_t *cep) {
 #endif
 }
 
+#if GASNETC_IBV_SHUTDOWN
+static void
+gasnetc_unpin_unmap(gasnetc_hca_t *hca, gasnetc_memreg_t *reg) {
+  if (reg->len) {
+    gasnetc_unpin(hca, reg);
+    gasnetc_unmap(reg);
+  }
+}
+
+extern int gasnetc_sndrcv_shutdown(void) {
+  gasnetc_hca_t *hca;
+  int rc;
+
+  GASNETC_FOR_ALL_HCA(hca) {
+  #if GASNETC_IBV_SRQ
+    if (gasnetc_use_srq && gasnetc_remote_nodes) {
+      rc = ibv_destroy_srq(hca->rqst_srq);
+      GASNETC_IBV_CHECK(rc, "from ibv_destroy_srq(request)");
+      rc = ibv_destroy_srq(hca->repl_srq);
+      GASNETC_IBV_CHECK(rc, "from ibv_destroy_srq(reply)");
+    }
+  #endif
+
+    rc = ibv_destroy_cq(hca->rcv_cq);
+    GASNETC_IBV_CHECK(rc, "from ibv_destroy_cq(rcv_cq)");
+    rc = ibv_destroy_cq(hca->snd_cq);
+    GASNETC_IBV_CHECK(rc, "from ibv_destroy_cq(snd_cq)");
+
+  #if GASNETC_USE_RCV_THREAD
+    if (gasnetc_use_rcv_thread) {
+      rc = ibv_destroy_comp_channel(hca->rcv_thread.compl);
+      GASNETC_IBV_CHECK(rc, "from ibv_destroy_comp_chanel(rcv_thread)");
+    }
+  #endif
+
+    gasnetc_unpin_unmap(hca, &hca->snd_reg);
+    gasnetc_unpin_unmap(hca, &hca->rcv_reg);
+    gasnetc_unpin_unmap(hca, &hca->amrdma_reg);
+  }
+
+  return GASNET_OK;
+}
+#endif
+
 #if GASNETC_USE_RCV_THREAD
 extern void gasnetc_sndrcv_start_thread(void) {
   if (gasnetc_remote_nodes && gasnetc_use_rcv_thread) {

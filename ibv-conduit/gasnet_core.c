@@ -2186,56 +2186,29 @@ extern int gasnetc_attach(gasnet_handlerentry_t *table, int numentries,
   return GASNET_OK;
 }
 /* ------------------------------------------------------------------------------------ */
-/* Shutdown code - not used by default */
+/* Shutdown code - not always used */
 
 #if GASNETC_IBV_SHUTDOWN
-static void gasnetc_unpin_check(gasnetc_hca_t *hca, gasnetc_memreg_t *reg) {
-  if (reg->len) {
-    gasnetc_unpin(hca, reg);
-  }
-}
-
 void
 gasnetc_shutdown(void) {
   gasnetc_hca_t *hca;
-  int rc;
+  int rc, i;
 
   gasnetc_connect_shutdown();
 
+  rc = gasnetc_sndrcv_shutdown();
+  if (rc != GASNET_OK) {
+    gasneti_fatalerror("gasnetc_sndrcv_shutdown() failed");
+  }
+
   GASNETC_FOR_ALL_HCA(hca) {
-  #if GASNETC_IBV_SRQ
-    if (gasnetc_use_srq && gasnetc_remote_nodes) {
-      rc = ibv_destroy_srq(hca->rqst_srq);
-      GASNETC_IBV_CHECK(rc, "from ibv_destroy_srq(request)");
-      rc = ibv_destroy_srq(hca->repl_srq);
-      GASNETC_IBV_CHECK(rc, "from ibv_destroy_srq(reply)");
-    }
-  #endif
-
-    rc = ibv_destroy_cq(hca->rcv_cq);
-    GASNETC_IBV_CHECK(rc, "from ibv_destroy_cq(rcv_cq)");
-    rc = ibv_destroy_cq(hca->snd_cq);
-    GASNETC_IBV_CHECK(rc, "from ibv_destroy_cq(snd_cq)");
-
-  #if GASNETC_USE_RCV_THREAD
-    if (gasnetc_use_rcv_thread) {
-      rc = ibv_destroy_comp_channel(hca->rcv_thread.compl);
-      GASNETC_IBV_CHECK(rc, "from ibv_destroy_comp_chanel(rcv_thread)");
-    }
-  #endif
-
   #if GASNETC_PIN_SEGMENT
     if (hca->seg_regs) {
-      int i;
       for (i=0; i<gasnetc_seg_regs; ++i) {
         gasnetc_unpin(hca, &hca->seg_regs[i]);
       }
     }
   #endif
-
-    gasnetc_unpin_check(hca, &hca->snd_reg);
-    gasnetc_unpin_check(hca, &hca->rcv_reg);
-    gasnetc_unpin_check(hca, &hca->amrdma_reg);
 
     rc = ibv_dealloc_pd(hca->pd);
     GASNETC_IBV_CHECK(rc, "from ibv_dealloc_pd()");
