@@ -205,16 +205,24 @@ gasnetc_spawn_progress_thread(gasnetc_progress_thread_t *pthr_p)
 }
 
 extern void
-gasnetc_stop_progress_thread(gasnetc_progress_thread_t *pthr_p)
+gasnetc_stop_progress_thread(gasnetc_progress_thread_t *pthr_p, int block)
 {
-  if (pthread_self() == pthr_p->thread_id) return; /* no suicides */
+  pthread_t tid = pthr_p->thread_id;
+  if (pthread_self() == tid) return; /* no suicides */
   if (pthr_p->done) return; /* no "over kill" */
   pthr_p->done = 1;
   gasneti_sync_writes();
 #if GASNETC_THREAD_CANCEL
-  (void)pthread_cancel(pthr_p->thread_id); /* ignore failure */
+  (void)pthread_cancel(tid); /* ignore failure */
 #endif
   GASNETI_TRACE_PRINTF(I, ("Requested termination of progress thread with id 0x%lx",
-                           (unsigned long)(uintptr_t)(pthr_p->thread_id)));
+                           (unsigned long)(uintptr_t)(tid)));
+  if (block) {
+    (void)pthread_join(tid, NULL);
+    GASNETI_TRACE_PRINTF(I, ("Joined progress thread with id 0x%lx",
+                             (unsigned long)(uintptr_t)(tid)));
+  } else {
+    (void)pthread_detach(tid);
+  }
 }
 #endif

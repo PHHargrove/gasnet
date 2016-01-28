@@ -295,6 +295,8 @@ typedef union {
 #define gasnetc_sema_up           gasneti_cons_sema(GASNETC_PARSEQ,up)
 #define gasnetc_sema_up_n         gasneti_cons_sema(GASNETC_PARSEQ,up_n)
 #define gasnetc_sema_trydown      gasneti_cons_sema(GASNETC_PARSEQ,trydown)
+#define gasnetc_sema_trydown_partial \
+                                  gasneti_cons_sema(GASNETC_PARSEQ,trydown_partial)
 
 #define GASNETC_LIFO_INITIALIZER  GASNETI_CONS_LIFO(GASNETC_PARSEQ,INITIALIZER)
 #define gasnetc_lifo_head_t       gasneti_cons_lifo(GASNETC_PARSEQ,head_t)
@@ -640,11 +642,13 @@ extern int gasnetc_create_cq(struct ibv_context *, int,
                              gasnetc_progress_thread_t *);
 extern int gasnetc_sndrcv_limits(void);
 extern int gasnetc_sndrcv_init(void);
+extern void gasnetc_sndrcv_quiesce(void);
+extern int gasnetc_sndrcv_shutdown(void);
 extern void gasnetc_sndrcv_init_peer(gasnet_node_t node, gasnetc_cep_t *cep);
 extern void gasnetc_sndrcv_init_inline(void);
 extern void gasnetc_sndrcv_attach_peer(gasnet_node_t node, gasnetc_cep_t *cep);
 extern void gasnetc_sndrcv_start_thread(void);
-extern void gasnetc_sndrcv_stop_thread(void);
+extern void gasnetc_sndrcv_stop_thread(int block);
 extern gasnetc_amrdma_send_t *gasnetc_amrdma_send_alloc(uint32_t rkey, void *addr);
 extern gasnetc_amrdma_recv_t *gasnetc_amrdma_recv_alloc(gasnetc_hca_t *hca);
 extern void gasnetc_sndrcv_poll(int handler_context);
@@ -676,7 +680,7 @@ extern int gasnetc_rdma_getv(gasnetc_epid_t epid, void *src_ptr, size_t dstcount
 /* Routines in gasnet_core_thread.c */
 #if GASNETI_CONDUIT_THREADS
 extern void gasnetc_spawn_progress_thread(gasnetc_progress_thread_t *pthr);
-extern void gasnetc_stop_progress_thread(gasnetc_progress_thread_t *pthr);
+extern void gasnetc_stop_progress_thread(gasnetc_progress_thread_t *pthr, int block);
 #endif
 
 /* General routines in gasnet_core.c */

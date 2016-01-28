@@ -230,7 +230,7 @@ static size_t                           gasnetc_am_inline_limit_rdma = 0;
 
 static gasnetc_lifo_head_t		gasnetc_bbuf_freelist = GASNETC_LIFO_INITIALIZER;
 
-static gasnetc_sema_t			*gasnetc_cq_semas;
+static gasnetc_sema_t			*gasnetc_cq_semas = NULL;
 
 /* Shared between gasnetc_sndrcv_{limits,init}() */
 static int gasnetc_op_oust_per_qp;
@@ -3303,8 +3303,10 @@ extern int gasnetc_sndrcv_init(void) {
   
       /* Allocated normal memory for receive descriptors (rbuf's) */
       padded_size = GASNETI_ALIGNUP(sizeof(gasnetc_rbuf_t), GASNETI_CACHE_LINE_BYTES);
-      hca->rbufs = gasneti_malloc_aligned(GASNETI_CACHE_LINE_BYTES, rcv_count*padded_size);
-      gasneti_leak_aligned(hca->rbufs);
+      if (NULL == hca->rbufs) {
+        hca->rbufs = gasneti_malloc_aligned(GASNETI_CACHE_LINE_BYTES, rcv_count*padded_size);
+        gasneti_leak_aligned(hca->rbufs);
+      }
   
       /* Initialize the rbuf's */
       gasnetc_lifo_init(&hca->rbuf_freelist);
@@ -3329,8 +3331,10 @@ extern int gasnetc_sndrcv_init(void) {
 #endif
       
       /* Initialize resources for AM-over-RDMA */
-      hca->cep = gasneti_calloc(hca->max_qps, sizeof(gasnetc_cep_t *));
-      gasneti_leak(hca->cep);
+      if (NULL == hca->cep) {
+        hca->cep = gasneti_calloc(hca->max_qps, sizeof(gasnetc_cep_t *));
+        gasneti_leak(hca->cep);
+      }
       gasnetc_atomic_set(&hca->amrdma_rcv.count, 0, 0);
       if (gasnetc_amrdma_max_peers && hca->max_qps) {
 	const int max_peers = hca->amrdma_rcv.max_peers = MIN(gasnetc_amrdma_max_peers, hca->max_qps);
@@ -3356,8 +3360,10 @@ extern int gasnetc_sndrcv_init(void) {
 	  buf = (void *)((uintptr_t)buf + (gasnetc_amrdma_depth << GASNETC_AMRDMA_SZ_LG2));
 	}
 
-        hca->amrdma_rcv.cep = gasneti_calloc(max_peers, sizeof(gasnetc_cep_t *));
-        gasneti_leak(hca->amrdma_rcv.cep);
+        if (NULL == hca->amrdma_rcv.cep) {
+          hca->amrdma_rcv.cep = gasneti_calloc(max_peers, sizeof(gasnetc_cep_t *));
+          gasneti_leak(hca->amrdma_rcv.cep);
+        }
 
         gasnetc_atomic_set(&hca->amrdma_balance.count, 0, 0);
         hca->amrdma_balance.mask = gasnetc_amrdma_cycle ? (gasnetc_amrdma_cycle - 1) : 0;
@@ -3365,8 +3371,10 @@ extern int gasnetc_sndrcv_init(void) {
         gasneti_spinlock_init(&hca->amrdma_balance.lock);
 #endif
         hca->amrdma_balance.floor = 1;
-        hca->amrdma_balance.table = gasneti_calloc(hca->max_qps, sizeof(gasnetc_amrdma_balance_tbl_t));
-        gasneti_leak(hca->amrdma_balance.table);
+        if (NULL == hca->amrdma_balance.table) {
+          hca->amrdma_balance.table = gasneti_calloc(hca->max_qps, sizeof(gasnetc_amrdma_balance_tbl_t));
+          gasneti_leak(hca->amrdma_balance.table);
+        }
       }
     }
   }
@@ -3376,9 +3384,11 @@ extern int gasnetc_sndrcv_init(void) {
    */
 
   /* create the SND CQ and associated semaphores */
-  gasnetc_cq_semas = (gasnetc_sema_t *)
+  if (NULL == gasnetc_cq_semas) {
+    gasnetc_cq_semas = (gasnetc_sema_t *)
 	  gasnett_malloc_aligned(GASNETI_CACHE_LINE_BYTES, gasnetc_num_hcas*sizeof(gasnetc_sema_t));
-  gasneti_leak_aligned(gasnetc_cq_semas);
+    gasneti_leak_aligned(gasnetc_cq_semas);
+  }
   gasnetc_op_oust_per_qp = MAX(1, gasnetc_op_oust_per_qp); /* Avoid error in single-node case */
   GASNETC_FOR_ALL_HCA(hca) {
     const int rqst_count = gasnetc_use_srq ? gasnetc_am_repl_per_qp : 0;
@@ -3416,6 +3426,7 @@ extern int gasnetc_sndrcv_init(void) {
   if_pf (buf == NULL) {
       GASNETI_RETURN_ERRR(RESOURCE, "Unable to allocate pinned memory for AM/bounce buffers");
   }
+  gasnetc_lifo_init(&gasnetc_bbuf_freelist);
   for (i = 0; i < gasnetc_bbuf_limit; ++i) {
     gasnetc_lifo_push(&gasnetc_bbuf_freelist, buf);
     ++buf;
@@ -3524,6 +3535,66 @@ extern void gasnetc_sndrcv_attach_peer(gasnet_node_t node, gasnetc_cep_t *cep) {
 #endif
 }
 
+#if GASNETC_IBV_SHUTDOWN
+static void
+gasnetc_unpin_unmap(gasnetc_hca_t *hca, gasnetc_memreg_t *reg) {
+  if (reg->len) {
+    gasnetc_unpin(hca, reg);
+    gasnetc_unmap(reg);
+  }
+}
+
+extern void
+gasnetc_sndrcv_quiesce(void) {
+  gasnetc_hca_t *hca;
+
+  GASNETC_FOR_ALL_HCA(hca) {
+    int remain = hca->snd_cq->cqe;
+    gasnetc_sema_t *sema = hca->snd_cq_sema_p;
+
+    while (0 != (remain -= gasnetc_sema_trydown_partial(sema, remain))) {
+      GASNETI_WAITHOOK();
+      gasnetc_poll_both();
+      GASNETI_PROGRESSFNS_RUN();
+    }
+  }
+}
+
+extern int gasnetc_sndrcv_shutdown(void) {
+  gasnetc_hca_t *hca;
+  int rc;
+
+  GASNETC_FOR_ALL_HCA(hca) {
+  #if GASNETC_IBV_SRQ
+    if (gasnetc_use_srq && gasnetc_remote_nodes) {
+      rc = ibv_destroy_srq(hca->rqst_srq);
+      GASNETC_IBV_CHECK(rc, "from ibv_destroy_srq(request)");
+      rc = ibv_destroy_srq(hca->repl_srq);
+      GASNETC_IBV_CHECK(rc, "from ibv_destroy_srq(reply)");
+    }
+  #endif
+
+    rc = ibv_destroy_cq(hca->rcv_cq);
+    GASNETC_IBV_CHECK(rc, "from ibv_destroy_cq(rcv_cq)");
+    rc = ibv_destroy_cq(hca->snd_cq);
+    GASNETC_IBV_CHECK(rc, "from ibv_destroy_cq(snd_cq)");
+
+  #if GASNETC_USE_RCV_THREAD
+    if (gasnetc_use_rcv_thread) {
+      rc = ibv_destroy_comp_channel(hca->rcv_thread.compl);
+      GASNETC_IBV_CHECK(rc, "from ibv_destroy_comp_chanel(rcv_thread)");
+    }
+  #endif
+
+    gasnetc_unpin_unmap(hca, &hca->snd_reg);
+    gasnetc_unpin_unmap(hca, &hca->rcv_reg);
+    gasnetc_unpin_unmap(hca, &hca->amrdma_reg);
+  }
+
+  return GASNET_OK;
+}
+#endif
+
 #if GASNETC_USE_RCV_THREAD
 extern void gasnetc_sndrcv_start_thread(void) {
   if (gasnetc_remote_nodes && gasnetc_use_rcv_thread) {
@@ -3542,14 +3613,14 @@ extern void gasnetc_sndrcv_start_thread(void) {
   }
 }
 
-extern void gasnetc_sndrcv_stop_thread(void) {
+extern void gasnetc_sndrcv_stop_thread(int block) {
   if (gasnetc_remote_nodes && gasnetc_use_rcv_thread) {
     gasnetc_hca_t *hca;
 
     GASNETC_FOR_ALL_HCA(hca) {
       /* stop the RCV thread if we have started it */
       if (hca->rcv_thread.fn == gasnetc_rcv_thread) {
-        gasnetc_stop_progress_thread(&hca->rcv_thread);
+        gasnetc_stop_progress_thread(&hca->rcv_thread, block);
       }
     }
   }

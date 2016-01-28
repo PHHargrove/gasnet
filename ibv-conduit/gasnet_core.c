@@ -126,6 +126,9 @@ int                      gasnetc_num_ports = 0;
   static int            gasnetc_seg_regs = 0;
 #endif
 firehose_info_t	gasnetc_firehose_info;
+static uintptr_t gasnetc_firehose_mem;
+static int       gasnetc_firehose_reg;
+static uint32_t  gasnetc_firehose_flags;
 
 gasnet_handlerentry_t const *gasnetc_get_handlertable(void);
 
@@ -210,8 +213,10 @@ static void gasnetc_sys_coll_init(void)
   for (i = 1; i < size; i *= 2) {
     ++gasnetc_dissem_peers;
   }
-  gasnetc_dissem_peer = gasneti_malloc(gasnetc_dissem_peers * sizeof(gasnet_node_t));
-  gasneti_leak(gasnetc_dissem_peer);
+  if (NULL == gasnetc_dissem_peer) {
+    gasnetc_dissem_peer = gasneti_malloc(gasnetc_dissem_peers * sizeof(gasnet_node_t));
+    gasneti_leak(gasnetc_dissem_peer);
+  }
   for (i = 0; i < gasnetc_dissem_peers; ++i) {
     const gasnet_node_t distance = 1 << i;
     const gasnet_node_t peer = (distance <= rank) ? (rank - distance) : (rank + (size - distance));
@@ -1847,6 +1852,28 @@ static int gasnetc_reghandlers(gasnet_handlerentry_t *table, int numentries,
   return GASNET_OK;
 }
 /* ------------------------------------------------------------------------------------ */
+/* Helper for firehose init
+ * Returns address (in static storage) of an array of preregistered regions
+ */
+static firehose_region_t *
+gasnetc_prereg_list(int *count_p) {
+  static firehose_region_t prereg[1];
+  int h;
+
+  /* Currently only the "snd_reg" is added to the firehose tables */
+  prereg[0].addr             = gasnetc_hca[0].snd_reg.addr;
+  prereg[0].len              = gasnetc_hca[0].snd_reg.len;
+  GASNETC_FOR_ALL_HCA_INDEX(h) {
+    prereg[0].client.handle[h] = NULL;        /* unreg must fail */
+    prereg[0].client.lkey[h]   = gasnetc_hca[h].snd_reg.handle->lkey;
+    prereg[0].client.rkey[h]   = gasnetc_hca[h].snd_reg.handle->rkey;
+  }
+
+  *count_p = (int)(sizeof(prereg) / sizeof(prereg[0]));
+  return prereg;
+}
+
+/* ------------------------------------------------------------------------------------ */
 extern int gasnetc_attach(gasnet_handlerentry_t *table, int numentries,
                           uintptr_t segsize, uintptr_t minheapoffset) {
   gasnetc_hca_t *hca;
@@ -2103,45 +2130,42 @@ extern int gasnetc_attach(gasnet_handlerentry_t *table, int numentries,
 
   /* Initialize firehose */
   if (GASNETC_USE_FIREHOSE && (gasneti_nodes > 1)) {
-    uintptr_t firehose_mem = gasnetc_pin_info.memory;
-    int firehose_reg = gasnetc_pin_info.regions;
-    int reg_count, h;
-    firehose_region_t prereg[1];
-    size_t reg_size, maxsz;
+    int reg_count;
+    firehose_region_t *prereg = gasnetc_prereg_list(&reg_count);
+    size_t maxsz;
 
-    /* Setup prepinned regions list */
-    prereg[0].addr             = gasnetc_hca[0].snd_reg.addr;
-    prereg[0].len              = gasnetc_hca[0].snd_reg.len;
-    GASNETC_FOR_ALL_HCA_INDEX(h) {
-      prereg[0].client.handle[h] = NULL;	/* unreg must fail */
-      prereg[0].client.lkey[h]   = gasnetc_hca[h].snd_reg.handle->lkey;
-      prereg[0].client.rkey[h]   = gasnetc_hca[h].snd_reg.handle->rkey;
-    }
-    reg_size = prereg[0].len;
-    reg_count = 1;
+    gasnetc_firehose_mem = gasnetc_pin_info.memory;
+    gasnetc_firehose_reg = gasnetc_pin_info.regions;
 
     /* Adjust for prepinned regions (they were pinned before init_pin_info probe) */
-    firehose_mem += reg_size;
+    for (i = 0; i < reg_count; ++i) {
+      gasnetc_firehose_mem += prereg[i].len;
+    }
 
     /* Now initialize firehose */
     {
-      uint32_t flags = 0;
+      gasnetc_firehose_flags = 0;
 
       #if GASNETC_PIN_SEGMENT
         /* Adjust for the pinned segment (which is not advertised to firehose as prepinned) */
-        gasneti_assert_always(firehose_mem > maxsize);
-        firehose_mem -= maxsize;
-        gasneti_assert_always(firehose_reg > gasnetc_max_regs);
-        firehose_reg -= gasnetc_max_regs;
+        gasneti_assert_always(gasnetc_firehose_mem > maxsize);
+        gasnetc_firehose_mem -= maxsize;
+        gasneti_assert_always(gasnetc_firehose_reg > gasnetc_max_regs);
+        gasnetc_firehose_reg -= gasnetc_max_regs;
 
-	flags |= FIREHOSE_INIT_FLAG_LOCAL_ONLY;
+        gasnetc_firehose_flags |= FIREHOSE_INIT_FLAG_LOCAL_ONLY;
       #endif
-      #if PLATFORM_OS_DARWIN || GASNETC_IBV_SHUTDOWN
-	flags |= FIREHOSE_INIT_FLAG_UNPIN_ON_FINI;
+      #if PLATFORM_OS_DARWIN
+        gasnetc_firehose_flags |= FIREHOSE_INIT_FLAG_UNPIN_ON_FINI;
+      #endif
+      #if GASNETC_IBV_SHUTDOWN
+        gasnetc_firehose_flags |= FIREHOSE_INIT_FLAG_UNPIN_ON_FINI
+                               |  FIREHOSE_INIT_FLAG_MAY_REINIT;
       #endif
 
-      firehose_init(firehose_mem, firehose_reg, gasnetc_fh_maxsize,
-		    prereg, reg_count, flags, &gasnetc_firehose_info);
+
+      firehose_init(gasnetc_firehose_mem, gasnetc_firehose_reg, gasnetc_fh_maxsize,
+                    prereg, reg_count, gasnetc_firehose_flags, &gasnetc_firehose_info);
       gasnetc_did_firehose_init = 1;
     }
 
@@ -2186,56 +2210,31 @@ extern int gasnetc_attach(gasnet_handlerentry_t *table, int numentries,
   return GASNET_OK;
 }
 /* ------------------------------------------------------------------------------------ */
-/* Shutdown code - not used by default */
+/* Shutdown code - not always used */
 
 #if GASNETC_IBV_SHUTDOWN
-static void gasnetc_unpin_check(gasnetc_hca_t *hca, gasnetc_memreg_t *reg) {
-  if (reg->len) {
-    gasnetc_unpin(hca, reg);
-  }
-}
-
 void
 gasnetc_shutdown(void) {
   gasnetc_hca_t *hca;
-  int rc;
+  int rc, i;
+
+  gasnetc_sndrcv_quiesce();
 
   gasnetc_connect_shutdown();
 
+  rc = gasnetc_sndrcv_shutdown();
+  if (rc != GASNET_OK) {
+    gasneti_fatalerror("gasnetc_sndrcv_shutdown() failed");
+  }
+
   GASNETC_FOR_ALL_HCA(hca) {
-  #if GASNETC_IBV_SRQ
-    if (gasnetc_use_srq && gasnetc_remote_nodes) {
-      rc = ibv_destroy_srq(hca->rqst_srq);
-      GASNETC_IBV_CHECK(rc, "from ibv_destroy_srq(request)");
-      rc = ibv_destroy_srq(hca->repl_srq);
-      GASNETC_IBV_CHECK(rc, "from ibv_destroy_srq(reply)");
-    }
-  #endif
-
-    rc = ibv_destroy_cq(hca->rcv_cq);
-    GASNETC_IBV_CHECK(rc, "from ibv_destroy_cq(rcv_cq)");
-    rc = ibv_destroy_cq(hca->snd_cq);
-    GASNETC_IBV_CHECK(rc, "from ibv_destroy_cq(snd_cq)");
-
-  #if GASNETC_USE_RCV_THREAD
-    if (gasnetc_use_rcv_thread) {
-      rc = ibv_destroy_comp_channel(hca->rcv_thread.compl);
-      GASNETC_IBV_CHECK(rc, "from ibv_destroy_comp_chanel(rcv_thread)");
-    }
-  #endif
-
   #if GASNETC_PIN_SEGMENT
     if (hca->seg_regs) {
-      int i;
       for (i=0; i<gasnetc_seg_regs; ++i) {
         gasnetc_unpin(hca, &hca->seg_regs[i]);
       }
     }
   #endif
-
-    gasnetc_unpin_check(hca, &hca->snd_reg);
-    gasnetc_unpin_check(hca, &hca->rcv_reg);
-    gasnetc_unpin_check(hca, &hca->amrdma_reg);
 
     rc = ibv_dealloc_pd(hca->pd);
     GASNETC_IBV_CHECK(rc, "from ibv_dealloc_pd()");
@@ -2750,7 +2749,7 @@ static void gasnetc_exit_body(void) {
 
 #if GASNETC_USE_RCV_THREAD
   /* Stop AM receive thread, if applicable (won't kill self) */
-  gasnetc_sndrcv_stop_thread();
+  gasnetc_sndrcv_stop_thread(0);
 #endif
 
   /* read exit code, stored by first caller to gasnetc_exit_head() */

@@ -835,10 +835,12 @@ static gasneti_semaphore_t conn_ud_sema;
 static gasneti_semaphore_t *conn_ud_sema_p = &conn_ud_sema;
 #define conn_sema_up      gasneti_semaphore_up
 #define conn_sema_trydown gasneti_semaphore_trydown
+#define conn_sema_partial gasneti_semaphore_trydown_partial
 #else
 static gasnetc_sema_t *conn_ud_sema_p = NULL;
 #define conn_sema_up      gasnetc_sema_up
 #define conn_sema_trydown gasnetc_sema_trydown
+#define conn_sema_partial gasnetc_sema_trydown_partial
 #endif
 
 /* TODO: group the following into a UD-endpoint struct */
@@ -1144,9 +1146,7 @@ static int conn_snd_poll(void)
   int rc;
 
   rc = ibv_poll_cq(conn_ud_snd_cq, 1, &comp);
-  if (GASNETC_IS_EXITING()) {
-    /* shutdown in another thread */
-  } else if (rc == 1) {
+  if (rc == 1) {
     if_pf (comp.status != IBV_WC_SUCCESS) {
       gasneti_fatalerror("failed dynamic connection send work request");
     } else if_pf(comp.opcode != IBV_WC_SEND) {
@@ -1154,6 +1154,8 @@ static int conn_snd_poll(void)
     }
     gasnetc_conn_snd_wc(&comp);
     return 1;
+  } else if (GASNETC_IS_EXITING()) {
+    /* shutdown in another thread */
   } else if (rc != 0) {
     gasneti_fatalerror("failed dynamic connection send cq poll");
   }
@@ -1269,8 +1271,10 @@ gasnetc_qp_setup_ud(gasnetc_port_info_t *port, int fully_connected)
   }
 
     /* Exchange the qpns */
-    conn_remote_ud_qpn = gasneti_malloc(gasneti_nodes * sizeof(uint32_t));
-    gasneti_leak(conn_remote_ud_qpn);
+    if (NULL == conn_remote_ud_qpn) {
+      conn_remote_ud_qpn = gasneti_malloc(gasneti_nodes * sizeof(uint32_t));
+      gasneti_leak(conn_remote_ud_qpn);
+    }
     gasneti_bootstrapExchange(&gasnetc_conn_qpn, sizeof(gasnetc_conn_qpn), conn_remote_ud_qpn);
 
     /* Generate a per-job QKey from the qpns.
@@ -1307,11 +1311,13 @@ gasnetc_qp_setup_ud(gasnetc_port_info_t *port, int fully_connected)
     GASNETC_IBV_CHECK(rc, "from ibv_modify_qp(UD INIT)");
 
     /* Post RCVs */
-    { gasnetc_ud_rcv_desc_t *desc;
+    { static gasnetc_ud_rcv_desc_t *desc;
       int i;
 
-      desc = gasneti_calloc(max_recv_wr, sizeof(gasnetc_ud_rcv_desc_t));
-      gasneti_leak(desc);
+      if (NULL == desc) {
+        desc = gasneti_calloc(max_recv_wr, sizeof(gasnetc_ud_rcv_desc_t));
+        gasneti_leak(desc);
+      }
       for (i = 0; i < max_recv_wr; ++i, ++desc, addr += recv_sz) {
         desc->wr.num_sge = 1;
         desc->wr.sg_list = &desc->sg;
@@ -1322,6 +1328,7 @@ gasnetc_qp_setup_ud(gasnetc_port_info_t *port, int fully_connected)
         desc->sg.lkey    = conn_ud_reg.handle->lkey;
         gasnetc_rcv_post_ud(desc);
       }
+      desc -= max_recv_wr;
     }
 
     /* INIT -> RTR */
@@ -1338,11 +1345,13 @@ gasnetc_qp_setup_ud(gasnetc_port_info_t *port, int fully_connected)
     GASNETC_IBV_CHECK(rc, "from ibv_modify_qp(UD RTS)");
 
     /* Create SNDs */
-    { gasnetc_ud_snd_desc_t *desc;
+    { static gasnetc_ud_snd_desc_t *desc;
       int i;
 
-      desc = gasneti_calloc(max_send_wr, sizeof(gasnetc_ud_snd_desc_t));
-      gasneti_leak(desc);
+      if (NULL == desc) {
+        desc = gasneti_calloc(max_send_wr, sizeof(gasnetc_ud_snd_desc_t));
+        gasneti_leak(desc);
+      }
       for (i = 0; i < max_send_wr; ++i, ++desc, addr += send_sz) {
         desc->wr.num_sge = 1;
         desc->wr.sg_list = &desc->sg;
@@ -1358,6 +1367,7 @@ gasnetc_qp_setup_ud(gasnetc_port_info_t *port, int fully_connected)
         desc->sg.lkey   = conn_ud_reg.handle->lkey;
         gasneti_lifo_push(&conn_snd_freelist, desc);
       }
+      desc -= max_send_wr;
     }
 
     /* "warmup" the timers to ensure we don't pay the potentially high cost
@@ -2156,10 +2166,13 @@ gasnetc_connect_static(void)
 
   /* Allocate the dense CEP table and populate the node2cep table. */
   {
-    gasnetc_cep_t *cep_table = (gasnetc_cep_t *)
-      gasnett_malloc_aligned(GASNETI_CACHE_LINE_BYTES,
-                             static_nodes * gasnetc_alloc_qps * sizeof(gasnetc_cep_t));
-    gasneti_leak_aligned(cep_table);
+    static gasnetc_cep_t *cep_table;
+    if (NULL == cep_table) {
+      cep_table = (gasnetc_cep_t *)
+        gasnett_malloc_aligned(GASNETI_CACHE_LINE_BYTES,
+                               static_nodes * gasnetc_alloc_qps * sizeof(gasnetc_cep_t));
+      gasneti_leak_aligned(cep_table);
+    }
     for (node = 0, cep = cep_table; node < gasneti_nodes; ++node) { /* NOT randomized */
       if (!GASNETC_IS_REMOTE_NODE(node)) continue;
       gasnetc_node2cep[node] = cep;
@@ -2276,10 +2289,12 @@ gasnetc_connect_init(void)
 
   /* Allocate node->cep lookup table */
   { size_t size = gasneti_nodes*sizeof(gasnetc_cep_t *);
-    gasnetc_node2cep = (gasnetc_cep_t **)
-      gasnett_malloc_aligned(GASNETI_CACHE_LINE_BYTES, size);
+    if (NULL == gasnetc_node2cep) {
+      gasnetc_node2cep = (gasnetc_cep_t **)
+        gasnett_malloc_aligned(GASNETI_CACHE_LINE_BYTES, size);
+      gasneti_leak_aligned(gasnetc_node2cep);
+    }
     memset(gasnetc_node2cep, 0, size);
-    gasneti_leak_aligned(gasnetc_node2cep);
   }
 
   if_pf (!gasnetc_remote_nodes) {
@@ -2497,7 +2512,7 @@ gasnetc_connect_fini(void)
 
 #if GASNETC_USE_CONN_THREAD
   if (conn_thread.fn == gasnetc_conn_thread) {
-    gasnetc_stop_progress_thread(&conn_thread);
+    gasnetc_stop_progress_thread(&conn_thread, 1);
   }
 #endif
 
@@ -2559,7 +2574,22 @@ gasnetc_connect_shutdown(void) {
   const int retries = 5;
   int trial;
 
-  /* TODO: try to actually DRAIN sends instead of looping */
+  /* Drain any outstanding sends */
+  #if GASNETC_USE_CONN_THREAD
+    if (conn_ud_snd_cq) {
+      int remain = gasnetc_ud_snds;
+      while (remain) {
+        GASNETI_WAITHOOK();
+        conn_snd_poll();
+        remain -= conn_sema_partial(conn_ud_sema_p, remain);
+      }
+    }
+  #else
+    /* conn_ud_hca->snd_cq has already been drained */
+    gasneti_assert(0 == gasneti_semaphore_read(conn_ud_sema_p));
+  #endif
+
+  /* TODO: is this retry loop still necessary? */
   for (trial = 0; trial < retries; ++trial) {
     int failed = 0;
     int node, qpi;
@@ -2619,6 +2649,8 @@ gasnetc_connect_shutdown(void) {
       if (0 == ibv_destroy_qp(conn_ud_qp)) {
         conn_ud_qp = NULL;
         gasnetc_unpin(conn_ud_hca, &conn_ud_reg);
+        gasnetc_unmap(&conn_ud_reg);
+        gasneti_lifo_init(&conn_snd_freelist);
       } else {
         failed = 1;
       }
