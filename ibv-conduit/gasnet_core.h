@@ -181,6 +181,12 @@ extern int gasnetc_AMGetMsgSource(gasnet_token_t token, gasnet_node_t *srcindex)
 #define GASNET_BLOCKUNTIL(cond) gasneti_polluntil(cond)
 
 /* ------------------------------------------------------------------------------------ */
+#ifdef GASNETI_BLCR_ENABLED
+/* Collective checkpoints */
+extern int gasnet_all_checkpoint(const char *dir);
+#define GASNET_BLCR 1
+#endif
+/* ------------------------------------------------------------------------------------ */
 
 GASNETI_END_EXTERNC
 
