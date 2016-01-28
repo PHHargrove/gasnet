@@ -645,7 +645,7 @@ extern void gasnetc_sndrcv_init_peer(gasnet_node_t node, gasnetc_cep_t *cep);
 extern void gasnetc_sndrcv_init_inline(void);
 extern void gasnetc_sndrcv_attach_peer(gasnet_node_t node, gasnetc_cep_t *cep);
 extern void gasnetc_sndrcv_start_thread(void);
-extern void gasnetc_sndrcv_stop_thread(void);
+extern void gasnetc_sndrcv_stop_thread(int block);
 extern gasnetc_amrdma_send_t *gasnetc_amrdma_send_alloc(uint32_t rkey, void *addr);
 extern gasnetc_amrdma_recv_t *gasnetc_amrdma_recv_alloc(gasnetc_hca_t *hca);
 extern void gasnetc_sndrcv_poll(int handler_context);
@@ -677,7 +677,7 @@ extern int gasnetc_rdma_getv(gasnetc_epid_t epid, void *src_ptr, size_t dstcount
 /* Routines in gasnet_core_thread.c */
 #if GASNETI_CONDUIT_THREADS
 extern void gasnetc_spawn_progress_thread(gasnetc_progress_thread_t *pthr);
-extern void gasnetc_stop_progress_thread(gasnetc_progress_thread_t *pthr);
+extern void gasnetc_stop_progress_thread(gasnetc_progress_thread_t *pthr, int block);
 #endif
 
 /* General routines in gasnet_core.c */

@@ -2745,7 +2745,7 @@ static void gasnetc_exit_body(void) {
 
 #if GASNETC_USE_RCV_THREAD
   /* Stop AM receive thread, if applicable (won't kill self) */
-  gasnetc_sndrcv_stop_thread();
+  gasnetc_sndrcv_stop_thread(0);
 #endif
 
   /* read exit code, stored by first caller to gasnetc_exit_head() */

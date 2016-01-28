@@ -3587,14 +3587,14 @@ extern void gasnetc_sndrcv_start_thread(void) {
   }
 }
 
-extern void gasnetc_sndrcv_stop_thread(void) {
+extern void gasnetc_sndrcv_stop_thread(int block) {
   if (gasnetc_remote_nodes && gasnetc_use_rcv_thread) {
     gasnetc_hca_t *hca;
 
     GASNETC_FOR_ALL_HCA(hca) {
       /* stop the RCV thread if we have started it */
       if (hca->rcv_thread.fn == gasnetc_rcv_thread) {
-        gasnetc_stop_progress_thread(&hca->rcv_thread);
+        gasnetc_stop_progress_thread(&hca->rcv_thread, block);
       }
     }
   }

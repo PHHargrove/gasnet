@@ -2506,7 +2506,7 @@ gasnetc_connect_fini(void)
 
 #if GASNETC_USE_CONN_THREAD
   if (conn_thread.fn == gasnetc_conn_thread) {
-    gasnetc_stop_progress_thread(&conn_thread);
+    gasnetc_stop_progress_thread(&conn_thread, 1);
   }
 #endif
 
