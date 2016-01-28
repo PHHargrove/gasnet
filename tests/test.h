@@ -15,6 +15,7 @@
   #include <gasnet.h>
   #include <gasnet_tools.h>
   #define TEST_GASNET_H
+  extern int gasnet_all_checkpoint(void);
 #endif
 
 #include <stdio.h>
@@ -1033,6 +1034,11 @@ static void _test_init(const char *testname, int reports_performance, int early,
     MSG("hostname is: %s (pid=%i)", gasnett_gethostname(), (int)getpid());
     fflush(NULL);
   #endif
+#ifndef TEST_GASNET_TOOLS_ONLY
+  /*====================*/
+  if (!early) gasnet_all_checkpoint();
+  /*====================*/
+#endif
   if (gasnett_verboseenv()) MSG("%s running...", testname);
 }
 #define test_init(testname, reports_performance, usagestr) \
