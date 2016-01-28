@@ -96,7 +96,7 @@ CONDUIT_SOURCELIST =                 \
 # additional -I or -D directives needed by this specific conduit
 # other than the standard GASNet includes and flags
 CONDUIT_EXTRALIBCFLAGS = -I@IBV_INCLUDE@ $(fh_extralibcflags) $(ssh_defines) $(mpi_defines) $(pmi_cppflags) $(fca_extralibcflags)\
-			 @IBV_LIBCFLAGS@ $(ibv_thread_defines)
+			 @IBV_LIBCFLAGS@ $(ibv_thread_defines) @BLCR_CPPFLAGS@
 
 # additional conduit header files to install from external, non-standard directories
 CONDUIT_EXTRAHEADERS = $(fh_extraheaders) $(fca_extraheaders)
