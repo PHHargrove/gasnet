@@ -2244,6 +2244,325 @@ gasnetc_shutdown(void) {
 #endif
 
 /* ------------------------------------------------------------------------------------ */
+/* Checkpoint/restart support code (BLCR) */
+
+#if GASNET_BLCR_ENABLED
+void gasnetc_pre_checkpoint(void) {
+
+  // TODO: not yet draining outstanding OPs
+
+  #if GASNETC_USE_RCV_THREAD
+  /* TODO: could pause/resume instead of start/stop */
+  gasnetc_sndrcv_stop_thread(1);
+  #endif
+
+  gasnetc_connect_fini();
+
+  if (gasnetc_did_firehose_init) {
+    firehose_fini();
+  }
+
+  gasnetc_shutdown();
+}
+
+void gasnetc_post_checkpoint(int is_restart) {
+  gasnetc_hca_t *hca;
+  int rc, i;
+
+  /* Reopen each HCA by the original name */
+  {
+    struct ibv_device   **hca_list;
+    int                 hca_count;
+
+    hca_list = ibv_get_device_list(&hca_count);
+    if ((hca_list == NULL) || (hca_count == 0)) {
+      gasneti_fatalerror("Unable to find any HCAs");
+    }
+    GASNETC_FOR_ALL_HCA(hca) {
+      for (i = 0; i < hca_count; ++i) {
+        const char *hca_name = ibv_get_device_name(hca_list[i]);
+        if (0 == strcmp(hca_name, hca->hca_id)) {
+          hca->handle = ibv_open_device(hca_list[i]);
+          hca->num_qps = 0;
+          rc = ibv_query_device(hca->handle, &hca->hca_cap);
+          GASNETC_IBV_CHECK(rc, "from ibv_query_device()");
+          break;
+        }
+      }
+      if (i == hca_count) {
+        gasneti_fatalerror("Unable to reopen HCA '%s'", hca->hca_id);
+      }
+    }
+    ibv_free_device_list(hca_list);
+  }
+
+  GASNETC_FOR_ALL_HCA(hca) {
+    hca->pd = ibv_alloc_pd(hca->handle);
+    GASNETC_IBV_CHECK_PTR(hca->pd, "from ibv_alloc_pd()");
+  }
+
+#if GASNET_PSHM
+#error Not YET supporting PSHM
+  /* Need to pointer to conduit-specific shared mem for lid table and xrc */
+#endif
+
+  /* Query and exchange new LIDs */
+  if (is_restart) {
+    uint16_t *local_lid, *remote_lid;
+
+    /* Query each port (to obtain the LID) */
+    for (i = 0; i < gasnetc_num_ports; ++i) {
+      gasnetc_port_info_t *this_port = &gasnetc_port_tbl[i];
+      hca = &gasnetc_hca[this_port->hca_index];
+      (void) ibv_query_port(hca->handle, this_port->port_num, &this_port->port);
+    }
+
+    /* Exchange LIDs */
+    local_lid = gasneti_calloc(gasnetc_num_ports, sizeof(uint16_t));
+    remote_lid = gasneti_calloc(gasnetc_num_ports * gasneti_nodes, sizeof(uint16_t));
+    for (i = 0; i < gasnetc_num_ports; ++i) {
+      local_lid[i] = gasnetc_port_tbl[i].port.lid;
+    }
+    gasneti_bootstrapExchange(local_lid, gasnetc_num_ports * sizeof(uint16_t), remote_lid);
+    gasneti_free(local_lid);
+
+    /* transpose remote lids into port_tbl */
+    // TODO: factor this step
+  #if GASNET_PSHM
+    #error NOT implemented
+  #else
+    for (i = 0; i < gasnetc_num_ports; ++i) {
+      gasnet_node_t node;
+      for (node = 0; node < gasneti_nodes; ++node) {
+        gasnetc_port_tbl[i].remote_lids[node] = remote_lid[node * gasnetc_num_ports + i];
+      }
+    }
+  #endif
+    gasneti_free(remote_lid);
+  }
+
+#if GASNETC_IBV_XRC
+#error Not YET supporting PSHM (and thus XRC)
+  /* Skip for now as we are initially not supporting PSHM */
+  if (gasnetc_use_xrc) {
+    rc = gasnetc_xrc_init(&shared_mem);
+    if (i != GASNET_OK) {
+      gasneti_fatalerror("Failed post-checkpoint call to gasnetc_xrc_init");
+    }
+  }
+#endif
+
+  /* allocate/initialize transport resources */
+  rc = gasnetc_sndrcv_init();
+  if (rc != GASNET_OK) {
+    gasneti_fatalerror("Failed post-checkpoint call to gasnetc_sndrcv_init");
+  }
+
+  /* Establish static connections and prepare for dynamic ones */
+  rc = gasnetc_connect_init();
+  if (rc != GASNET_OK) {
+    gasneti_fatalerror("Failed post-checkpoint call to gasnetc_connect_init");
+  }
+
+  /* Now safe to use native collectives again */
+  gasnetc_sys_coll_init();
+
+#if GASNET_DEBUG_VERBOSE
+  gasnetc_bootstrapBarrier_ib();
+  fprintf(stderr, "@%d> AM-based barrier worked!\n", gasneti_mynode);
+#endif
+
+  /* REregister the segment and exchange the new rkeys */
+#if GASNETC_PIN_SEGMENT
+  if (gasnetc_hca[0].seg_regs) {
+    const enum ibv_access_flags flags = (enum ibv_access_flags)
+                  (IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ);
+    uint32_t *my_rkeys = gasneti_calloc(gasnetc_max_regs, sizeof(uint32_t));
+    GASNETC_FOR_ALL_HCA(hca) {
+      for (i=0; i<gasnetc_seg_regs; ++i) {
+        gasnetc_memreg_t *reg = &hca->seg_regs[i];
+        if (0 != gasnetc_pin(hca, (void *)reg->addr, reg->len, flags, reg)) {
+          gasneti_fatalerror("Unexpected error %s (errno=%d) when (re)registering the segment",
+                             strerror(errno), errno);
+        }
+	my_rkeys[i] = reg->handle->rkey;
+	hca->seg_lkeys[i] = reg->handle->lkey;
+      }
+      gasnetc_bootstrapExchange_ib(my_rkeys, gasnetc_max_regs*sizeof(uint32_t), hca->rkeys);
+    }
+    gasneti_free(my_rkeys);
+  }
+#endif
+
+  /* Per-endpoint attach work */
+  for (i = 0; i < gasneti_nodes; i++) {
+    gasnetc_cep_t *cep = GASNETC_NODE2CEP(i);
+    if (cep) {
+      gasnetc_sndrcv_attach_peer(i, cep);
+    }
+  }
+
+#if GASNETC_PIN_SEGMENT &&  GASNET_DEBUG_VERBOSE
+  GASNETI_SAFE(gasnet_barrier(0,0));
+  fprintf(stderr, "@%d> native barrier worked!\n", gasneti_mynode);
+#endif
+
+  /* Re-initialize firehose */
+  if (gasnetc_did_firehose_init) {
+    int reg_count;
+    firehose_region_t *prereg = gasnetc_prereg_list(&reg_count);
+
+    firehose_init(gasnetc_firehose_mem, gasnetc_firehose_reg, gasnetc_fh_maxsize,
+                  prereg, reg_count, gasnetc_firehose_flags, &gasnetc_firehose_info);
+  }
+
+#if GASNET_DEBUG_VERBOSE
+  /* Exercise put/get and firehose via out-of-segment xfers
+   * If !SEGMENT_FAST this is also the first test of the native barrier.
+   */
+  {
+    #define THE_TEST_LEN 16384
+  #if GASNET_SEGMENT_EVERYTHING
+    static char buffer0[THE_TEST_LEN];
+  #endif
+    static char buffer1[THE_TEST_LEN];
+    static char buffer2[THE_TEST_LEN];
+    const size_t nbytes = THE_TEST_LEN;
+    void *loc_addr, *rem_addr;
+    #undef THE_TEST_LEN
+
+    gasnet_node_t peer = gasneti_mynode ^ 1;
+    if (peer == gasneti_nodes) peer = gasneti_mynode;
+
+  #if GASNET_SEGMENT_EVERYTHING
+    {
+      void **exchg_tmp = gasneti_malloc(gasneti_nodes * sizeof(void*));
+      loc_addr = buffer0;
+      gasnetc_bootstrapExchange_ib(&loc_addr, sizeof(void*), exchg_tmp);
+      rem_addr = exchg_tmp[peer];
+      gasneti_free(exchg_tmp);
+      for (i=0; i<nbytes; ++i) buffer0[i] = (char)(i ^ gasneti_mynode);
+    }
+  #else
+    loc_addr = gasneti_seginfo_client[gasneti_mynode].addr;
+    rem_addr = gasneti_seginfo_client[peer].addr;
+  #endif
+
+    memcpy(buffer1, loc_addr, nbytes);
+    gasnet_get(buffer2, peer, rem_addr, nbytes);
+
+    GASNETI_SAFE(gasnet_barrier(0, GASNET_BARRIERFLAG_ANONYMOUS));
+
+    gasnet_put(peer, rem_addr, buffer2, nbytes);
+
+    GASNETI_SAFE(gasnet_barrier(0, GASNET_BARRIERFLAG_UNNAMED));
+
+    gasneti_assert_always(memcmp(buffer1, loc_addr, nbytes) == 0);
+
+    GASNETI_SAFE(gasnet_barrier(5551212, 0));
+
+  #if GASNETC_PIN_SEGMENT
+    fprintf(stderr, "@%d> RDMA-based xfers worked!\n", gasneti_mynode);
+  #else
+    fprintf(stderr, "@%d> RDMA-based barriers and xfers worked!\n", gasneti_mynode);
+  #endif
+  }
+#endif
+
+#if GASNETC_USE_RCV_THREAD
+  /* TODO: could pause/resume instead of start/stop */
+  gasnetc_sndrcv_start_thread();
+#endif
+
+  gasnetc_sys_coll_fini();
+}
+#endif
+
+/* For open(), stat(), O_CREAT, etc.: */
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+/* For BLCR: */
+#include "libcr.h"
+
+#if GASNET_BLCR_ENABLED
+/* PROOF-OF-CONCEPT
+ * checkpoint operation */
+static int
+gasnetc_checkpoint_self(void) {
+    cr_checkpoint_handle_t cr_handle;
+    int fd = -1;
+    int retval = GASNET_OK;
+    int rc;
+
+    {   /* Create the context file */
+        /* TODO: need naming by rank, and placement in a per-job directory */
+        const int flags = O_WRONLY|O_APPEND|O_CREAT|O_EXCL|O_LARGEFILE|O_TRUNC;
+        const int mode = S_IRUSR;
+        char filename[32];
+        snprintf(filename, sizeof(filename), "context.%d", getpid());
+        fd = open(filename, flags, mode); /* BLCR-TODO: error checking */
+        if (fd < 0) {
+            gasneti_fatalerror("Failed to create '%s' errno=%d(%s)\n", filename, errno, strerror(errno));
+        }
+    }
+
+    {   /* Request the checkpoint */
+        cr_checkpoint_args_t cr_args;
+        cr_initialize_checkpoint_args_t(&cr_args);
+        cr_args.cr_scope  = CR_SCOPE_PROC; /* XXX: Should this ever be TREE? */
+        cr_args.cr_target = 0; /* self */
+        cr_args.cr_fd = fd;
+
+        rc = cr_request_checkpoint(&cr_args, &cr_handle);
+        /* TODO: error checking for cr_request_checkpoint() */
+    }
+
+    do { /* This loop is necessary because checkpointing self causes EINTR */
+        rc = cr_wait_checkpoint(&cr_handle, NULL);
+        /* TODO: error checking for cr_wait_checkpoint() */
+    } while ((rc < 0) && (errno == EINTR));
+    rc = cr_reap_checkpoint(&cr_handle);
+
+    {
+        int save_errno = errno;
+        (void)close(fd);
+        errno = save_errno;
+    }
+
+    if (rc >= 0)                return 0; /* Continue */
+    if (errno == CR_ERESTARTED) return 1; /* Restart */
+
+    return -1; /* ERROR */
+}
+#endif
+
+/* PROOF-OF-CONCEPT
+ * Collective checkpoint request */
+int gasnet_all_checkpoint(void) {
+  #if GASNET_BLCR_ENABLED
+    int rc;
+
+    gasneti_bootstrapBarrier();
+    gasnetc_pre_checkpoint();
+
+    rc = gasnetc_checkpoint_self();
+    if (rc < 0) {
+        gasneti_fatalerror("Checkpoint failed rc=%d errno=%d\n", rc, errno);
+    }
+
+    gasnetc_post_checkpoint(rc);
+    gasneti_bootstrapBarrier();
+
+    return GASNET_OK;
+  #else
+    fprintf(stderr, "WARNING: checkpoint requested but not configured\n");
+    return GASNET_ERR_RESOURCE;
+  #endif
+}
+
+/* ------------------------------------------------------------------------------------ */
 /*
   Exit handling code
 */
