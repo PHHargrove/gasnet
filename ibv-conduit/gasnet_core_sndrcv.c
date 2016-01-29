@@ -3416,6 +3416,7 @@ extern int gasnetc_sndrcv_init(void) {
   if_pf (buf == NULL) {
       GASNETI_RETURN_ERRR(RESOURCE, "Unable to allocate pinned memory for AM/bounce buffers");
   }
+  gasnetc_lifo_init(&gasnetc_bbuf_freelist);
   for (i = 0; i < gasnetc_bbuf_limit; ++i) {
     gasnetc_lifo_push(&gasnetc_bbuf_freelist, buf);
     ++buf;
