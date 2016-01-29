@@ -827,7 +827,7 @@ typedef struct {
 
 static uint32_t *conn_remote_ud_qpn = NULL;
 /* NOT gasnetc_lifo_t, since this is always subject to concurrent access */
-static gasneti_lifo_head_t conn_snd_freelist = GASNETI_LIFO_INITIALIZER;
+static gasneti_lifo_head_t conn_snd_freelist;
 
 #if GASNETC_USE_CONN_THREAD
 /* NOT gasnetc_sema_t, since this is always subject to concurrent access */
@@ -1269,8 +1269,10 @@ gasnetc_qp_setup_ud(gasnetc_port_info_t *port, int fully_connected)
   }
 
     /* Exchange the qpns */
-    conn_remote_ud_qpn = gasneti_malloc(gasneti_nodes * sizeof(uint32_t));
-    gasneti_leak(conn_remote_ud_qpn);
+    if (NULL == conn_remote_ud_qpn) {
+      conn_remote_ud_qpn = gasneti_malloc(gasneti_nodes * sizeof(uint32_t));
+      gasneti_leak(conn_remote_ud_qpn);
+    }
     gasneti_bootstrapExchange(&gasnetc_conn_qpn, sizeof(gasnetc_conn_qpn), conn_remote_ud_qpn);
 
     /* Generate a per-job QKey from the qpns.
@@ -1307,11 +1309,13 @@ gasnetc_qp_setup_ud(gasnetc_port_info_t *port, int fully_connected)
     GASNETC_IBV_CHECK(rc, "from ibv_modify_qp(UD INIT)");
 
     /* Post RCVs */
-    { gasnetc_ud_rcv_desc_t *desc;
+    { static gasnetc_ud_rcv_desc_t *desc;
       int i;
 
-      desc = gasneti_calloc(max_recv_wr, sizeof(gasnetc_ud_rcv_desc_t));
-      gasneti_leak(desc);
+      if (NULL == desc) {
+        desc = gasneti_calloc(max_recv_wr, sizeof(gasnetc_ud_rcv_desc_t));
+        gasneti_leak(desc);
+      }
       for (i = 0; i < max_recv_wr; ++i, ++desc, addr += recv_sz) {
         desc->wr.num_sge = 1;
         desc->wr.sg_list = &desc->sg;
@@ -1322,6 +1326,7 @@ gasnetc_qp_setup_ud(gasnetc_port_info_t *port, int fully_connected)
         desc->sg.lkey    = conn_ud_reg.handle->lkey;
         gasnetc_rcv_post_ud(desc);
       }
+      desc -= max_recv_wr;
     }
 
     /* INIT -> RTR */
@@ -1338,11 +1343,14 @@ gasnetc_qp_setup_ud(gasnetc_port_info_t *port, int fully_connected)
     GASNETC_IBV_CHECK(rc, "from ibv_modify_qp(UD RTS)");
 
     /* Create SNDs */
-    { gasnetc_ud_snd_desc_t *desc;
+    gasneti_lifo_init(&conn_snd_freelist);
+    { static gasnetc_ud_snd_desc_t *desc;
       int i;
 
-      desc = gasneti_calloc(max_send_wr, sizeof(gasnetc_ud_snd_desc_t));
-      gasneti_leak(desc);
+      if (NULL == desc) {
+        desc = gasneti_calloc(max_send_wr, sizeof(gasnetc_ud_snd_desc_t));
+        gasneti_leak(desc);
+      }
       for (i = 0; i < max_send_wr; ++i, ++desc, addr += send_sz) {
         desc->wr.num_sge = 1;
         desc->wr.sg_list = &desc->sg;
@@ -1358,6 +1366,7 @@ gasnetc_qp_setup_ud(gasnetc_port_info_t *port, int fully_connected)
         desc->sg.lkey   = conn_ud_reg.handle->lkey;
         gasneti_lifo_push(&conn_snd_freelist, desc);
       }
+      desc -= max_send_wr;
     }
 
     /* "warmup" the timers to ensure we don't pay the potentially high cost
