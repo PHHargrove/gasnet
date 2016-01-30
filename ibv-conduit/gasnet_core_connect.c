@@ -827,7 +827,7 @@ typedef struct {
 
 static uint32_t *conn_remote_ud_qpn = NULL;
 /* NOT gasnetc_lifo_t, since this is always subject to concurrent access */
-static gasneti_lifo_head_t conn_snd_freelist;
+static gasneti_lifo_head_t conn_snd_freelist = GASNETI_LIFO_INITIALIZER;
 
 #if GASNETC_USE_CONN_THREAD
 /* NOT gasnetc_sema_t, since this is always subject to concurrent access */
@@ -1343,7 +1343,6 @@ gasnetc_qp_setup_ud(gasnetc_port_info_t *port, int fully_connected)
     GASNETC_IBV_CHECK(rc, "from ibv_modify_qp(UD RTS)");
 
     /* Create SNDs */
-    gasneti_lifo_init(&conn_snd_freelist);
     { static gasnetc_ud_snd_desc_t *desc;
       int i;
 
@@ -2633,6 +2632,8 @@ gasnetc_connect_shutdown(void) {
       if (0 == ibv_destroy_qp(conn_ud_qp)) {
         conn_ud_qp = NULL;
         gasnetc_unpin(conn_ud_hca, &conn_ud_reg);
+        gasnetc_unmap(&conn_ud_reg);
+        gasneti_lifo_init(&conn_snd_freelist);
       } else {
         failed = 1;
       }
