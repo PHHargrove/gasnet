@@ -213,8 +213,10 @@ static void gasnetc_sys_coll_init(void)
   for (i = 1; i < size; i *= 2) {
     ++gasnetc_dissem_peers;
   }
-  gasnetc_dissem_peer = gasneti_malloc(gasnetc_dissem_peers * sizeof(gasnet_node_t));
-  gasneti_leak(gasnetc_dissem_peer);
+  if (NULL == gasnetc_dissem_peer) {
+    gasnetc_dissem_peer = gasneti_malloc(gasnetc_dissem_peers * sizeof(gasnet_node_t));
+    gasneti_leak(gasnetc_dissem_peer);
+  }
   for (i = 0; i < gasnetc_dissem_peers; ++i) {
     const gasnet_node_t distance = 1 << i;
     const gasnet_node_t peer = (distance <= rank) ? (rank - distance) : (rank + (size - distance));

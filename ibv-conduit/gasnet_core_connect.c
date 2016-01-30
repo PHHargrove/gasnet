@@ -2165,10 +2165,13 @@ gasnetc_connect_static(void)
 
   /* Allocate the dense CEP table and populate the node2cep table. */
   {
-    gasnetc_cep_t *cep_table = (gasnetc_cep_t *)
-      gasnett_malloc_aligned(GASNETI_CACHE_LINE_BYTES,
-                             static_nodes * gasnetc_alloc_qps * sizeof(gasnetc_cep_t));
-    gasneti_leak_aligned(cep_table);
+    static gasnetc_cep_t *cep_table;
+    if (NULL == cep_table) {
+      cep_table = (gasnetc_cep_t *)
+        gasnett_malloc_aligned(GASNETI_CACHE_LINE_BYTES,
+                               static_nodes * gasnetc_alloc_qps * sizeof(gasnetc_cep_t));
+      gasneti_leak_aligned(cep_table);
+    }
     for (node = 0, cep = cep_table; node < gasneti_nodes; ++node) { /* NOT randomized */
       if (!GASNETC_IS_REMOTE_NODE(node)) continue;
       gasnetc_node2cep[node] = cep;
@@ -2285,10 +2288,12 @@ gasnetc_connect_init(void)
 
   /* Allocate node->cep lookup table */
   { size_t size = gasneti_nodes*sizeof(gasnetc_cep_t *);
-    gasnetc_node2cep = (gasnetc_cep_t **)
-      gasnett_malloc_aligned(GASNETI_CACHE_LINE_BYTES, size);
+    if (NULL == gasnetc_node2cep) {
+      gasnetc_node2cep = (gasnetc_cep_t **)
+        gasnett_malloc_aligned(GASNETI_CACHE_LINE_BYTES, size);
+      gasneti_leak_aligned(gasnetc_node2cep);
+    }
     memset(gasnetc_node2cep, 0, size);
-    gasneti_leak_aligned(gasnetc_node2cep);
   }
 
   if_pf (!gasnetc_remote_nodes) {
