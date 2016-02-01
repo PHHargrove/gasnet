@@ -142,6 +142,13 @@
  #endif
 #endif
 
+#if GASNET_BLCR
+  /* BLCR-TODO: fix NARY to support restart */
+  #undef GASNETI_SSH_TOPO_NARY
+  #undef GASNETI_SSH_TOPO_FLAT
+  #define GASNETI_SSH_TOPO_FLAT 1
+#endif
+
 #if !defined(GASNETI_SSH_TOPO_FLAT) && !defined(GASNETI_SSH_TOPO_NARY)
   #error "ssh-spawner topology setting is missing"
 #elif defined(GASNETI_SSH_TOPO_FLAT) && defined(GASNETI_SSH_TOPO_NARY)
@@ -226,6 +233,14 @@ static const int c_zero = 0;
   static gasnet_node_t nnodes = 0;	/* nodes, as distinct from procs */
   static int nnodes_set = 0;		/* non-zero if nnodes set explicitly */
   static pid_t *all_pids;
+
+#if GASNET_BLCR
+/* BLCR-based checkpoint/restart */
+  static int is_restart = 0;
+  static const char *restart_dir = NULL;
+#else
+  #define is_restart 0
+#endif
 
 static void gather_pids(void);
 
@@ -330,6 +345,11 @@ static void kill_one(const char *rem_host, pid_t rem_pid) {
   gasneti_assert(rem_host != NULL);
 
   if (rem_pid == 0) return;
+
+#if GASNET_BLCR
+  /* Avoid issues with BLCR restoring a pty */
+  is_local &= !isatty(STDIN_FILENO);
+#endif
 
   pid = fork();
   if (pid < 0) {
@@ -1283,6 +1303,9 @@ static void post_spawn(int count, int argc, char * const *argv) {
     send_env(s);
     send_ssh_argv(s);
     do_write_string(s, wrapper);
+#if GASNET_BLCR
+    do_write_string(s, restart_dir);
+#endif
     send_argv(s, argc, argv);
 #ifdef TCP_CORK
     (void)setsockopt(s, IPPROTO_TCP, TCP_CORK, (char *) &c_zero, sizeof(c_zero));
@@ -1367,14 +1390,23 @@ static void do_connect(gasnet_node_t child_id, const char *parent_name, int pare
   recv_ssh_argv(parent);
   wrapper = do_read_string(parent);
   gasneti_leak((/*non-const*/ void *)wrapper);
+#if GASNET_BLCR
+  restart_dir = do_read_string(parent);
+  gasneti_leak((/*non-const*/ void *)restart_dir);
+#endif
   recv_argv(parent, argc_p, argv_p);
-  BOOTSTRAP_VERBOSE(("[%d] connected\n", myproc));
+  BOOTSTRAP_VERBOSE(("[%d] connected via fd=%d\n", myproc, parent));
 }
 
 static void spawn_one(gasnet_node_t child_id, char *myhost, const char *cmdline) {
   const char *host = child[child_id].nodelist ? child[child_id].nodelist[0] : nodelist[0];
   pid_t pid;
   int is_local = (GASNETI_BOOTSTRAP_LOCAL_SPAWN && (!host || !strcmp(host, myhost)));
+
+#if GASNET_BLCR
+  /* Avoid issues with BLCR restoring a pty */
+  is_local &= !isatty(STDIN_FILENO);
+#endif
 
   child[child_id].pid = pid = fork();
 
@@ -1626,9 +1658,9 @@ static void do_master(const char *spawn_args, int *argc_p, char ***argv_p) {
 
     gasneti_assert(p && *p);
 
-    /* Required non-negative fd number */
+    /* Required fd number (non-negative unless restarting) */
     argv_fd = strtol(p,&endptr,0);
-    if ((endptr == p) || (*endptr != args_delim) || (argv_fd < 0)) {
+    if ((endptr == p) || (*endptr != args_delim) || (argv_fd < 0 && !is_restart)) {
       die(1, "Failed to parse " ENV_PREFIX "SPAWN_ARGS");
     }
     p = endptr + 1;
@@ -1651,10 +1683,22 @@ static void do_master(const char *spawn_args, int *argc_p, char ***argv_p) {
     }
     p = endptr + 1;
 
-    /* Wrapper is whatever remains */
-    wrapper = p;
+    /* Wrapper (or restart_dir) is whatever remains */
+#if GASNET_BLCR
+    if (is_restart) {
+      restart_dir = p;
+    } else
+#endif
+    {
+      wrapper = p;
+    }
 
     /* Load the command line from argv_fd if necessary */
+#if GASNET_BLCR
+    if (is_restart) {
+      /* No argv is provided (or necessary) */
+    } else
+#endif
     if (NULL == argv) {
       size_t len;
       char *q, *cmdline;
@@ -1978,6 +2022,19 @@ static void do_slave(const char *spawn_args, int *argc_p, char ***argv_p, gasnet
 
   gather_pids();
 
+#if GASNET_BLCR
+  /* TODO: should work to place this earlier if possible? */
+  if (restart_dir) {
+    char *filename = sappendf(NULL, "%s/context.%d", restart_dir, myproc);
+    char *new_path = sappendf(NULL, "%s:" GASNETI_BLCR_BINDIR, getenv("PATH"));
+    gasneti_setenv("PATH", new_path);
+    (void)fcntl_clrfd(parent, FD_CLOEXEC);
+    BOOTSTRAP_VERBOSE(("[%d] exec \"cr_restart %s\"\n", myproc, filename));
+    execlp("cr_restart", "cr_restart", filename, (char*)NULL);
+    gasneti_fatalerror("Failed execlp() restart command");
+  }
+#endif
+
   *nodes_p = nproc;
   *mynode_p = myproc;
   gasneti_conduit_getenv = &do_getenv;
@@ -2191,6 +2248,11 @@ int gasneti_bootstrapInit_ssh(int *argc_p, char ***argv_p, gasnet_node_t *nodes_
       case 'W':
         do_slave(spawn_args, argc_p, argv_p, nodes_p, mynode_p);
         break;
+    #if GASNET_BLCR
+      case 'R':
+        is_restart = 1;
+        /* Fall through... */
+    #endif
       case 'M':
         do_master(spawn_args, argc_p, argv_p); /* Does not return */
         break;

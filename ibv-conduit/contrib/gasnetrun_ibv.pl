@@ -14,6 +14,7 @@ use Cwd qw(cwd);
 my @mpi_args = ();
 my $numproc = undef;
 my $numnode = undef;
+my $restart = undef;
 my $verbose = 0;
 my $keep = 0;
 my $dryrun = 0;
@@ -40,6 +41,15 @@ sub usage
     print "      -k                    keep any temporary files created (implies -v)\n";
     print "      -spawner=(ssh|mpi)    force use of MPI or SSH for spawning\n";
     print "      --                    ends option parsing\n";
+    if ($ENV{'GASNET_BLCR_ENABLED'}) {
+        print "\n";
+        print "usage: gasnetrun [options] [--] -restart dir\n";
+        print "    options:\n";
+        print "      -v                    be verbose about what is happening\n";
+        print "      -t                    test only, don't execute anything (implies -v)\n";
+        print "      -spawner=(ssh|mpi)    force use of MPI or SSH for spawning\n";
+        print "      --                    ends option parsing\n";
+    }
     exit 1;
 }
 
@@ -102,6 +112,13 @@ sub fullpath($)
 	} elsif ($_ =~ /^-spawner=(.+)$/) {
 	    $spawner = $1;
 	    pop @mpi_args;	# not known to mpi spawner
+	} elsif ($_ eq '-restart') {
+	    shift;
+	    $restart = $ARGV[0];
+	    pop @mpi_args;	# not known to mpi spawner
+	    usage "-restart option given without an argument\n" unless @ARGV >= 1;
+	    usage "Excess arguments at end of restart command\n" unless @ARGV == 1;
+	    last;
 	} elsif ($_ eq '-v') {
 	    $verbose = 1;
 	} elsif ($_ eq '-t') {
@@ -119,19 +136,39 @@ sub fullpath($)
 	shift;
     }
 
+# Validate spawner
+    if (!defined($spawner)) {
+        usage "Option -spawner was not given and no default is set\n"
+    }
     $spawner = uc($spawner);
     die "gasnetrun: $conduit-conduit was configured for PMI-based launch\n"
         if ($spawner eq 'PMI');
+    if (($spawner eq 'MPI') && !$ENV{GASNET_SPAWN_HAVE_MPI}) {
+        usage "Spawner is set to MPI, but MPI support was not compiled in\n"
+    }
+
+# Restart-specific options processing
+    if (defined($restart)) {
+        usage "Option -n cannot be specified with -restart\n" if defined($numproc);
+        usage "Option -E cannot be specified with -restart\n" if defined($envlist);
+        usage "Spawner $spawner does not implement -restart\n"
+            unless grep(/$spawner/, qw/SSH/);
+        die "gasnetrun: restart directory '$restart' does not exist\n"
+            unless -d $restart;
+	$restart = cwd() . "/$restart"
+            unless ($restart =~ m|^/|);
+        die "gasnetrun: '$restart' is not a restart directory\n"
+            unless open (FILE, "$restart/metadata");
+        while (<FILE>) {
+            if (/argv0:\s*(\S+)/) { $ARGV[0] = $1; next; }
+            if (/nproc:\s*(\S+)/) { $numproc = $1; next; }
+        }
+        close FILE;
+    }
 
 # Validate flags
     if (!defined($numproc)) {
         usage "Required option -n was not given\n";
-    }
-    if (!defined($spawner)) {
-        usage "Option -spawner was not given and no default is set\n"
-    }
-    if (($spawner eq 'MPI') && !$ENV{GASNET_SPAWN_HAVE_MPI}) {
-        usage "Spawner is set to MPI, but MPI support was not compiled in\n"
     }
 
 # Implement -E for ssh, if required, as a wrapper (processed below)
@@ -197,9 +234,11 @@ sub fullpath($)
 	my $wrapper = ($exeindex > 1) ? join ' ',
 					     map { s/'/'\\''/g; "'".$_."'"; }
 						 splice @ARGV, 0, $exeindex-1
-				      : undef;
+				      : $restart;
         my $fh;
-        { # Create an unlinked temp file containing the entire command line
+        my $fileno = -1;
+        unless (defined($restart)) {
+          # Create an unlinked temp file containing the entire command line
           my $filename;
           do { $filename = tmpnam(); }
             until $fh = IO::File->new($filename, O_RDWR|O_CREAT|O_EXCL, 0600);
@@ -212,9 +251,10 @@ sub fullpath($)
             syswrite($fh, chr(0));
           }
           sysseek($fh, 0, SEEK_SET);
+          $fileno = fileno($fh);
         }
-        $ENV{'GASNET_SPAWN_ARGS'} = join(',', ($verbose ? 'Mv' : 'M'),
-                                         fileno($fh), $numproc, $numnode, $wrapper);
+        $ENV{'GASNET_SPAWN_ARGS'} = join(',', (($restart?'R':'M').($verbose?'v':'')),
+                                         $fileno, $numproc, $numnode, $wrapper);
         print("gasnetrun: set GASNET_SPAWN_ARGS=|$ENV{GASNET_SPAWN_ARGS}|\n") if ($verbose);
         print("gasnetrun: running: ", join(' ', @ARGV), "\n") if ($verbose);
         unless ($dryrun) { exec(@ARGV) or die "failed to exec $exebase\n"; }
