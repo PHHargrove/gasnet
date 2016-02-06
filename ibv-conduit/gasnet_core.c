@@ -180,6 +180,10 @@ void (*gasneti_bootstrapAlltoall_p)(void *src, size_t len, void *dest) = NULL;
 void (*gasneti_bootstrapBroadcast_p)(void *src, size_t len, void *dest, int rootnode) = NULL;
 void (*gasneti_bootstrapSNodeCast_p)(void *src, size_t len, void *dest, int rootnode) = NULL;
 void (*gasneti_bootstrapCleanup_p)(void) = NULL;
+#if GASNET_BLCR
+static int (*gasneti_bootstrapPreCheckpoint_p)(int fd) = NULL;
+static int (*gasneti_bootstrapPostCheckpoint_p)(int fd, int is_restart) = NULL;
+#endif
 
 static int gasneti_bootstrap_native_coll = 0;
 static gasnet_node_t gasnetc_dissem_peers = 0;
@@ -1093,6 +1097,10 @@ static int  gasneti_bootstrapInit(int *argc_p, char ***argv_p,
     gasneti_bootstrapBroadcast_p= &gasneti_bootstrapBroadcast_ssh;
     gasneti_bootstrapSNodeCast_p= &gasneti_bootstrapSNodeBroadcast_ssh;
     gasneti_bootstrapCleanup_p  = &gasneti_bootstrapCleanup_ssh;
+  #if GASNET_BLCR
+    gasneti_bootstrapPreCheckpoint_p   = &gasneti_bootstrapPreCheckpoint_ssh;
+    gasneti_bootstrapPostCheckpoint_p  = &gasneti_bootstrapPostCheckpoint_ssh;
+  #endif
   }
 #endif
 
@@ -1110,6 +1118,10 @@ static int  gasneti_bootstrapInit(int *argc_p, char ***argv_p,
     gasneti_bootstrapBroadcast_p= &gasneti_bootstrapBroadcast_mpi;
     gasneti_bootstrapSNodeCast_p= &gasneti_bootstrapSNodeBroadcast_mpi;
     gasneti_bootstrapCleanup_p  = &gasneti_bootstrapCleanup_mpi;
+  #if GASNET_BLCR && 0 /* BLCR-TODO: support mpi spawner */
+    gasneti_bootstrapPreCheckpoint_p   = &gasneti_bootstrapPreCheckpoint_mpi;
+    gasneti_bootstrapPostCheckpoint_p  = &gasneti_bootstrapPostCheckpoint_mpi;
+  #endif
   }
 #endif
 
@@ -1127,6 +1139,10 @@ static int  gasneti_bootstrapInit(int *argc_p, char ***argv_p,
     gasneti_bootstrapBroadcast_p= &gasneti_bootstrapBroadcast_pmi;
     gasneti_bootstrapSNodeCast_p= &gasneti_bootstrapSNodeBroadcast_pmi;
     gasneti_bootstrapCleanup_p  = &gasneti_bootstrapCleanup_pmi;
+  #if GASNET_BLCR && 0 /* BLCR-TODO: support pmi spawner */
+    gasneti_bootstrapPreCheckpoint_p   = &gasneti_bootstrapPreCheckpoint_pmi;
+    gasneti_bootstrapPostCheckpoint_p  = &gasneti_bootstrapPostCheckpoint_pmi;
+  #endif
   }
 #endif
 
@@ -2499,23 +2515,38 @@ void gasnetc_post_checkpoint(int is_restart) {
  * Collective checkpoint request */
 int gasnet_all_checkpoint(const char *dir_arg) {
   #if GASNET_BLCR
-    const char *dir;
     int rc;
-
-    dir = gasneti_checkpoint_dir(dir_arg);
 
     gasneti_bootstrapBarrier();
     gasnetc_pre_checkpoint();
 
-    rc = gasneti_checkpoint_self(dir);
-    if (rc < 0) {
+    {
+      const char *dir = gasneti_checkpoint_dir(dir_arg);
+      int fd = fd = gasneti_checkpoint_create(dir);
+      /* BLCR-TODO: error handling (curently _create() dies on error) */
+
+      if (NULL != gasneti_bootstrapPreCheckpoint_p) {
+        (void) (*gasneti_bootstrapPreCheckpoint_p)(fd);
+        /* BLCR-TODO: error checking */
+      }
+
+      rc = gasneti_checkpoint_write(fd);
+      if (rc < 0) {
         gasneti_fatalerror("Checkpoint failed rc=%d errno=%d\n", rc, errno);
+      }
+      /* BLCR-TODO: better error handling/recovery */
+
+      if (NULL != gasneti_bootstrapPostCheckpoint_p) {
+        (void) (*gasneti_bootstrapPostCheckpoint_p)(fd, rc);
+        /* BLCR-TODO: error checking */
+      }
+
+      if (!rc) (void)close(fd); /* Continue case */
+      if (!dir_arg) gasneti_free((void*)dir);
     }
 
     gasnetc_post_checkpoint(rc);
     gasneti_bootstrapBarrier();
-
-    if (!dir_arg) gasneti_free((void*)dir);
 
     return GASNET_OK;
   #else

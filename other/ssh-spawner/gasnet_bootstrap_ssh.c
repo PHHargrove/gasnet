@@ -2020,10 +2020,7 @@ static void do_slave(const char *spawn_args, int *argc_p, char ***argv_p, gasnet
   }
 #endif
 
-  gather_pids();
-
 #if GASNET_BLCR
-  /* TODO: should work to place this earlier if possible? */
   if (restart_dir) {
     char *filename = sappendf(NULL, "%s/context.%d", restart_dir, myproc);
     char *new_path = sappendf(NULL, "%s:" GASNETI_BLCR_BINDIR, getenv("PATH"));
@@ -2032,8 +2029,11 @@ static void do_slave(const char *spawn_args, int *argc_p, char ***argv_p, gasnet
     BOOTSTRAP_VERBOSE(("[%d] exec \"cr_restart %s\"\n", myproc, filename));
     execlp("cr_restart", "cr_restart", filename, (char*)NULL);
     gasneti_fatalerror("Failed execlp() restart command");
+    /* BLCR-TODO: use cr_restart_request() rather than exec'ing cr_restart */
   }
 #endif
+
+  gather_pids();
 
   *nodes_p = nproc;
   *mynode_p = myproc;
@@ -2764,3 +2764,24 @@ void gasneti_bootstrapSNodeBroadcast_ssh(void *src, size_t len, void *dest, int 
 void gasneti_bootstrapCleanup_ssh(void) {
   /* TODO: anything we can free at end of bootstrap collectives? */
 }
+
+/*----------------------------------------------------------------------------------------------*/
+#if GASNET_BLCR
+
+int gasneti_bootstrapPreCheckpoint_ssh(int fd) {
+  /* BLCR-TODO: support for NARY may require something here. */
+  return GASNET_OK;
+}
+
+int gasneti_bootstrapPostCheckpoint_ssh(int fd, int is_restart) {
+  /* BLCR-TODO: support for NARY may require more here. */
+
+  if (is_restart) {
+    (void)fcntl_setfd(parent, FD_CLOEXEC);
+    gather_pids();
+  }
+
+  return GASNET_OK;
+}
+
+#endif
