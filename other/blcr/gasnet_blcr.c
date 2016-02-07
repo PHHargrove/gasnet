@@ -199,7 +199,8 @@ extern int gasneti_checkpoint_write(int fd) {
   {   /* Request the checkpoint */
     cr_checkpoint_args_t cr_args;
     cr_initialize_checkpoint_args_t(&cr_args);
-    cr_args.cr_scope  = CR_SCOPE_TREE;
+    cr_args.cr_scope  = CR_SCOPE_PROC;
+    cr_args.cr_flags  = CR_CHKPT_ASYNC_ERR; /* defers reporting of most errors to "reap" */
     cr_args.cr_target = 0; /* self */
     cr_args.cr_fd = fd;
 
