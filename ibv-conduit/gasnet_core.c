@@ -2517,7 +2517,7 @@ int gasnet_all_checkpoint(const char *dir_arg) {
   #if GASNET_BLCR
     int rc;
 
-    gasnetc_bootstrapBarrier_ib(); /* AM-based barrier ensures AM recv queue drained */
+    gasneti_bootstrapBarrier();
     gasnetc_pre_checkpoint();
 
     {
