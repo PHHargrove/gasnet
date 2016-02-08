@@ -3440,7 +3440,6 @@ extern int gasnetc_sndrcv_init(void) {
 }
 
 extern void gasnetc_sndrcv_init_peer(gasnet_node_t node, gasnetc_cep_t *cep) {
-  static int first = 1;
   int i, j;
 
   if (!gasnetc_non_ib(node)) {
@@ -3463,17 +3462,15 @@ extern void gasnetc_sndrcv_init_peer(gasnet_node_t node, gasnetc_cep_t *cep) {
       gasneti_assert(hca->num_qps <= hca->max_qps);
 
       if (gasnetc_use_srq) {
-        /* Prepost to SRQ for exactly one peer */
-        if (first) {
-          if (i < gasnetc_num_qps) {
-            for (j = 0; j < gasnetc_am_repl_per_qp; ++j) {
-              gasnetc_rcv_post(cep, gasnetc_lifo_pop(cep->rbuf_freelist));
-            }
-          } else {
-            for (j = 0; j < gasnetc_am_rqst_per_qp; ++j) {
-              gasnetc_rcv_post(cep, gasnetc_lifo_pop(cep->rbuf_freelist));
-            }
+        /* Prepost to SRQ for exactly one peer (after which the lifo is empty) */
+        gasnetc_rbuf_t *rbuf = gasnetc_lifo_pop(cep->rbuf_freelist);
+        if (rbuf) {
+          int count = (i < gasnetc_num_qps) ? gasnetc_am_repl_per_qp : gasnetc_am_rqst_per_qp;
+          for (j = 1; j < count; ++j) {
+            gasnetc_rcv_post(cep, rbuf);
+            rbuf = gasnetc_lifo_pop(cep->rbuf_freelist);
           }
+          gasnetc_rcv_post(cep, rbuf);
         }
       } else
       for (j = 0; j < gasnetc_am_oust_pp; ++j) {
@@ -3489,7 +3486,6 @@ extern void gasnetc_sndrcv_init_peer(gasnet_node_t node, gasnetc_cep_t *cep) {
       gasnetc_atomic_set(&cep->am_flow.ack, 0, 0);
       cep->snd_cq_sema_p = &gasnetc_cq_semas[GASNETC_HCA_IDX(cep)];
     }
-    first = 0;
   } else {
     /* Should never use these for loopback or same supernode */
     /* XXX: is this now unreachable with new connect code? */
