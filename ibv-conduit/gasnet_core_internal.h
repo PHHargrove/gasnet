@@ -113,6 +113,7 @@ extern gasneti_atomic_t gasnetc_exit_running;
 #define _hidx_gasnetc_exit_reph               (GASNETC_HANDLER_BASE+6)
 #define _hidx_gasnetc_sys_barrier_reqh        (GASNETC_HANDLER_BASE+7)
 #define _hidx_gasnetc_sys_exchange_reqh       (GASNETC_HANDLER_BASE+8)
+#define _hidx_gasnetc_sys_close_reqh          (GASNETC_HANDLER_BASE+9)
 /* add new core API handlers here and to the bottom of gasnet_core.c */
 
 #ifndef GASNETE_HANDLER_BASE
@@ -643,6 +644,7 @@ extern int gasnetc_create_cq(struct ibv_context *, int,
                              gasnetc_progress_thread_t *);
 extern int gasnetc_sndrcv_limits(void);
 extern int gasnetc_sndrcv_init(void);
+extern void gasnetc_sys_close_reqh(gasnet_token_t);
 extern void gasnetc_sndrcv_quiesce(void);
 extern int gasnetc_sndrcv_shutdown(void);
 extern void gasnetc_sndrcv_init_peer(gasnet_node_t node, gasnetc_cep_t *cep);

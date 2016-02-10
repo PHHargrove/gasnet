@@ -3052,6 +3052,9 @@ extern int gasnetc_sndrcv_limits(void) {
   gasnetc_am_oust_limit = gasnetc_num_qps * gasnetc_am_repl_per_qp;
   GASNETI_TRACE_PRINTF(I, ("Final/effective GASNET_AM_CREDITS_TOTAL = %d", gasnetc_am_oust_limit));
 
+#if GASNET_BLCR /* BLCR-TODO: restore support for credit coallescing */
+  gasnetc_am_credits_slack = 0;
+#else
   if (gasnetc_remote_nodes > 0) {
     gasnetc_am_credits_slack = MIN(gasnetc_am_credits_slack, gasnetc_am_oust_pp - 1);
     GASNETC_FOR_ALL_HCA(hca) {
@@ -3062,6 +3065,7 @@ extern int gasnetc_sndrcv_limits(void) {
       }
     }
   }
+#endif
   gasnetc_am_credits_slack = MIN(gasnetc_am_credits_slack, 256);
   GASNETI_TRACE_PRINTF(I, ("Final/effective GASNET_AM_CREDITS_SLACK = %d", gasnetc_am_credits_slack));
 
@@ -3540,10 +3544,112 @@ gasnetc_unpin_unmap(gasnetc_hca_t *hca, gasnetc_memreg_t *reg) {
   }
 }
 
+static int gasnetc_close_recvd[16]; /* Note 16-bit gasnet_node_t */
+
+void gasnetc_sys_close_reqh(gasnet_token_t token) {
+  gasnetc_rbuf_t *rbuf = (gasnetc_rbuf_t *)token;
+  gasnet_node_t peer = GASNETC_MSG_SRCIDX(rbuf->rbuf_flags);
+  int distance = (peer > gasneti_mynode) ? peer - gasneti_mynode
+                                         : peer + (gasneti_nodes - gasneti_mynode);
+  int shift = 0;
+
+  gasneti_assert(GASNETI_POWEROFTWO(distance));
+  while ((1<<shift) != distance) ++shift;
+
+  gasneti_assert(!gasnetc_close_recvd[shift]);
+  gasnetc_close_recvd[shift] = 1;
+
+  gasneti_assert(rbuf->rbuf_needReply);
+  rbuf->rbuf_needReply = 0; /* we are terminating flow control */
+}
+
+/* Sends a AM Short with no args WITHOUT obtaining an AM credit.
+ * The remote handler is responsible for suppressing the return of the credit.
+ */
+static void
+gasnetc_send_am_close(gasnet_node_t dest) {
+  const int handler = gasneti_handleridx(gasnetc_sys_close_reqh);
+  GASNETC_DECL_SR_DESC(sr_desc, 1);
+  gasnetc_sreq_t *sreq;
+
+  /* Buffer management */
+  const size_t min_len = GASNETC_ALLOW_0BYTE_MSG ? 0 : 4;
+  const size_t msg_len = MAX(GASNETC_MSG_SHORT_ARGSEND(0), min_len);
+  const int is_inline = (msg_len <= gasnetc_inline_limit);
+  gasnetc_shortmsg_t tmp_buf;
+  gasnetc_buffer_t *buf = is_inline ? (gasnetc_buffer_t*)(&tmp_buf) : gasnetc_get_bbuf(1);
+
+  /* Get cep and epid for the first AM Request channel */
+  const int qp_offset = gasnetc_use_srq ? gasnetc_num_qps : 0;
+  gasnetc_cep_t *cep = gasnetc_get_cep(dest) + qp_offset;
+  gasnetc_epid_t epid = gasnetc_epid(dest, qp_offset);
+
+  sr_desc->imm_data   = GASNETC_MSG_GENFLAGS(1, gasnetc_Short, 0, handler, gasneti_mynode);
+  sr_desc->opcode     = IBV_WR_SEND_WITH_IMM;
+  sr_desc->num_sge    = 1;
+  sr_desc->sg_list[0].addr   = (uintptr_t)buf;
+  sr_desc->sg_list[0].length = msg_len;
+  sr_desc->sg_list[0].lkey   = GASNETC_SND_LKEY(cep);
+
+  sreq = gasnetc_get_sreq(GASNETC_OP_AM GASNETE_THREAD_PASS);
+  sreq->completed = NULL;
+  sreq->am_buff = is_inline ? NULL : buf;
+
+  /* XXX: is this necessary? */
+  #if GASNETI_STATS_OR_TRACE
+    buf->stamp = GASNETI_TICKS_NOW_IFENABLED(C);
+  #endif
+
+  (void)gasnetc_bind_cep_inner(epid, sreq, IBV_WR_SEND_WITH_IMM, msg_len, 0);
+  gasnetc_snd_post_common(sreq, sr_desc, is_inline);
+}
+
 extern void
 gasnetc_sndrcv_quiesce(void) {
   gasnetc_hca_t *hca;
 
+#if GASNET_DEBUG
+  { /* Artificial traffic for testing */
+    int peer = 1^gasneti_mynode;
+    if (peer < gasneti_nodes)
+      gasnetc_RequestSysShort(peer, NULL, 0, 0);
+  }
+#endif
+
+  /* drain in-flight AMs by allocating all of the AM credits */
+  {
+    gasnet_node_t node;
+    for (node = 0; node < gasneti_nodes; ++node) {
+      gasnetc_cep_t *cep = GASNETC_NODE2CEP(node);
+      int qpi_offset = gasnetc_use_srq ? gasnetc_num_qps : 0;
+      int qpi;
+      if (gasnetc_non_ib(node) || !cep) continue;
+      for (qpi = qpi_offset, cep += qpi_offset; qpi < gasnetc_alloc_qps; ++qpi, ++cep) {
+        int remain = gasnetc_am_oust_pp;
+        gasnetc_sema_t *sema = &cep->am_rem;
+        while (0 != (remain -= gasnetc_sema_trydown_partial(sema, remain))) {
+          GASNETI_WAITHOOK();
+          gasnetc_poll_both();
+        }
+      }
+    }
+  }
+
+  { /* Dissemination barrier via special AMs which bypass credits */
+    unsigned int shift, distance;
+    for (shift = 0, distance = 1; distance < gasneti_nodes; ++shift, distance *= 2) {
+      gasnet_node_t peer = (distance <= gasneti_mynode) ? gasneti_mynode - distance
+                                                        : gasneti_mynode + (gasneti_nodes - distance);
+      gasnetc_send_am_close(peer);
+      while (! gasnetc_close_recvd[shift]) {
+        GASNETI_WAITHOOK();
+        gasnetc_poll_both();
+      }
+      gasnetc_close_recvd[shift] = 0;
+    }
+  }
+
+  /* complete ALL send/put/get by allocating all of the CQ slots */
   GASNETC_FOR_ALL_HCA(hca) {
     int remain = hca->snd_cq->cqe;
     gasnetc_sema_t *sema = hca->snd_cq_sema_p;
@@ -3551,7 +3657,6 @@ gasnetc_sndrcv_quiesce(void) {
     while (0 != (remain -= gasnetc_sema_trydown_partial(sema, remain))) {
       GASNETI_WAITHOOK();
       gasnetc_poll_both();
-      GASNETI_PROGRESSFNS_RUN();
     }
   }
 }
