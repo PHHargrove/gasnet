@@ -352,10 +352,10 @@ static void kill_one(const char *rem_host, pid_t rem_pid) {
   } else if (pid == 0) {
     const char *spawn_args;
 
-    (void)dup2(STDIN_FILENO, devnull);
+    (void)dup2(devnull, STDIN_FILENO);
 #if !GASNET_DEBUG
-    (void)dup2(STDOUT_FILENO, devnull);
-    (void)dup2(STDERR_FILENO, devnull);
+    (void)dup2(devnull, STDOUT_FILENO);
+    (void)dup2(devnull, STDERR_FILENO);
 #endif
 
     spawn_args = sappendf(NULL, ENV_PREFIX "SPAWN_ARGS=K%s%c%d",
@@ -419,10 +419,10 @@ static void signal_one(const char *rem_host, pid_t rem_pid, int sig) {
     gasneti_fatalerror("fork() failed");
   } else if (pid == 0) {
     BOOTSTRAP_VERBOSE(("[-1] Sending signal %d to %s:%d\n", sig, rem_host, (int)rem_pid));
-    (void)dup2(STDIN_FILENO, devnull);
+    (void)dup2(devnull, STDIN_FILENO);
 #if !GASNET_DEBUG
-    (void)dup2(STDOUT_FILENO, devnull);
-    (void)dup2(STDERR_FILENO, devnull);
+    (void)dup2(devnull, STDOUT_FILENO);
+    (void)dup2(devnull, STDERR_FILENO);
 #endif
     ssh_argv[ssh_argc] = (/* noconst */ char *)rem_host;
     ssh_argv[ssh_argc+1] = sappendf(NULL, "sh -c 'kill -s %d %d 2>/dev/null'", sig, (int)rem_pid);
@@ -1493,8 +1493,6 @@ static void spawn_one(gasnet_node_t child_id, char *myhost, const char *cmdline)
   is_local &= !isatty(STDIN_FILENO);
 #endif
 
-  child[child_id].pid = pid = fork();
-
   if (conn_delay && (child_id > 0) && !is_local) { /* Rate-limit connections made to the same host */
     gasnet_node_t prev_id = child_id - 1;
     const char *prev_host = child[prev_id].nodelist ? child[prev_id].nodelist[0] : nodelist[0];
@@ -1516,14 +1514,16 @@ static void spawn_one(gasnet_node_t child_id, char *myhost, const char *cmdline)
     }
   }
 
+  child[child_id].pid = pid = fork();
+
   if (pid < 0) {
     gasneti_fatalerror("fork() failed");
   } else if (pid == 0) {
     char *cmd;
     /* For all children except the root do </dev/null */
     if (child[child_id].rank != 0) {
-      if (dup2(STDIN_FILENO, devnull) < 0) {
-        gasneti_fatalerror("dup2(STDIN_FILENO, /dev/null) failed");
+      if (dup2(devnull, STDIN_FILENO) < 0) {
+        gasneti_fatalerror("dup2(/dev/null, STDIN_FILENO) failed");
       }
     }
     cmd = sappendf(NULL, "cd %s; exec %s %s " ENV_PREFIX "SPAWNER=ssh "
