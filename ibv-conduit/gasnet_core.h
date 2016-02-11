@@ -184,6 +184,9 @@ extern int gasnetc_AMGetMsgSource(gasnet_token_t token, gasnet_node_t *srcindex)
 #ifdef GASNETI_BLCR_ENABLED
 /* Collective checkpoints */
 extern int gasnet_all_checkpoint(const char *dir);
+#if GASNETI_HAVE_BLCR_ROLLBACK
+extern int gasnet_all_rollback(const char *dir);
+#endif
 #define GASNET_BLCR 1
 #endif
 /* ------------------------------------------------------------------------------------ */

@@ -165,7 +165,10 @@ enum {
   BOOTSTRAP_CMD_BCAST,
   BOOTSTRAP_CMD_SNBCAST,
   BOOTSTRAP_CMD_EXCHG,
-  BOOTSTRAP_CMD_TRANS
+  BOOTSTRAP_CMD_TRANS,
+#if GASNET_BLCR
+  BOOTSTRAP_CMD_ECHO,
+#endif
 };
 
 /* Misc. */
@@ -227,12 +230,23 @@ static const int c_zero = 0;
   static int nnodes_set = 0;		/* non-zero if nnodes set explicitly */
   static pid_t *all_pids;
 
+
+/* Major mode of operation */
+enum {
+        MODE_NORMAL,   /* Spawn all processes normally */
+        MODE_RESTART,  /* Spawn all processes, and run cr_restart */
+        MODE_ROLLBACK, /* Use *exisiting* processes, and run cr_restart */
+};
+
 #if GASNET_BLCR
 /* BLCR-based checkpoint/restart */
-  static int is_restart = 0;
+  static char mode = MODE_NORMAL;
   static const char *restart_dir = NULL;
+  static void do_restart(const char *dir) GASNETI_NORETURN;
+  static void do_rollback(const char *dir) GASNETI_NORETURN;
+  GASNETI_NORETURNP(do_restart)
 #else
-  #define is_restart 0
+  #define mode MODE_NORMAL
 #endif
 
 static void gather_pids(void);
@@ -1289,8 +1303,11 @@ static void post_spawn(int count, int argc, char * const *argv) {
     do_write(s, &nproc, sizeof(gasnet_node_t));
 #if GASNET_BLCR
     do_write_string(s, restart_dir);
+    if (MODE_RESTART == mode) {
+      do_write(s, &mode, sizeof(mode));
+    }
 #endif
-    if (!is_restart) {
+    if (MODE_NORMAL == mode) {
       send_env(s);
     }
     do_write_string(s, wrapper);
@@ -1305,7 +1322,7 @@ static void post_spawn(int count, int argc, char * const *argv) {
       send_nodelist(s, ch->nodes, ch->nodelist);
       send_ssh_argv(s);
     #if GASNET_BLCR
-      if (is_restart) { /* yes, again. */
+      if (MODE_RESTART == mode) { /* yes, again. */
         do_write_string(s, restart_dir);
       }
     #endif
@@ -1363,7 +1380,7 @@ static void do_connect(gasnet_node_t child_id, const char *parent_name, int pare
 #if GASNET_BLCR
   restart_dir = do_read_string(parent);
   gasneti_leak((/*non-const*/ void *)restart_dir);
-  is_restart = (NULL != restart_dir);
+  mode = restart_dir ? MODE_RESTART : MODE_NORMAL;
 #endif
 
   BOOTSTRAP_VERBOSE(("[%d] connected via fd=%d\n", myproc, parent));
@@ -1376,7 +1393,7 @@ static void do_startup(int *argc_p, char ***argv_p) {
   (void)fcntl_setfd(parent, FD_CLOEXEC);
   (void)ioctl(parent, SIOCSPGRP, &mypid); /* Enable SIGURG delivery on OOB data */
 
-  if (!is_restart) {
+  if (MODE_NORMAL == mode) {
     recv_env(parent);
   }
   wrapper = do_read_string(parent);
@@ -1404,7 +1421,7 @@ static void do_startup(int *argc_p, char ***argv_p) {
 
   #if GASNET_BLCR
     /* Get directory for restart, if necessary */
-    if (is_restart) {
+    if (MODE_RESTART == mode) {
       restart_dir = do_read_string(parent);
       gasneti_leak((/*non-const*/ void *)restart_dir);
     }
@@ -1745,7 +1762,7 @@ static void do_master(const char *spawn_args, int *argc_p, char ***argv_p) {
 
     /* Required fd number (non-negative unless restarting) */
     argv_fd = strtol(p,&endptr,0);
-    if ((endptr == p) || (*endptr != args_delim) || (argv_fd < 0 && !is_restart)) {
+    if ((endptr == p) || (*endptr != args_delim) || (argv_fd < 0 && (MODE_RESTART != mode))) {
       die(1, "Failed to parse " ENV_PREFIX "SPAWN_ARGS");
     }
     p = endptr + 1;
@@ -1770,7 +1787,7 @@ static void do_master(const char *spawn_args, int *argc_p, char ***argv_p) {
 
     /* Wrapper (or restart_dir) is whatever remains */
 #if GASNET_BLCR
-    if (is_restart) {
+    if (MODE_RESTART == mode) {
       restart_dir = p;
     } else
 #endif
@@ -1780,7 +1797,7 @@ static void do_master(const char *spawn_args, int *argc_p, char ***argv_p) {
 
     /* Load the command line from argv_fd if necessary */
 #if GASNET_BLCR
-    if (is_restart) {
+    if (MODE_RESTART == mode) {
       /* No argv is provided (or necessary) */
     } else
 #endif
@@ -1953,15 +1970,32 @@ static void do_master(const char *spawn_args, int *argc_p, char ***argv_p) {
   {
     char cmd;
     ssize_t rc;
+    int done = 0;
     do {
-      rc = read(child[0].sock, &cmd, sizeof(cmd));
+      do {
+        rc = read(child[0].sock, &cmd, sizeof(cmd));
+      } while ((rc < 0) && (errno == EINTR));
       if (rc == sizeof(cmd)) {
+      #if GASNET_BLCR
+        if (cmd == BOOTSTRAP_CMD_ECHO) {
+          /* BLCR-TODO: error checking? */
+          size_t len;
+          void *tmp;
+          do_read(child[0].sock, &len, sizeof(len));
+          tmp = gasneti_malloc(len);
+          do_read(child[0].sock, tmp, len);
+          do_write(child[0].sock, tmp, len);
+          gasneti_free(tmp);
+          continue;
+        }
+      #endif
         gasneti_assert(cmd == BOOTSTRAP_CMD_FINI0);
         finalized = 1;
         cmd = BOOTSTRAP_CMD_FINI1;
         (void)write(child[0].sock, &cmd, sizeof(cmd));
       }
-    } while ((rc < 0) && (errno == EINTR));
+      done = 1;
+    } while (!done);
   }
 #else
   #error
@@ -2043,14 +2077,9 @@ static void do_slave(const char *spawn_args, int *argc_p, char ***argv_p, gasnet
   do_connect(child_id, parent_name, parent_port);
 
 #if GASNET_BLCR
-  if (is_restart) {
-    char *filename = sappendf(NULL, "%s/context.%d", restart_dir, myproc);
-    char *new_path = sappendf(NULL, "%s:" GASNETI_BLCR_BINDIR, getenv("PATH"));
-    gasneti_setenv("PATH", new_path);
-    BOOTSTRAP_VERBOSE(("[%d] exec \"cr_restart %s\"\n", myproc, filename));
-    execlp("cr_restart", "cr_restart", filename, (char*)NULL);
-    gasneti_fatalerror("Failed execlp() restart command");
-    /* BLCR-TODO: use cr_restart_request() rather than exec'ing cr_restart */
+  if (MODE_RESTART == mode) {
+    do_restart(restart_dir);
+    /* NOT REACHED */
   }
 #endif
 
@@ -2159,6 +2188,7 @@ static void transpose(char *buf, char *tmp, size_t len, size_t n)
 }
 
 static void gather_pids(void) {
+  gasneti_assert(mypid == getpid());
 #if GASNETI_SSH_TOPO_FLAT
   if (is_master) {
     int j;
@@ -2272,7 +2302,7 @@ int gasneti_bootstrapInit_ssh(int *argc_p, char ***argv_p, gasnet_node_t *nodes_
         break;
     #if GASNET_BLCR
       case 'R':
-        is_restart = 1;
+        mode = MODE_RESTART;
         /* Fall through... */
     #endif
       case 'M':
@@ -2341,7 +2371,7 @@ void gasneti_bootstrapFini_ssh(void) {
   (void)close(parent);
 
   #if GASNET_DEBUG
-  if (!is_restart) {
+  if (MODE_NORMAL == mode) {
     /* Wait for all children to exit */
     /* However, at restart we won't actually have children anymore */
     wait_for_all();
@@ -2613,7 +2643,9 @@ void gasneti_bootstrapBroadcast_ssh(void *src, size_t len, void *dest, int rootn
     iov[3].iov_base = (void *)src;
     iov[3].iov_len  = len;
     do_writev(parent, iov, (myproc == rootnode) ? 4 : 3);
-    do_read(parent, dest, len);
+    if (dest) {
+      do_read(parent, dest, len);
+    }
   }
 #elif GASNETI_SSH_TOPO_NARY
   gasneti_assert(!is_master);
@@ -2793,27 +2825,147 @@ void gasneti_bootstrapCleanup_ssh(void) {
 /*----------------------------------------------------------------------------------------------*/
 #if GASNET_BLCR
 
+/* BLCR-TODO: use cr_restart_request() rather than exec'ing cr_restart */
+static void do_restart(const char *dir) {
+    char *filename = sappendf(NULL, "%s/context.%d", dir, myproc);
+    char *new_path = sappendf(NULL, "%s:" GASNETI_BLCR_BINDIR, getenv("PATH"));
+    gasneti_setenv("PATH", new_path);
+    BOOTSTRAP_VERBOSE(("[%d] exec \"cr_restart %s\"\n", myproc, filename));
+    execlp("cr_restart", "cr_restart", filename, (char*)NULL);
+    gasneti_fatalerror("Failed execlp() restart command");
+    /* NOT REACHED */
+}
+
+#if GASNETI_HAVE_BLCR_ROLLBACK
+/* BLCR-TODO: use cr_restart_request() rather than exec'ing cr_restart */
+static void do_rollback(const char *dir) {
+    char *filename = sappendf(NULL, "%s/context.%d", dir, myproc);
+    char *new_path = sappendf(NULL, "%s:" GASNETI_BLCR_BINDIR, getenv("PATH"));
+    gasneti_setenv("PATH", new_path);
+    BOOTSTRAP_VERBOSE(("[%d] exec \"cr_restart --pid auto %s\"\n", myproc, filename));
+    execlp("cr_restart", "cr_restart", "--pid", "auto", filename, (char*)NULL);
+    gasneti_fatalerror("Failed execlp() restart command");
+    /* NOT REACHED */
+}
+#endif
+
+int gasneti_bootstrapRollback_ssh(const char *dir) {
+#if GASNETI_HAVE_BLCR_ROLLBACK
+  mode = MODE_ROLLBACK;
+  #if GASNETI_SSH_TOPO_FLAT
+    /* Broadcast of "mode", dest=NULL excludes the read() to be issued post-rollback */
+    gasneti_bootstrapBroadcast_ssh(&mode, sizeof(mode), dir ? NULL : &mode, 0);
+  #elif GASNETI_SSH_TOPO_NARY
+    { /* Broadcast mode to all children */
+      int j;
+      for (j = 0; j < children; ++j) {
+        gasnet_node_t k = by_weight[j]; /* send to deepest subtrees first */
+        do_write(child[k].sock, &mode, sizeof(mode));
+      }
+    }
+    if (!myproc) {
+      if (dir) {
+        /* Must ask master send mode to us post-rollback */
+        char cmd = BOOTSTRAP_CMD_ECHO;
+        size_t len = sizeof(mode);
+        struct iovec iov[3];
+        iov[0].iov_base = (void *)&cmd;
+        iov[0].iov_len  = sizeof(cmd);
+        iov[1].iov_base = (void *)&len;
+        iov[1].iov_len  = sizeof(len);
+        iov[2].iov_base = (void *)&mode;
+        iov[2].iov_len  = len;
+        do_writev(parent, iov, 3);
+      }
+    } else if (!dir) {
+      /* Parent sends mode to us not knowing if we need it or not */
+      do_read(parent, &mode, sizeof(mode));
+    }
+  #endif
+  mode = MODE_NORMAL;
+
+  if (dir) {
+    int status, i;
+    pid_t pid;
+
+  #if GASNETI_SSH_TOPO_NARY
+    int j;
+    for (j = 0; j < children; ++j) {
+      (void)fcntl_clrfd(child[j].sock, FD_CLOEXEC);
+    }
+  #endif
+    (void)fcntl_clrfd(parent, FD_CLOEXEC);
+
+    /* Double fork to avoid zombies */
+    pid = fork();
+    if (! pid) {
+      pid = fork();
+      if (! pid) do_rollback(dir);
+      _exit(pid < 0);
+    } else if (pid < 0) {
+      gasneti_fatalerror("fork() failed");
+    }
+
+    if (-1 == waitpid(pid, &status, 0)) {
+      gasneti_fatalerror("waitpid() failed");
+    } else if (!WIFEXITED(status) || WEXITSTATUS(status)) {
+      gasneti_fatalerror("restart-child failed");
+    }
+
+    for (i=0; i<120; ++i) { sleep(1); /* wait to be rolled back */ }
+    gasneti_fatalerror("[%d] still waiting for roll-back after %d sec\n", myproc, i);
+
+    /* NOT REACHED */
+  }
+
+  return GASNET_OK;
+#else /* !GASNETI_HAVE_BLCR_ROLLBACK */
+  gasneti_fatalerror("In-place rollback not supported in this version of BLCR");
+  return GASNET_ERR_RESOURCE; /* avoids warnings */
+#endif
+}
+
 int gasneti_bootstrapPreCheckpoint_ssh(int fd) {
   return GASNET_OK;
 }
 
 int gasneti_bootstrapPostCheckpoint_ssh(int fd, int restart) {
   if (restart) {
-    static int dummy_argc = 0;
-    static char **dummy_argv = NULL;
+    do_read(parent, &mode, sizeof(mode));
+    switch (mode) {
+      case MODE_RESTART: {
+        static int dummy_argc = 0;
+        static char **dummy_argv = NULL;
 
-    gasneti_free((/*non-const*/ void *)argv0);
-  #if GASNETI_SSH_TOPO_NARY
-    gasneti_free(child);
-    gasneti_free(by_weight);
-  #endif
+        gasneti_free((/*non-const*/ void *)argv0);
+      #if GASNETI_SSH_TOPO_NARY
+        gasneti_free(child);
+        gasneti_free(by_weight);
+      #endif
 
-    is_restart = 1;
-    do_startup(&dummy_argc, &dummy_argv);
+        do_startup(&dummy_argc, &dummy_argv);
 
-    gasneti_free((/*non-const*/ void *)dummy_argv);
-    gasneti_free((/*non-const*/ void *)restart_dir);
-    restart_dir = NULL;
+        gasneti_free((/*non-const*/ void *)dummy_argv);
+        gasneti_free((/*non-const*/ void *)restart_dir);
+        restart_dir = NULL;
+        break;
+      }
+
+      case MODE_ROLLBACK: {
+      #if GASNETI_SSH_TOPO_NARY
+        int j;
+        for (j = 0; j < children; ++j) {
+          (void)fcntl_setfd(child[j].sock, FD_CLOEXEC);
+        }
+      #endif
+        (void)fcntl_setfd(parent, FD_CLOEXEC);
+        break;
+      }
+
+      default:
+        fprintf(stderr, "Spawner protocol error\n");
+        do_abort(-1);
+    }
   }
 
   return GASNET_OK;

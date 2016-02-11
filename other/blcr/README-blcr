@@ -53,6 +53,20 @@ Restart:
   necessary to pass the node count, since that is automatically the same
   as the orginal run.
 
+Rollback:
+
+  Currently only ibv-conduit supports self-initiated rollback, and only
+  with BLCR version 0.9.x (the development version).  To initiate a
+  rollback of zero or more processes, them must *all* make the same
+  collective call:
+         int gasnet_all_rollback(const char *dir);
+  where 'dir' gives the directory containing the checkpoint to which the
+  caller will be rolled-back.  Any process passing NULL will continue to
+  run forward after the call, but must still participate in the call to
+  allow GASNet to establish communications with the rolled-back processes.
+  Each caller may specify a different directory (or NULL).  However, GASNet
+  does not verify that the arguments together define a valid recovery line.
+
 Location of checkpoint files:
 
   In order of precedence (highest to lowest):
@@ -80,6 +94,6 @@ Future work:
     (to be called by coordination code provided by others).
   + A mechanism like "Job-pause" to provide a trivial coordination
     algorithm for use in the single-process migration scenario
-  + A mechanism for internally-initiated restart of a single process.
+  + A mechanism for internally-initiated restart of a dead process.
   + External initiation of collective checkpoints with a built-in
     coordination algorithm (most likely just sync-and-stop).

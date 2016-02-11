@@ -183,6 +183,7 @@ void (*gasneti_bootstrapCleanup_p)(void) = NULL;
 #if GASNET_BLCR
 static int (*gasneti_bootstrapPreCheckpoint_p)(int fd) = NULL;
 static int (*gasneti_bootstrapPostCheckpoint_p)(int fd, int is_restart) = NULL;
+static int (*gasneti_bootstrapRollback_p)(const char *dir) = NULL;
 #endif
 
 static int gasneti_bootstrap_native_coll = 0;
@@ -1105,6 +1106,7 @@ static int  gasneti_bootstrapInit(int *argc_p, char ***argv_p,
   #if GASNET_BLCR
     gasneti_bootstrapPreCheckpoint_p   = &gasneti_bootstrapPreCheckpoint_ssh;
     gasneti_bootstrapPostCheckpoint_p  = &gasneti_bootstrapPostCheckpoint_ssh;
+    gasneti_bootstrapRollback_p        = &gasneti_bootstrapRollback_ssh;
   #endif
   }
 #endif
@@ -1126,6 +1128,7 @@ static int  gasneti_bootstrapInit(int *argc_p, char ***argv_p,
   #if GASNET_BLCR && 0 /* BLCR-TODO: support mpi spawner */
     gasneti_bootstrapPreCheckpoint_p   = &gasneti_bootstrapPreCheckpoint_mpi;
     gasneti_bootstrapPostCheckpoint_p  = &gasneti_bootstrapPostCheckpoint_mpi;
+    gasneti_bootstrapRollback_p        = &gasneti_bootstrapRollback_mpi;
   #endif
   }
 #endif
@@ -1147,6 +1150,7 @@ static int  gasneti_bootstrapInit(int *argc_p, char ***argv_p,
   #if GASNET_BLCR && 0 /* BLCR-TODO: support pmi spawner */
     gasneti_bootstrapPreCheckpoint_p   = &gasneti_bootstrapPreCheckpoint_pmi;
     gasneti_bootstrapPostCheckpoint_p  = &gasneti_bootstrapPostCheckpoint_pmi;
+    gasneti_bootstrapRollback_p        = &gasneti_bootstrapRollback_pmi;
   #endif
   }
 #endif
@@ -2514,6 +2518,24 @@ void gasnetc_post_checkpoint(int is_restart) {
   gasnetc_sys_coll_fini();
 }
 
+#if GASNETI_HAVE_BLCR_ROLLBACK
+int gasnet_all_rollback(const char *dir) {
+    /* BLCR-TODO: remove the barrier or use a distinct team? */
+    gasnet_barrier(0, GASNET_BARRIERFLAG_UNNAMED);
+    gasnetc_pre_checkpoint();
+
+    /* BLCR-TODO: error reporting/recovery */
+    if (NULL != gasneti_bootstrapRollback_p) {
+      (void) (*gasneti_bootstrapRollback_p)(dir);
+      /* BLCR-TODO: error checking */
+    }
+
+    gasnetc_post_checkpoint(1);
+    gasneti_bootstrapBarrier();
+
+    return GASNET_OK;
+}
+#endif /* GASNETI_HAVE_BLCR_ROLLBACK */
 #endif /* GASNET_BLCR */
 
 /* PROOF-OF-CONCEPT

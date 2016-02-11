@@ -220,11 +220,10 @@
 #undef GASNET_FCA_ENABLED
 #undef GASNETI_FCA_HOME
 
-/* Found BLCR support? */
+/* BLCR support, path and features */
 #undef GASNETI_BLCR_ENABLED
-
-/* BLCR bindir */
 #undef GASNETI_BLCR_BINDIR
+#undef GASNETI_HAVE_BLCR_ROLLBACK
 
 /* support for backtracing */
 #undef HAVE_EXECINFO_H

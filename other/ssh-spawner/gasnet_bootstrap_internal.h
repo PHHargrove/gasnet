@@ -21,6 +21,7 @@ extern void gasneti_bootstrapCleanup_ssh(void);
 #if GASNET_BLCR
 extern int gasneti_bootstrapPreCheckpoint_ssh(int fd);
 extern int gasneti_bootstrapPostCheckpoint_ssh(int fd, int is_restart);
+extern int gasneti_bootstrapRollback_ssh(const char *dir);
 #endif
 
 #endif

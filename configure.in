@@ -4725,7 +4725,7 @@ if test "$enable_blcr" != 'no'; then
     else
       GASNET_MSG_ERROR([User requested --enable-blcr but BLCR support could not be found.  Perhaps you need to pass --with-blcr=DIRECTORY ?])
     fi
-  else
+  elif test "$have_blcr" = yes; then
     if test "${blcrinc+set}" = set ; then
       BLCR_CPPFLAGS="-I${blcrinc}"
     fi
@@ -4736,6 +4736,14 @@ if test "$enable_blcr" != 'no'; then
     AC_DEFINE_UNQUOTED(GASNETI_BLCR_BINDIR,"$blcrbin")
     BLCR_LIBS='-lcr'
     AC_DEFINE(GASNETI_BLCR_ENABLED)
+    GASNET_PUSHVAR(CPPFLAGS,"$CPPFLAGS $BLCR_CPPFLAGS")
+    GASNET_TRY_CACHE_CHECK(for BLCR in-place rollback support, have_blcr_rollback, [
+        #include <libcr.h>
+        #ifndef CR_RSTRT_TARGET_AUTO
+        #error
+        #endif
+      ],[],[AC_DEFINE(GASNETI_HAVE_BLCR_ROLLBACK)])
+    GASNET_POPVAR(CPPFLAGS)
   fi
 else
   have_blcr=no
