@@ -3673,6 +3673,7 @@ static gasnet_handlerentry_t const gasnetc_handlers[] = {
   gasneti_handler_tableentry_no_bits(gasnetc_sys_barrier_reqh),
   gasneti_handler_tableentry_no_bits(gasnetc_sys_exchange_reqh),
   #if GASNET_BLCR
+    gasneti_handler_tableentry_no_bits(gasnetc_sys_flush_reph),
     gasneti_handler_tableentry_no_bits(gasnetc_sys_close_reqh),
   #endif
 

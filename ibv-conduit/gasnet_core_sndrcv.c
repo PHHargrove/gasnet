@@ -63,6 +63,9 @@ int					gasnetc_use_rcv_thread = GASNETC_USE_RCV_THREAD;
   int					gasnetc_use_xrc = 1;
 #endif
 int					gasnetc_am_credits_slack;
+#if GASNET_BLCR
+  int					gasnetc_am_credits_slack_orig;
+#endif
 int					gasnetc_alloc_qps;
 int					gasnetc_num_qps;
 int					gasnetc_amrdma_max_peers;
@@ -3054,9 +3057,6 @@ extern int gasnetc_sndrcv_limits(void) {
   gasnetc_am_oust_limit = gasnetc_num_qps * gasnetc_am_repl_per_qp;
   GASNETI_TRACE_PRINTF(I, ("Final/effective GASNET_AM_CREDITS_TOTAL = %d", gasnetc_am_oust_limit));
 
-#if GASNET_BLCR /* BLCR-TODO: restore support for credit coallescing */
-  gasnetc_am_credits_slack = 0;
-#else
   if (gasnetc_remote_nodes > 0) {
     gasnetc_am_credits_slack = MIN(gasnetc_am_credits_slack, gasnetc_am_oust_pp - 1);
     GASNETC_FOR_ALL_HCA(hca) {
@@ -3067,7 +3067,6 @@ extern int gasnetc_sndrcv_limits(void) {
       }
     }
   }
-#endif
   gasnetc_am_credits_slack = MIN(gasnetc_am_credits_slack, 256);
   GASNETI_TRACE_PRINTF(I, ("Final/effective GASNET_AM_CREDITS_SLACK = %d", gasnetc_am_credits_slack));
 
@@ -3159,6 +3158,9 @@ extern int gasnetc_sndrcv_limits(void) {
   GASNETI_TRACE_PRINTF(I, ("Final/effective GASNET_RBUF_COUNT = %d", gasnetc_am_rbufs_per_qp * gasnetc_num_qps + rcv_spares));
 #endif
   GASNETI_TRACE_PRINTF(I, ("Final/effective GASNET_BBUF_COUNT = %d", gasnetc_bbuf_limit));
+#if GASNET_BLCR
+  gasnetc_am_credits_slack_orig = gasnetc_am_credits_slack;
+#endif
 
   gasnetc_alloc_qps = gasnetc_num_qps; /* Default w/o SRQ or XRC */
 #if GASNETC_IBV_SRQ
@@ -3558,6 +3560,21 @@ gasnetc_unpin_unmap(gasnetc_hca_t *hca, gasnetc_memreg_t *reg) {
   }
 }
 
+void gasnetc_sys_flush_reph(gasnet_token_t token, gasnet_handlerarg_t credits) {
+  gasnetc_cep_t *cep = ((gasnetc_rbuf_t *)token)->cep;
+
+  gasneti_assert(! gasnetc_use_srq); /* SRQ prohibits credit coallescing */
+  gasneti_assert(0 != credits); /* Should not have sent otherwise */
+
+  /* May reduce trafic by sending banked credits back sooner: */
+  gasnetc_am_credits_slack = 0;
+
+  if (--credits) { /* Since this is a Reply, one credit has already been posted */
+    gasnetc_sema_up_n(&cep->am_loc, credits);
+    gasnetc_sema_up_n(&cep->am_rem, credits);
+  }
+}
+
 static int gasnetc_close_recvd[16]; /* Note 16-bit gasnet_node_t */
 
 void gasnetc_sys_close_reqh(gasnet_token_t token) {
@@ -3632,6 +3649,29 @@ gasnetc_sndrcv_quiesce(void) {
   }
 #endif
 
+  /* suspend credit coallescing (if any) and return any banked credits */
+  if (! gasnetc_use_srq) {
+    gasnet_node_t i;
+    gasnetc_am_credits_slack = 0;
+    for (i = 0; i < gasneti_nodes; ++i) { /* Stagger to avoid hot-spotting */
+      gasnet_node_t node = (i < gasneti_nodes - gasneti_mynode)
+                               ? (gasneti_mynode + i)
+                               : (gasneti_mynode - (gasneti_nodes - i));
+      gasnetc_cep_t *cep = GASNETC_NODE2CEP(node);
+      int qpi;
+      if (gasnetc_non_ib(node) || !cep) continue;
+      for (qpi = 0; qpi < gasnetc_alloc_qps; ++qpi, ++cep) {
+        int cr = gasnetc_atomic_swap(&cep->am_flow.credit, 0, 0);
+        if (!cr) continue;
+        /* Since the banked credits count remote recv buffers we can send a "Phantom Reply".
+         * This avoids soliciting a potentially unnecessary Reply.
+         * It also avoids duplicating lots of logic needed to issue a Reqest.
+         */
+        gasnetc_send_am_nc(cep, 0, gasneti_handleridx(gasnetc_sys_flush_reph), 1, cr);
+      }
+    }
+  }
+
   /* drain in-flight AMs by allocating all of the AM credits */
   {
     gasnet_node_t node;
@@ -3677,6 +3717,9 @@ gasnetc_sndrcv_quiesce(void) {
       gasnetc_poll_both();
     }
   }
+
+  /* Resume credit coallescing (in any) */
+  gasnetc_am_credits_slack = gasnetc_am_credits_slack_orig;
 }
 
 extern int gasnetc_sndrcv_shutdown(void) {
