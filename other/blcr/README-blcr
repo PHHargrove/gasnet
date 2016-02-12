@@ -2,7 +2,7 @@ BLCR support in GASNet
 ======================
 
 Currently there is support for BLCR-based process checkpoints with the
-following GASNet's conduits under the proper conditions:
+following GASNet conduits under the proper conditions:
   udp-conduit
   ibv-conduit
 
@@ -38,7 +38,7 @@ Running:
   Since only self-initiated checkpoints are supported, nothing extra
   is needed when running the application.  However, you may want to
   set one of the GASNET_CHECKPOINT_{DIR,BASEDIR} environment variables
-  (see below) if you don't like the default location for checkpoint files.
+  (see below) if you don't want the default location for checkpoint files.
 
 Restart:
 
@@ -57,10 +57,10 @@ Location of checkpoint files:
 
   In order of precedence (highest to lowest):
   1. If non-NULL, use DIR argument pased to gasnet_all_checkpoint(DIR)
-  2. ${GASNET_CHECKPOINT_DIR} if set
+  2. ${GASNET_CHECKPOINT_DIR}/[SEQ]
   3. ${GASNET_CHECKPOINT_BASEDIR}/[GUID]/[SEQ]
-     Where GASNET_CHECKPOINT_BASEDIR defaults to $HOME/gasnet-checkpoint,
-     the GUID value is generated automatically for each run, and SEQ is a
+  4. ${HOME}/gasnet-checkpoint/[GUID]/[SEQ]
+     The GUID value is generated automatically for each run, and SEQ is a
      sequence number (0 for the first checkpoint, 1 for the next, etc.).
 
 Limitations of ibv-conduit:
