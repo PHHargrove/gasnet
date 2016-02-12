@@ -2517,7 +2517,8 @@ int gasnet_all_checkpoint(const char *dir_arg) {
   #if GASNET_BLCR
     int rc;
 
-    gasneti_bootstrapBarrier();
+    /* BLCR-TODO: remove the barrier or use a distinct team? */
+    gasnet_barrier(0, GASNET_BARRIERFLAG_UNNAMED);
     gasnetc_pre_checkpoint();
 
     {
