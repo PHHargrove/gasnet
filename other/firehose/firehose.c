@@ -204,7 +204,7 @@ firehose_fini()
 		if (fh_request_bufs[i] == NULL)
 			break;
 		gasneti_free(fh_request_bufs[i]);
-		fh_request_bufs[i] == NULL;
+		fh_request_bufs[i] = NULL;
 	}
         fh_request_freehead = NULL;
         fh_request_bufidx = 0;
