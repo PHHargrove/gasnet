@@ -19,6 +19,7 @@ GASNETI_BEGIN_EXTERNC
 
 extern uint64_t gasneti_checkpoint_guid;
 extern uint32_t gasneti_checkpoint_sequence;
+extern char *gasneti_checkpoint_jobdir;
 
 extern uint64_t gasneti_checkpoint_mkguid(void);
 

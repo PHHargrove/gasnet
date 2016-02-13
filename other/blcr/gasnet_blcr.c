@@ -17,7 +17,7 @@
 uint64_t gasneti_checkpoint_guid = 0;
 uint32_t gasneti_checkpoint_sequence = 0;
 
-static char *gasneti_checkpoint_dfltdir = NULL;
+char *gasneti_checkpoint_jobdir = NULL;
 
 /* Routine for default guid construction
  *
@@ -45,11 +45,11 @@ extern void gasneti_checkpoint_init(gasneti_bootstrapBroadcastfn_t bcast_fn) {
   /* Enforce use of absolute paths */
   {
     char *val;
-    if (NULL != (val = gasneti_getenv("GASNET_CHECKPOINT_DIR"))) {
+    if (NULL != (val = gasneti_getenv("GASNET_CHECKPOINT_JOBDIR"))) {
       if ('/' != val[0]) {
-        gasneti_fatalerror("Environment variable GASNET_CHECKPOINT_DIR='%s' is not an absolute path", val);
+        gasneti_fatalerror("Environment variable GASNET_CHECKPOINT_JOBDIR='%s' is not an absolute path", val);
       } else {
-        gasneti_checkpoint_dfltdir = val;
+        gasneti_checkpoint_jobdir = val;
       }
     } else {
       char *dir;
@@ -76,10 +76,10 @@ extern void gasneti_checkpoint_init(gasneti_bootstrapBroadcastfn_t bcast_fn) {
         }
       }
       len = strlen(dir) + 19; /* 19 = 16 digits, '/' , '.' and '\0' */
-      gasneti_checkpoint_dfltdir = gasneti_malloc(len);
-      gasneti_leak(gasneti_checkpoint_dfltdir);
-      snprintf(gasneti_checkpoint_dfltdir, len, "%s/%08x.%08x", dir,
-                GASNETI_HIWORD(gasneti_checkpoint_guid),
+      gasneti_checkpoint_jobdir = gasneti_malloc(len);
+      gasneti_leak(gasneti_checkpoint_jobdir);
+      snprintf(gasneti_checkpoint_jobdir, len, "%s/%08x.%08x", dir,
+               GASNETI_HIWORD(gasneti_checkpoint_guid),
                GASNETI_LOWORD(gasneti_checkpoint_guid));
       if (dir != val) gasneti_free(dir);
     }
@@ -98,10 +98,10 @@ extern void gasneti_checkpoint_init(gasneti_bootstrapBroadcastfn_t bcast_fn) {
  * + A 'metadata' file is created, storing info useful at restart time.
  *
  * Default checkpoint directory names are of the form
- *     [basedir]/[sequence]
+ *     [jobdir]/[sequence]
  * where
- *   [basedir] is one of the following (the first w/o an undefined variable):
- *     1. ${GASNET_CHECKPOINT_DIR}
+ *   [jobdir] is one of the following (the first w/o an undefined variable):
+ *     1. ${GASNET_CHECKPOINT_JOBDIR}
  *     2. ${GASNET_CHECKPOINT_BASEDIR}/[guid_hi].[guid_lo]
  *     3. ${HOME}/gasnet-checkpoint/[guid_hi].[guid_lo]
  * and
@@ -113,9 +113,9 @@ extern const char *gasneti_checkpoint_dir(const char *dir) {
   char *filename;
 
   if (!dir) {
-    size_t len = strlen(gasneti_checkpoint_dfltdir) + 12; /* 12 = "/0123456789\0" */
+    size_t len = strlen(gasneti_checkpoint_jobdir) + 12; /* 12 = "/0123456789\0" */
     char *tmp = gasneti_malloc(len);
-    snprintf(tmp, len, "%s/%d", gasneti_checkpoint_dfltdir, gasneti_checkpoint_sequence++);
+    snprintf(tmp, len, "%s/%d", gasneti_checkpoint_jobdir, gasneti_checkpoint_sequence++);
     dir = tmp;
   }
 

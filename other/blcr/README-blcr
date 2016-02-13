@@ -57,7 +57,7 @@ Location of checkpoint files:
 
   In order of precedence (highest to lowest):
   1. If non-NULL, use DIR argument pased to gasnet_all_checkpoint(DIR)
-  2. ${GASNET_CHECKPOINT_DIR}/[SEQ]
+  2. ${GASNET_CHECKPOINT_JOBDIR}/[SEQ]
   3. ${GASNET_CHECKPOINT_BASEDIR}/[GUID]/[SEQ]
   4. ${HOME}/gasnet-checkpoint/[GUID]/[SEQ]
      The GUID value is generated automatically for each run, and SEQ is a
