@@ -186,6 +186,8 @@ static int (*gasneti_bootstrapPostCheckpoint_p)(int fd, int is_restart) = NULL;
 #endif
 
 static int gasneti_bootstrap_native_coll = 0;
+static int gasnetc_bootstrapBarrier_phase = 0;
+static int gasnetc_bootstrapExchange_phase = 0;
 static gasnet_node_t gasnetc_dissem_peers = 0;
 static gasnet_node_t *gasnetc_dissem_peer = NULL;
 static gasnet_node_t *gasnetc_exchange_rcvd = NULL;
@@ -215,6 +217,9 @@ static void gasnetc_sys_coll_init(void)
     /* No network comms */
     goto done;
   }
+
+  gasnetc_bootstrapBarrier_phase = 0;
+  gasnetc_bootstrapExchange_phase = 0;
 
   /* Construct vector of the dissemination peers */
   for (i = 1; i < size; i *= 2) {
@@ -381,7 +386,7 @@ static void gasnetc_sys_barrier_reqh(gasnet_token_t token, uint32_t arg)
 
 extern void gasnetc_bootstrapBarrier_ib(void)
 {
-    static int phase = 0;
+    int phase = gasnetc_bootstrapBarrier_phase;
     int i;
 
 #if GASNET_PSHM
@@ -405,7 +410,7 @@ extern void gasnetc_bootstrapBarrier_ib(void)
 
     /* reset for next barrier */
     gasnetc_sys_barrier_reset(phase);
-    phase ^= 1;
+    gasnetc_bootstrapBarrier_phase ^= 1;
 }
 
 extern void gasneti_bootstrapBarrier(void)
@@ -499,7 +504,7 @@ static void gasnetc_sys_exchange_reqh(gasnet_token_t token, void *buf,
 
 extern void gasnetc_bootstrapExchange_ib(void *src, size_t len, void *dest)
 {
-    static int phase = 0;
+    int phase = gasnetc_bootstrapExchange_phase;
 
     uint8_t *temp = gasnetc_sys_exchange_addr(phase, len);
     int step;
@@ -569,7 +574,7 @@ end_network_comms:
     gasneti_free(temp);
     gasnetc_sys_exchange_buf[phase] = NULL;
     gasneti_sync_writes();
-    phase ^= 1;
+    gasnetc_bootstrapExchange_phase ^= 1;
 
 #if GASNET_DEBUG
   /* verify own data as a sanity check */
