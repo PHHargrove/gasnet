@@ -63,9 +63,7 @@ int					gasnetc_use_rcv_thread = GASNETC_USE_RCV_THREAD;
   int					gasnetc_use_xrc = 1;
 #endif
 int					gasnetc_am_credits_slack;
-#if GASNET_BLCR
-  int					gasnetc_am_credits_slack_orig;
-#endif
+int					gasnetc_am_credits_slack_orig;
 int					gasnetc_alloc_qps;
 int					gasnetc_num_qps;
 int					gasnetc_amrdma_max_peers;
@@ -3158,9 +3156,7 @@ extern int gasnetc_sndrcv_limits(void) {
   GASNETI_TRACE_PRINTF(I, ("Final/effective GASNET_RBUF_COUNT = %d", gasnetc_am_rbufs_per_qp * gasnetc_num_qps + rcv_spares));
 #endif
   GASNETI_TRACE_PRINTF(I, ("Final/effective GASNET_BBUF_COUNT = %d", gasnetc_bbuf_limit));
-#if GASNET_BLCR
   gasnetc_am_credits_slack_orig = gasnetc_am_credits_slack;
-#endif
 
   gasnetc_alloc_qps = gasnetc_num_qps; /* Default w/o SRQ or XRC */
 #if GASNETC_IBV_SRQ
