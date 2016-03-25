@@ -425,7 +425,7 @@ typedef struct {
 typedef char gasnetc_amrdma_buf_t[GASNETC_AMRDMA_SZ];
 
 #define GASNETC_DEFAULT_AMRDMA_MAX_PEERS 32
-#define GASNETC_AMRDMA_DEPTH_MAX	32	/* Power-of-2 <= 32 */
+#define GASNETC_AMRDMA_DEPTH_MAX	16	/* Power-of-2 <= 16 */
 #define GASNETC_DEFAULT_AMRDMA_DEPTH	16
 #define GASNETC_DEFAULT_AMRDMA_LIMIT	GASNETC_AMRDMA_LIMIT_MAX
 #define GASNETC_DEFAULT_AMRDMA_CYCLE	1024	/* 2^i, Number of AM rcvs before hot-peer heuristic */
@@ -536,19 +536,16 @@ typedef struct {
 
 /* Structure for AM-over-RDMA sender state */
 typedef struct {
-  gasnetc_atomic_t	head, tail;
-  uint32_t	rkey;
-  uintptr_t		addr;	/* write ONCE */
+  gasnetc_atomic_t   tail_and_map;
+  uint32_t           rkey;
+  uintptr_t          addr;	/* write ONCE */
 } gasnetc_amrdma_send_t;
 
 /* Structure for AM-over-RDMA receiver state */
 typedef struct {
   gasnetc_amrdma_buf_t	*addr;	/* write ONCE */
-  gasnetc_atomic_t	head;
+  gasnetc_atomic_t      head;
 #if GASNETC_ANY_PAR
-  gasnetc_atomic_val_t tail;
-  gasneti_mutex_t	ack_lock;
-  uint32_t		ack_bits;
   char			_pad[GASNETI_CACHE_LINE_BYTES];
   union {
     gasnetc_atomic_t        spinlock;
@@ -567,7 +564,7 @@ struct gasnetc_cep_t_ {
   /* XXX: The atomics in the next 2 structs really should get padded to full cache lines */
   struct {	/* AM flow control coallescing */
   	gasnetc_atomic_t    credit;
-	gasnetc_atomic_t    ack;
+	gasnetc_atomic_t    ack_bits;
   } am_flow;
   /* AM-over-RDMA local state */
   gasnetc_atomic_t	amrdma_eligable;	/* Number of AMs small enough for AMRDMA */

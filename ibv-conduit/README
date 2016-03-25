@@ -761,7 +761,7 @@ Paul H. Hargrove <PHHargrove@lbl.gov>
     each) that are allocated per peer for receiving AMRDMA traffic.  Larger
     values may potentially allow for more AMs in-flight before flow control
     throttles the sender, but at the cost of increased memory consumption.
-    The value must be a power of 2 and the maximum is 32.
+    The value must be a power of 2 and the maximum is 16.
     The current default is 16.
 
   + GASNET_AMRDMA_MAX_PEERS

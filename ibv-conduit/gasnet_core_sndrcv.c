@@ -809,20 +809,18 @@ void gasnetc_processPacket(gasnetc_cep_t *cep, gasnetc_rbuf_t *rbuf, uint32_t fl
     int credits = 0;
 
     if (full_numargs == GASNETC_MAX_ARGS) {
-      int acks = (args[0] >> 8) & 0xff;
-      credits = args[0] & 0xff;
-      full_numargs = (args[0] >> 16) & 0x1f;
+      uint32_t ack_bits = args[0] & 0xffff;
+      credits = (args[0] >> 16 ) & 0xff;
+      full_numargs = (args[0] >> 24);
       user_numargs = full_numargs - 1;
 
       gasneti_assert(!gasnetc_use_srq || !credits);
 
-      if (acks) {
-        gasneti_assert(acks <= gasnetc_amrdma_depth);
-        gasneti_assert(acks > 0);
-        gasnetc_atomic_add(&cep->amrdma_send->head, acks, 0);
+      if (ack_bits) {
+        gasnetc_atomic_add(&cep->amrdma_send->tail_and_map, ack_bits, 0);
       }
 
-      GASNETI_TRACE_PRINTF(C,("RCV_AM_CREDITS credits=%d acks=%d\n", credits, acks));
+      GASNETI_TRACE_PRINTF(C,("RCV_AM_CREDITS credits=%d ack_bits=0x%04x\n", credits, ack_bits));
 
       args += 1;
     }
@@ -1532,41 +1530,9 @@ int gasnetc_rcv_amrdma(gasnetc_EP_t ep, gasnetc_cep_t *cep GASNETI_THREAD_FARG) 
 
 #if GASNETC_ANY_PAR
   gasnetc_atomic_set(slot_lock, 0, GASNETI_ATOMIC_REL);
-
-  /* We must gather acks to keep them in-order even when handler completions are not */
-  /* XXX: could be done lockless via recv_tail and ack_bits packed in gasneti_atomic64_t? */
-  gasneti_mutex_lock(&recv_state->ack_lock);
-  { int count;
-    const int recv_tail = recv_state->tail;
-    uint32_t bits = recv_state->ack_bits | (1 << (recv_head - recv_tail));
-
-    gasneti_assert(bits != 0);
-
-  #if GASNETI_HAVE_CC_BUILTIN_CTZ && \
-      !(PLATFORM_COMPILER_XLC && _ARCH_PWR9) /* bug 3880 */
-    if_pt (~bits) {
-      count = __builtin_ctz(~bits);
-      bits >>= count;
-    } else {
-      count = 32;
-      bits = 0;
-    }
-  #else
-    for (count = 0; bits & 1; ++count) {
-      bits >>= 1;
-    }
-  #endif
-
-    recv_state->ack_bits = bits;
-    if_pt (count) {
-      recv_state->tail += count;
-      gasnetc_atomic_add(&cep->am_flow.ack, count, 0);
-    }
-  }
-  gasneti_mutex_unlock(&recv_state->ack_lock);
-#else
-  gasnetc_atomic_increment(&cep->am_flow.ack, 0);
 #endif
+
+  gasnetc_atomic_add(&cep->am_flow.ack_bits, (1 << recv_slot), 0); /* atomic-OR of distinct bits */
 
   /* Finalize flow control */
   if_pf (rbuf.rbuf_needReply) {
@@ -1936,27 +1902,29 @@ static void gasnetc_rcv_thread(struct ibv_wc *comp_p, void *arg)
 GASNETI_INLINE(gasnetc_get_amrdma_slot)
 int gasnetc_get_amrdma_slot(gasnetc_cep_t *cep, size_t msg_len) {
   gasnetc_amrdma_send_t *send_state = cep->amrdma_send;
-  uint32_t send_tail;
 
   gasneti_assert(GASNETC_ALLOW_0BYTE_MSG || (msg_len != 0));
   if (!send_state || (msg_len > gasnetc_amrdma_limit)) {
     return -1;
   }
 
-#if GASNETC_ANY_PAR
   while (1) {
-    send_tail = gasnetc_atomic_read(&send_state->tail, 0);
-    if (send_tail == gasnetc_atomic_read(&send_state->head, 0)) { return -1; }
-    if (gasnetc_atomic_compare_and_swap(&send_state->tail, send_tail, send_tail + 1, 0)) { break; }
+    const gasnetc_atomic_val_t read_val = gasnetc_atomic_read(&send_state->tail_and_map, 0);
+    gasnetc_atomic_val_t new_val;
+    const uint32_t send_tail = (read_val >> 16) & gasnetc_amrdma_slot_mask;
+    uint32_t mask;
+    mask = 1 << send_tail;
+    if (! (read_val & mask)) { return -1; }
+    new_val = (read_val ^ mask) + (1<<16);
+#if GASNETC_ANY_PAR
+    if (gasnetc_atomic_compare_and_swap(&send_state->tail_and_map, read_val, new_val, 0)) { return send_tail; }
     GASNETI_WAITHOOK();
-  }
 #else
-  send_tail = gasnetc_atomic_read(&send_state->tail, 0);
-  if (send_tail == gasnetc_atomic_read(&send_state->head, 0)) { return -1; }
-  gasnetc_atomic_increment(&send_state->tail, 0);
+    send_state->tail_and_map = new_val;
+    return send_tail;
 #endif
-
-  return (send_tail & gasnetc_amrdma_slot_mask);
+  }
+  /* NOT REACHED */
 }
 
 GASNETI_INLINE(gasnetc_encode_amrdma)
@@ -2088,7 +2056,7 @@ int gasnetc_ReqRepGeneric(gasnetc_EP_t ep,
      * pointless zero values in them.
      */
     have_flow = (gasnetc_atomic_read(&cep->am_flow.credit, 0) ||
-		 gasnetc_atomic_read(&cep->am_flow.ack, 0));
+		 gasnetc_atomic_read(&cep->am_flow.ack_bits, 0));
     if (have_flow) numargs += 1;
   
     /* Figure out length so we know if we can use inline or not.
@@ -2307,16 +2275,16 @@ int gasnetc_ReqRepGeneric(gasnetc_EP_t ep,
       /* acks and credits travel packed in a "prefixed" argument, remaining args are shifted */
 
       /* "Grab" info w/ atomic load-and-clear operations: */
-      const uint32_t acks = gasnetc_atomic_swap(&cep->am_flow.ack, 0, 0);
+      const uint32_t ack_bits = gasnetc_atomic_swap(&cep->am_flow.ack_bits, 0, 0);
       const uint32_t credits = gasnetc_atomic_swap(&cep->am_flow.credit, 0, 0);
 
-      gasneti_assert(acks <= 255);
-      gasneti_assert(credits <= 255);
+      gasneti_assert(ack_bits == (ack_bits & 0xffff));
+      gasneti_assert(credits  == (credits  & 0xff));
 
-      args[0] = credits | (acks << 8) | (numargs << 16);
+      args[0] = (numargs << 24) | (credits << 16) | ack_bits;
       i = 1;
 
-      GASNETI_TRACE_PRINTF(C,("SND_AM_CREDITS credits=%d acks=%d\n", credits, acks));
+      GASNETI_TRACE_PRINTF(C,("SND_AM_CREDITS credits=%d ack_bits=0x%04x\n", credits, ack_bits));
     }
     for (/*EMPTY*/; i < numargs; ++i) {
       args[i] = va_arg(argptr, gex_AM_Arg_t);
@@ -3685,7 +3653,7 @@ extern void gasnetc_sndrcv_init_peer(gex_Rank_t node, gasnetc_cep_t *cep) {
         gasnetc_sema_init(&cep->am_rem, gasnetc_am_oust_pp, gasnetc_am_oust_pp);
       }
       gasnetc_atomic_set(&cep->am_flow.credit, 0, 0);
-      gasnetc_atomic_set(&cep->am_flow.ack, 0, 0);
+      gasnetc_atomic_set(&cep->am_flow.ack_bits, 0, 0);
       cep->snd_cq_sema_p = &gasnetc_cq_semas[GASNETC_HCA_IDX(cep)];
     }
   } else {
@@ -3700,7 +3668,7 @@ extern void gasnetc_sndrcv_init_peer(gex_Rank_t node, gasnetc_cep_t *cep) {
     #endif
       gasnetc_sema_init(&cep->am_rem, 0, 0);
       gasnetc_atomic_set(&cep->am_flow.credit, 0, 0);
-      gasnetc_atomic_set(&cep->am_flow.ack, 0, 0);
+      gasnetc_atomic_set(&cep->am_flow.ack_bits, 0, 0);
       gasnetc_atomic_set(&cep->amrdma_eligable, 0, 0);
     }
   }
@@ -3955,8 +3923,7 @@ extern gasnetc_amrdma_send_t *gasnetc_amrdma_send_alloc(uint32_t rkey, void *add
   gasnetc_amrdma_send_t *result = gasneti_malloc(sizeof(gasnetc_amrdma_send_t));
   gasneti_leak(result);
 
-  gasnetc_atomic_set(&result->head, gasnetc_amrdma_depth, 0);
-  gasnetc_atomic_set(&result->tail, 0, 0);
+  gasnetc_atomic_set(&result->tail_and_map, (1 << gasnetc_amrdma_depth) - 1, 0);
   result->rkey = rkey;
   result->addr = (uintptr_t)addr;
   gasneti_sync_writes();
@@ -3975,11 +3942,6 @@ extern gasnetc_amrdma_recv_t *gasnetc_amrdma_recv_alloc(gasnetc_hca_t *hca) {
     gasneti_leak(result);
     gasnetc_atomic_set(&result->head, 0, 0);
     result->addr = addr;
-  #if GASNETC_ANY_PAR
-    gasneti_mutex_init(&result->ack_lock);
-    result->ack_bits = 0;
-    result->tail = 0;
-  #endif
 
     for (i = 0; i < gasnetc_amrdma_depth; ++i) {
       gasnetc_amrdma_hdr_t *hdr = (gasnetc_amrdma_hdr_t *)addr[i];
