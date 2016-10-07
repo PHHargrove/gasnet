@@ -761,13 +761,26 @@ typedef struct {
 } gasnete_coll_ibdbarrier_t;
 
 /* Unlike the extended-ref version we CAN assume that a 64-bit write
- * will be atomic, and so can use a "present" bit in flags.
+ * will be atomic, OR that bytes are written in order.
+ * So, we can use a "present" bit in flags.
  */
-#define GASNETE_IBDBARRIER_PRESENT GASNETE_BARRIERFLAG_CONDUIT0
-#define GASNETE_IBDBARRIER_VALUE(_u64) GASNETI_HIWORD(_u64)
-#define GASNETE_IBDBARRIER_FLAGS(_u64) GASNETI_LOWORD(_u64)
-#define GASNETE_IBDBARRIER_BUILD(_value,_flags) \
-                GASNETI_MAKEWORD((_value),GASNETE_IBDBARRIER_PRESENT|(_flags))
+#if (GASNETE_BARRIERFLAG_CONDUIT0 != 0x80000000)
+  #error "ibv-conduit barrier requires GASNETE_BARRIERFLAG_CONDUIT0 == 0x80000000"
+#endif
+#if PLATFORM_ARCH_LITTLE_ENDIAN
+  #define GASNETE_IBDBARRIER_PRESENT GASNETE_BARRIERFLAG_CONDUIT0
+  #define GASNETE_IBDBARRIER_VALUE(_u64) GASNETI_LOWORD(_u64)
+  #define GASNETE_IBDBARRIER_FLAGS(_u64) GASNETI_HIWORD(_u64)
+  #define GASNETE_IBDBARRIER_BUILD(_value,_flags) \
+                GASNETI_MAKEWORD(GASNETE_IBDBARRIER_PRESENT|(_flags),(_value))
+#else
+  #error "Big-endian code has not been tested yet!"
+  #define GASNETE_IBDBARRIER_PRESENT 0x01
+  #define GASNETE_IBDBARRIER_VALUE(_u64) GASNETI_HIWORD(_u64)
+  #define GASNETE_IBDBARRIER_FLAGS(_u64) (GASNETI_LOWORD(_u64)>>1)
+  #define GASNETE_IBDBARRIER_BUILD(_value,_flags) \
+                GASNETI_MAKEWORD((_value),((_flags)<<1)|GASNETE_IBDBARRIER_PRESENT)
+#endif
   
 /* Pad struct to a specfic size and interleave */
 #define GASNETE_IBDBARRIER_INBOX_WORDS (GASNETE_RDMABARRIER_INBOX_SZ/sizeof(uint64_t))
@@ -851,6 +864,7 @@ static int gasnete_ibdbarrier_kick_pshm(gasnete_coll_team_t team) {
 void gasnete_ibdbarrier_kick(gasnete_coll_team_t team) {
   gasnete_coll_ibdbarrier_t *barrier_data = team->barrier_data;
   volatile uint64_t *inbox;
+  const uint64_t present = GASNETE_IBDBARRIER_BUILD(0,0);
   uint64_t result;
   int numsteps = 0;
   int state, new_state;
@@ -899,7 +913,7 @@ void gasnete_ibdbarrier_kick(gasnete_coll_team_t team) {
 
   /* process all consecutive steps which have arrived since we last ran */
   inbox = GASNETE_IBDBARRIER_INBOX(barrier_data, state);
-  for (new_state = state; new_state < barrier_data->barrier_goal && (0 != (result = *inbox)); new_state+=2) {
+  for (new_state = state; new_state < barrier_data->barrier_goal && (present & (result = *inbox)); new_state+=2) {
     const int step_value = GASNETE_IBDBARRIER_VALUE(result);
     const int step_flags = GASNETE_IBDBARRIER_FLAGS(result);
     *inbox = 0;
