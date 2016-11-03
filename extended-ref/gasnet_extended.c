@@ -405,7 +405,7 @@ extern int  gasnete_try_syncnb(gasnet_handle_t handle) {
   /* polling now takes place in callers which needed and NOT in those which don't */
   GASNETI_SAFE(gasneti_AMPoll());
 #endif
-
+  gasneti_assert(handle != GASNET_INVALID_HANDLE); // invalid handled inline in header
   return gasnete_op_try_free(handle) ? GASNET_OK : GASNET_ERR_NOT_READY;
 }
 #endif
