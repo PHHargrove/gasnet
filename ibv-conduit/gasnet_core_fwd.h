@@ -34,7 +34,8 @@ typedef uint16_t gasnet_node_t;
 typedef uint8_t gasnet_handler_t;
 
   /* GASNET_PSHM defined 1 if this conduit supports PSHM. leave undefined otherwise. */
-#if GASNETI_PSHM_ENABLED
+/* As described in bug 3373, ibv_reg_mem() on Solaris only works with SYSV */
+#if GASNETI_PSHM_ENABLED && !(PLATFORM_OS_SOLARIS && !GASNETI_PSHM_SYSV)
   #define GASNET_PSHM 1
 #endif
 
