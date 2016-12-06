@@ -416,6 +416,25 @@ extern void *gasneti_huge_mmap(void *addr, uintptr_t size) {
   const int mmap_flags = MAP_SHARED | (addr ? GASNETI_MMAP_FIXED_FLAG : GASNETI_MMAP_NOTFIXED_FLAG);
   void *ptr = mmap(addr, huge_pagesz(addr, size), (PROT_READ|PROT_WRITE), mmap_flags, fd, 0);
 
+#if 1
+  if ((ptr == MAP_FAILED) && addr) { // Bounded retry, but only on FIXED mappings
+    const int max_retry = 1000;
+    const int max_delay = 2048;
+    unsigned int delay = 1;
+    int retries = 0;
+    do {
+      (void) close(fd);
+      (void) usleep(delay + (gasneti_mynode & (delay-1))); // Slight random perturbation
+      delay = MIN(max_delay, delay * 2);
+      fd = hugetlbfs_unlinked_fd();
+      ptr = mmap(addr, huge_pagesz(addr, size), (PROT_READ|PROT_WRITE), mmap_flags, fd, 0);
+    } while ((retries++ < max_retry) && (ptr == MAP_FAILED));
+  #if GASNET_DEBUG
+    fprintf(stderr, "hugepage mmap CLE6 bug (retries %d)\n", retries);
+  #endif
+  }
+#endif
+
   int save_errno = errno;
   (void) close(fd);
   errno = save_errno;
