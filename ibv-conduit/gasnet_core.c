@@ -191,7 +191,7 @@ static gasnetex_rank_t gasnetc_dissem_peers = 0;
 static gasnetex_rank_t *gasnetc_dissem_peer = NULL;
 static gasnetex_rank_t *gasnetc_exchange_rcvd = NULL;
 static gasnetex_rank_t *gasnetc_exchange_send = NULL;
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
 static gasnetex_rank_t *gasnetc_exchange_permute = NULL;
 #endif
 
@@ -199,7 +199,7 @@ static void gasnetc_sys_coll_init(void)
 {
   int i;
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   const gasnetex_rank_t size = gasneti_nodemap_global_count;
   const gasnetex_rank_t rank = gasneti_nodemap_global_rank;
 
@@ -231,7 +231,7 @@ static void gasnetc_sys_coll_init(void)
   for (i = 0; i < gasnetc_dissem_peers; ++i) {
     const gasnetex_rank_t distance = 1 << i;
     const gasnetex_rank_t peer = (distance <= rank) ? (rank - distance) : (rank + (size - distance));
-  #if GASNET_PSHM
+  #if GASNETI_AMPSHM
     /* Convert supernode numbers to node numbers */
     gasnetc_dissem_peer[i] = gasneti_pshm_firsts[peer];
   #else
@@ -243,7 +243,7 @@ static void gasnetc_sys_coll_init(void)
   gasnetc_exchange_rcvd = gasneti_malloc((gasnetc_dissem_peers+1) * sizeof(gasnetex_rank_t));
   gasnetc_exchange_send = gasneti_malloc(gasnetc_dissem_peers * sizeof(gasnetex_rank_t));
   { int step;
-  #if GASNET_PSHM
+  #if GASNETI_AMPSHM
     gasnetex_rank_t *width;
     gasnetex_rank_t sum1 = 0;
     gasnetex_rank_t sum2 = 0;
@@ -328,14 +328,14 @@ static void gasnetc_sys_coll_fini(void)
 {
   gasneti_free(gasnetc_exchange_rcvd);
   gasneti_free(gasnetc_exchange_send);
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   gasneti_free(gasnetc_exchange_permute);
 #endif
 
 #if GASNET_DEBUG
   gasnetc_exchange_rcvd = NULL;
   gasnetc_exchange_send = NULL;
- #if GASNET_PSHM
+ #if GASNETI_AMPSHM
   gasnetc_exchange_permute = NULL;
  #endif
 #endif
@@ -388,7 +388,7 @@ extern void gasnetc_bootstrapBarrier_ib(void)
     int phase = gasnetc_bootstrapBarrier_phase;
     int i;
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
     gasneti_pshmnet_bootstrapBarrier();
 #endif
     for (i = 0; i < gasnetc_dissem_peers; ++i) {
@@ -403,7 +403,7 @@ extern void gasnetc_bootstrapBarrier_ib(void)
          gasnetc_sndrcv_poll(0);
       }
     }
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
     gasneti_pshmnet_bootstrapBarrier();
 #endif
 
@@ -508,7 +508,7 @@ extern void gasnetc_bootstrapExchange_ib(void *src, size_t len, void *dest)
     uint8_t *temp = gasnetc_sys_exchange_addr(phase, len);
     int step;
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
     /* Construct supernode-local contribution */
     gasneti_pshmnet_bootstrapGather(gasneti_request_pshmnet, src, len, temp, 0);
     if (gasneti_nodemap_local_rank) goto end_network_comms;
@@ -550,7 +550,7 @@ extern void gasnetc_bootstrapExchange_ib(void *src, size_t len, void *dest)
     }
 
     /* Copy to destination while performing the rotation or permutation */
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
     if (gasnetc_exchange_permute) {
       gasnetex_rank_t n;
       for (n = 0; n < gasneti_nodes; ++n) {
@@ -564,7 +564,7 @@ extern void gasnetc_bootstrapExchange_ib(void *src, size_t len, void *dest)
       memcpy((uint8_t*)dest + len * gasneti_mynode, temp, len * (gasneti_nodes - gasneti_mynode));
     }
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
 end_network_comms:
     gasneti_pshmnet_bootstrapBroadcast(gasneti_request_pshmnet, dest, len*gasneti_nodes, dest, 0);
 #endif
@@ -1690,6 +1690,8 @@ static int gasnetc_init(int *argc, char ***argv) {
 
     shared_mem = gasneti_pshm_init(&gasneti_bootstrapSNodeBroadcast, shared_size);
   }
+  #elif GASNETI_AMPSHM
+  gasneti_pshm_init(&gasneti_bootstrapSNodeBroadcast, 0);
   #endif
 
   /* early registration of core API handlers */
@@ -2600,7 +2602,7 @@ static void gasnetc_disable_AMs(void) {
   }
 }
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
 static gasnetex_rank_t *gasnetc_exit_child = NULL;
 static gasnetex_rank_t gasnetc_exit_children = 0;
 static gasnetex_rank_t gasnetc_exit_parent = 0;
@@ -2618,7 +2620,7 @@ static int gasnetc_exit_reduce(int exitcode, int64_t timeout_us)
   /* If the remote request has arrived then we've already failed */
   if (gasneti_atomic_read(&gasnetc_exit_reqs, 0)) return -1;
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   if (gasnetc_exit_children == gasneti_nodes) { /* Non-lead node */
     GASNETC_EXIT_STATE("exitcode reduction: send to parent");
     rc = gasnetc_RequestSysShort(gasnetc_exit_parent, NULL,
@@ -2660,7 +2662,7 @@ static int gasnetc_exit_reduce(int exitcode, int64_t timeout_us)
     exitcode = gasneti_atomic_read(&gasnetc_exit_code, GASNETI_ATOMIC_RMB_PRE);
   }
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   GASNETC_EXIT_STATE("exitcode reduction: send to children");
   for (i = 0; i < gasnetc_exit_children; ++i) {
     rc = gasnetc_RequestSysShort(gasnetc_exit_child[i], NULL,
@@ -3326,7 +3328,7 @@ static void gasnetc_exit_init(void) {
     atexit(gasnetc_atexit);
   #endif
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   /* Extract info from nodemap that we'll need at exit */
   if (gasneti_nodemap_local_rank) {
     gasnetc_exit_parent = gasneti_nodemap[gasneti_mynode];

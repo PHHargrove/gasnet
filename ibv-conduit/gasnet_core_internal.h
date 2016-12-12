@@ -63,6 +63,7 @@
 #if GASNET_PSHM
   #define gasnetc_non_ib(_node) gasneti_pshm_in_supernode(_node)
 #else
+  // TODO-AMPSHM: currently assume network loopback even if AM using PSHM
   #define gasnetc_non_ib(_node) ((_node) == gasneti_mynode)
 #endif
 

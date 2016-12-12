@@ -34,11 +34,15 @@
 /* 64K corresponds to 16 bits used in the AM Header and 16-bit gasnetex_rank_t */
 #define GASNET_MAXNODES	65535
 
-  /* GASNET_PSHM defined 1 if this conduit supports PSHM. leave undefined otherwise. */
-/* As described in bug 3373, ibv_reg_mem() on Solaris only works with SYSV */
-#if GASNETI_PSHM_ENABLED && !(PLATFORM_OS_SOLARIS && !GASNETI_PSHM_SYSV)
+  /* GASNET_PSHM defined 1 to enable PSHM for segments. leave undefined otherwise. */
+  /* GASNETI_AMPSHM defined 1 to enable AM over PSHM. leave undefined otherwise. */
+#if GASNETI_PSHM_ENABLED
+ /* As described in bug 3373, ibv_reg_mem() on Solaris only works with SYSV */
+ #if !GASNET_SEGMENT_EVERYTHING && !(PLATFORM_OS_SOLARIS && !GASNETI_PSHM_SYSV)
   #define GASNET_PSHM 1
-  #define GASNETC_MAX_MEDIUM_PSHM GASNETC_BUFSZ
+ #endif
+ #define GASNETI_AMPSHM 1
+ #define GASNETC_MAX_MEDIUM_PSHM GASNETC_BUFSZ
 #endif
 
   /*  defined to be 1 if gasnet_init guarantees that the remote-access memory segment will be aligned  */

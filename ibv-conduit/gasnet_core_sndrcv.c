@@ -751,7 +751,7 @@ void gasnetc_processPacket(gasnetc_cep_t *cep, gasnetc_rbuf_t *rbuf, uint32_t fl
   const gasnetex_token_t token = (gasnetex_token_t)rbuf;
   gasnetex_handlerarg_t *args;
 
-  #if GASNET_PSHM
+  #if GASNETI_AMPSHM
     gasneti_assert(!gasneti_pshm_in_supernode(GASNETC_MSG_SRCIDX(flags)));
     gasneti_assert(cep != NULL);
   #endif
@@ -780,7 +780,7 @@ void gasnetc_processPacket(gasnetc_cep_t *cep, gasnetc_rbuf_t *rbuf, uint32_t fl
     gasneti_fatalerror("invalid AM category on recv");
   }
 
-  if_pt (GASNET_PSHM || (cep != NULL)) { /* Process any flow control info, unless loopback */
+  if_pt (GASNETI_AMPSHM || (cep != NULL)) { /* Process any flow control info, unless loopback */
     int credits = 0;
 
     if (full_numargs == GASNETC_MAX_ARGS) {
@@ -1621,7 +1621,7 @@ void gasnetc_do_poll(int poll_rcv, int poll_snd GASNETI_THREAD_FARG) {
     gasnetc_hca_t *hca = &gasnetc_hca[0];
   #endif
     gasnetc_poll_rcv_hca(hca, GASNETC_RCV_REAP_LIMIT GASNETI_THREAD_PASS);
-  #if GASNET_PSHM
+  #if GASNETI_AMPSHM
     gasneti_AMPSHMPoll(0 GASNETI_THREAD_PASS);
   #endif
   }
@@ -1995,7 +1995,7 @@ int gasnetc_ReqRepGeneric(gasnetc_category_t category, gasnetc_rbuf_t *token,
   const gasnetex_rank_t node = dest;
   gasneti_assert(gasnetc_epid2qpi(dest) == 0);
 #endif
-#if GASNET_PSHM /* PSHM code handles all "local" AMs including the loopback case */
+#if GASNETI_AMPSHM /* AMPSHM code handles all "local" AMs including the loopback case */
   gasneti_assert(!gasneti_pshm_in_supernode(node));
 #else
   if_pt (node == gasneti_mynode) {
@@ -2059,7 +2059,7 @@ int gasnetc_ReqRepGeneric(gasnetc_category_t category, gasnetc_rbuf_t *token,
 
     gasnetc_counter_inc_if_pf(counter);
   } else
-#endif /* !GASNET_PSHM */
+#endif /* !GASNETI_AMPSHM */
   {
     /* Remote Case */
     gasnetc_buffer_t *buf, *buf_alloc = NULL;
@@ -3170,6 +3170,7 @@ extern int gasnetc_sndrcv_limits(void) {
   const int 		rcv_spare = (gasnetc_use_rcv_thread ? 1 : 0);
   const int 		rcv_spares = gasnetc_num_hcas * rcv_spare;
 
+  // TODO-AMPSHM: distinguish between AM and RDMA resources
   gasnetc_remote_nodes = gasneti_nodes - (GASNET_PSHM ? gasneti_nodemap_local_count : 1);
 
   /* Count normal qps to be placed on each HCA */
@@ -3791,7 +3792,7 @@ void gasnetc_sys_close_reqh(gasnetex_token_t token) {
   gasneti_assert(!gasnetc_close_recvd[shift]);
   gasnetc_close_recvd[shift] = 1;
 
-  if (! gasnetc_non_ib(peer)) {
+  if (! GASNETI_SUPERNODE_LOCAL(peer)) {
     gasnetc_rbuf_t *rbuf = (gasnetc_rbuf_t *)token;
     gasneti_assert(rbuf->rbuf_needReply);
     rbuf->rbuf_needReply = 0; /* we are terminating flow control */
@@ -3806,7 +3807,7 @@ gasnetc_sndrcv_quiesce(void) {
 #if GASNET_DEBUG
   { /* Artificial traffic for testing */
     int peer = 1^gasneti_mynode;
-    if ((peer < gasneti_nodes) && !gasnetc_non_ib(peer)) {
+    if ((peer < gasneti_nodes) && !GASNETI_SUPERNODE_LOCAL(peer)) {
       gasnetc_RequestSysShort(peer, NULL, 0, 0);
     }
   }
@@ -3829,7 +3830,7 @@ gasnetc_sndrcv_quiesce(void) {
                                : (gasneti_mynode - (gasneti_nodes - i));
       gasnetc_cep_t *cep = GASNETC_NODE2CEP(node);
       int qpi;
-      if (gasnetc_non_ib(node) || !cep) continue;
+      if (GASNETI_SUPERNODE_LOCAL(node) || !cep) continue;
       for (qpi = 0; qpi < gasnetc_alloc_qps; ++qpi, ++cep) {
         int cr = gasnetc_atomic_swap(&cep->am_flow.credit, 0, 0);
         if (!cr) continue;
@@ -3854,7 +3855,7 @@ gasnetc_sndrcv_quiesce(void) {
       gasnetc_cep_t *cep = GASNETC_NODE2CEP(node);
       int qpi_offset = gasnetc_use_srq ? gasnetc_num_qps : 0;
       int qpi;
-      if (gasnetc_non_ib(node) || !cep) continue;
+      if (GASNETI_SUPERNODE_LOCAL(node) || !cep) continue;
       for (qpi = qpi_offset, cep += qpi_offset; qpi < gasnetc_alloc_qps; ++qpi, ++cep) {
         int remain = gasnetc_am_oust_pp;
         gasnetc_sema_t *sema = &cep->am_rem;
@@ -3871,7 +3872,7 @@ gasnetc_sndrcv_quiesce(void) {
     for (shift = 0, distance = 1; distance < gasneti_nodes; ++shift, distance *= 2) {
       gasnetex_rank_t peer = (distance <= gasneti_mynode) ? gasneti_mynode - distance
                                                         : gasneti_mynode + (gasneti_nodes - distance);
-      if (gasnetc_non_ib(peer)) {
+      if (GASNETI_SUPERNODE_LOCAL(peer)) {
         /* BLCR-TODO: this might be a problem between init and attach? */
         gasnetex_AMRequestShort0(NULL, peer, gasneti_handleridx(gasnetc_sys_close_reqh), 0);
       } else {
@@ -4354,7 +4355,7 @@ extern int gasnetc_RequestGeneric(gasnetc_category_t category,
 				  gasnetc_cb_t local_cb,
 				  gasnetc_counter_t *counter, va_list argptr
                                   GASNETI_THREAD_FARG) {
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   const gasnetex_rank_t node = gasnetc_epid2node(dest);
 #endif
 
@@ -4365,7 +4366,7 @@ extern int gasnetc_RequestGeneric(gasnetc_category_t category,
     GASNETI_PROGRESSFNS_RUN();
   }
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   if_pt (gasneti_pshm_in_supernode(node)) {
     return gasneti_AMPSHM_RequestGeneric(category, node, handler,
                                          src_addr, nbytes, dst_addr,
@@ -4390,7 +4391,7 @@ extern int gasnetc_ReplyGeneric(gasnetc_category_t category,
   gasnetc_rbuf_t *rbuf = (gasnetc_rbuf_t *)token;
   int retval;
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   if_pt (gasnetc_token_is_pshm(token)) {
       return gasneti_AMPSHM_ReplyGeneric(category, token, handler,
                                          src_addr, nbytes, dst_addr,
@@ -4501,7 +4502,7 @@ extern int gasnetc_AMGetMsgSource(gasnetex_token_t token, gasnetex_rank_t *srcin
   GASNETI_CHECK_ERRR((!token),BAD_ARG,"bad token");
   GASNETI_CHECK_ERRR((!srcindex),BAD_ARG,"bad src ptr");
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   if (gasneti_AMPSHMGetMsgSource(token, &sourceid) != GASNET_OK)
 #endif
   {

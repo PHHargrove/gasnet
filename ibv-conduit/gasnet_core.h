@@ -126,14 +126,22 @@ typedef struct _gasnetex_hsl_t {
 #define gasnet_AMMaxArgs()          ((size_t)GASNETC_MAX_ARGS_USER)
 #define gasnetex_lub_AMRequestMedium() ((size_t)GASNETC_MAX_MEDIUM)
 #define gasnetex_lub_AMReplyMedium()   ((size_t)GASNETC_MAX_MEDIUM)
-#define gasnetex_lub_AMRequestLong()   ((size_t)GASNETC_MAX_LONG_REQ)
-#define gasnetex_lub_AMReplyLong()     ((size_t)GASNETC_MAX_LONG_REP)
+#if GASNETI_AMPSHM && !GASNET_PSHM
+  #define gasnetex_lub_AMRequestLong()   ((size_t)GASNETC_MAX_PACKEDLONG)
+  #define gasnetex_lub_AMReplyLong()     ((size_t)GASNETC_MAX_PACKEDLONG)
+#elif GASNETC_PIN_SEGMENT
+  #define gasnetex_lub_AMRequestLong()   ((size_t)0x7fffffff)
+  #define gasnetex_lub_AMReplyLong()     ((size_t)0x7fffffff)
+#else
+  #define gasnetex_lub_AMRequestLong()   ((size_t)0x7fffffff)
+  #define gasnetex_lub_AMReplyLong()     ((size_t)GASNETC_MAX_PACKEDLONG)
+#endif
 
-  // TODO-EX: Medium sizes can be further improved upon for PSHM case
+  // TODO-EX: sizes can be further improved upon for PSHM case
 #define gasnetex_max_AMRequestMedium(team,rank,lc_opt,flags,nargs) ((size_t)GASNETC_MAX_MEDIUM_(nargs))
 #define gasnetex_max_AMReplyMedium(team,rank,lc_opt,flags,nargs)   ((size_t)GASNETC_MAX_MEDIUM_(nargs))
-#define gasnetex_max_AMRequestLong(team,rank,lc_opt,flags,nargs) ((size_t)GASNETC_MAX_LONG_REQ)
-#define gasnetex_max_AMReplyLong(team,rank,lc_opt,flags,nargs)   ((size_t)GASNETC_MAX_LONG_REP)
+#define gasnetex_max_AMRequestLong(team,rank,lc_opt,flags,nargs)   gasnetex_lub_AMRequestLong()
+#define gasnetex_max_AMReplyLong(team,rank,lc_opt,flags,nargs)     gasnetex_lub_AMReplyLong()
 
 /* ------------------------------------------------------------------------------------ */
 /*
