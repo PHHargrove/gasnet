@@ -179,7 +179,7 @@ GASNETI_BEGIN_NOWARN
 #if defined(GASNETI_AMPSHM) && (GASNETI_AMPSHM != 1)
   #error bad defn of GASNETI_AMPSHM
 #elif !defined(GASNETI_AMPSHM)
-  #define GASNETI_AMPSHM 0
+  #define GASNETI_AMPSHM GASNET_PSHM
 #endif
 
 /* GASNETI_CONDUIT_THREADS = GASNet conduit has one or more private threads

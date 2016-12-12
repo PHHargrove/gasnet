@@ -1508,7 +1508,7 @@ static int gasnetc_hca_report(void) {
 }
 
 static int gasnetc_init(int *argc, char ***argv) {
-#if GASNET_PSHM
+#if GASNET_PSHM || GASNETI_AMPSHM
   void                  *shared_mem;
 #endif
   gasnetc_hca_t		*hca;
@@ -1674,7 +1674,7 @@ static int gasnetc_init(int *argc, char ***argv) {
   }
 #endif
 
-  #if GASNET_PSHM
+  #if GASNET_PSHM || GASNETI_AMPSHM
   {
     size_t shared_size = 0;
 
@@ -1690,8 +1690,6 @@ static int gasnetc_init(int *argc, char ***argv) {
 
     shared_mem = gasneti_pshm_init(&gasneti_bootstrapSNodeBroadcast, shared_size);
   }
-  #elif GASNETI_AMPSHM
-  gasneti_pshm_init(&gasneti_bootstrapSNodeBroadcast, 0);
   #endif
 
   /* early registration of core API handlers */
@@ -1721,7 +1719,7 @@ static int gasnetc_init(int *argc, char ***argv) {
   }
 
   /* transpose remote lids into port_tbl */
-#if GASNET_PSHM
+#if GASNET_PSHM || GASNETI_AMPSHM
   {
     uint16_t *tmp = (uint16_t *)shared_mem;
     for (i = 0; i < gasnetc_num_ports; ++i) {

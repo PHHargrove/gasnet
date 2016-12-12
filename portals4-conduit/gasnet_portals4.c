@@ -1342,7 +1342,7 @@ gasnetc_p4_TransferGeneric(int category, ptl_match_bits_t req_type, gasnet_node_
 
     /* if long, block until the send event */
     while (gasnetc_Long == category && long_send_complete == 0) {
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
         /* Progress shared-memory Request and Reply queues while we wait */
         gasneti_AMPSHMPoll(0);
 #endif
@@ -1399,7 +1399,7 @@ gasnetc_rdma_put_wait(gasnet_handle_t oph)
     if (OPTYPE(op) == OPTYPE_EXPLICIT) {
         gasnete_eop_t *eop = (gasnete_eop_t *)op;
         while (!GASNETE_EOP_DONE(eop)) {
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
             /* Progress shared-memory Request and Reply queues while we wait */
             gasneti_AMPSHMPoll(0);
 #endif
@@ -1410,7 +1410,7 @@ gasnetc_rdma_put_wait(gasnet_handle_t oph)
     } else {
         gasnete_iop_t *iop = (gasnete_iop_t *)op;
         while (!(GASNETE_IOP_CNTDONE(iop,get) && GASNETE_IOP_CNTDONE(iop,put))) {
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
             /* Progress shared-memory Request and Reply queues while we wait */
             gasneti_AMPSHMPoll(0);
 #endif
@@ -1697,7 +1697,7 @@ gasnetc_bootstrapExchange(void *src, size_t len, void *dest)
     GASNETI_TRACE_PRINTF(C,("bootExch exit"));
 }
 
-#if GASNET_PSHM /* Used only in call to gasneti_pshm_init() */
+#if GASNET_PSHM || GASNETI_AMPSHM /* Used only in call to gasneti_pshm_init() */
 void gasnetc_bootstrapSNodeBroadcast(void *src, size_t len, void *dest, int rootnode) {
     ptl_md_t md;
     ptl_me_t me;

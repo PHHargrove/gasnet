@@ -20,9 +20,13 @@
 #define GASNET_CONDUIT_NAME_STR  _STRINGIFY(GASNET_CONDUIT_NAME)
 #define GASNET_CONDUIT_MXM       1
 
-/* GASNET_PSHM defined 1 if this conduit supports PSHM. leave undefined otherwise. */
+  /* GASNET_PSHM defined 1 to enable PSHM for segments. leave undefined otherwise. */
+  /* GASNETI_AMPSHM defined to 1/0 to enable/disable AM over PSHM, otherwise defaults to GASNET_PSHM */
 #if GASNETI_PSHM_ENABLED
-#define GASNET_PSHM 1
+ #if !GASNET_SEGMENT_EVERYTHING
+  #define GASNET_PSHM 1
+ #endif
+ #define GASNETI_AMPSHM 1
 #endif
 
 /*  defined to be 1 if gasnet_init guarantees that the remote-access memory segment will be aligned  */

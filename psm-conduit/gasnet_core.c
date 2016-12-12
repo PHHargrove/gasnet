@@ -389,7 +389,7 @@ static int gasnetc_init(int *argc, char ***argv) {
             gasneti_mynode, gasneti_nodes); fflush(stderr);
 #endif
 
-#if GASNET_PSHM
+#if GASNET_PSHM || GASNETI_AMPSHM
     /* (###) If your conduit will support PSHM, you should initialize it here.
      * The 1st argument is normally "&gasnetc_bootstrapExchange" (described
      * below).  The 2nd argument is the amount of shared memory space needed
@@ -987,7 +987,7 @@ extern void gasnetc_exit(int exitcode) {
    Misc. Active Message Functions
    ==============================
    */
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
 /* (###) GASNETC_GET_HANDLER
  *   If your conduit will support PSHM, then there needs to be a way
  *   for PSHM to see your handler table.  If you use the recommended
@@ -1016,7 +1016,7 @@ extern int gasnetc_AMGetMsgSource(gasnetex_token_t token, gasnet_node_t *srcinde
     GASNETI_CHECK_ERRR((!token),BAD_ARG,"bad token");
     GASNETI_CHECK_ERRR((!srcindex),BAD_ARG,"bad src ptr");
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
     /* (###) If your conduit will support PSHM, let the PSHM code
      * have a chance to recognize the token first, as shown here. */
     if (gasneti_AMPSHMGetMsgSource(token, &sourceid) != GASNET_OK)
@@ -1053,7 +1053,7 @@ extern int gasnetc_AMRequestShortM(
     gasneti_AMPoll(); /* (###) poll at least once, to assure forward progress */
 
     va_start(argptr, numargs); /*  pass in last argument */
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
     /* (###) If your conduit will support PSHM, let it check the dest first. */
     if_pt (gasneti_pshm_in_supernode(dest)) {
         GASNETC_PSM_PSHM_LOCK();
@@ -1115,7 +1115,7 @@ extern int gasnetc_AMRequestMediumM(
     gasneti_AMPoll(); /* (###) poll at least once, to assure forward progress */
     va_start(argptr, numargs); /*  pass in last argument */
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
     /* (###) If your conduit will support PSHM, let it check the dest first. */
     if_pt (gasneti_pshm_in_supernode(dest)) {
         GASNETC_PSM_PSHM_LOCK();
@@ -1177,7 +1177,7 @@ extern int gasnetc_AMRequestLongM( gasnet_node_t dest,        /* destination nod
     gasneti_AMPoll(); /* (###) poll at least once, to assure forward progress */
     va_start(argptr, numargs); /*  pass in last argument */
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
     /* (###) If your conduit will support PSHM, let it check the dest first. */
     if_pt (gasneti_pshm_in_supernode(dest)) {
         GASNETC_PSM_PSHM_LOCK();
@@ -1237,7 +1237,7 @@ extern int gasnetc_AMRequestLongAsyncM(gasnet_node_t dest, /* dest node */
     gasneti_AMPoll(); /* (###) poll at least once, to assure forward progress */
     va_start(argptr, numargs); /*  pass in last argument */
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
     /* (###) If your conduit will support PSHM, let it check the dest first. */
     if_pt (gasneti_pshm_in_supernode(dest)) {
         GASNETC_PSM_PSHM_LOCK();
@@ -1293,7 +1293,7 @@ extern int gasnetc_AMReplyShortM(
     GASNETI_COMMON_AMREPLYSHORT(token,handler,numargs);
     va_start(argptr, numargs); /*  pass in last argument */
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
     /* (###) If your conduit will support PSHM, let it check the token first. */
     if_pt (gasnetc_token_is_pshm(token)) {
         retval = gasneti_AMPSHM_ReplyGeneric(gasnetc_Short, token, handler,
@@ -1345,7 +1345,7 @@ extern int gasnetc_AMReplyMediumM(
 
     GASNETI_COMMON_AMREPLYMEDIUM(token,handler,source_addr,nbytes,numargs);
     va_start(argptr, numargs); /*  pass in last argument */
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
     /* (###) If your conduit will support PSHM, let it check the token first. */
     if_pt (gasnetc_token_is_pshm(token)) {
         retval = gasneti_AMPSHM_ReplyGeneric(gasnetc_Medium, token, handler,
@@ -1396,7 +1396,7 @@ extern int gasnetc_AMReplyLongM(
 
     GASNETI_COMMON_AMREPLYLONG(token,handler,source_addr,nbytes,dest_addr,numargs);
     va_start(argptr, numargs); /*  pass in last argument */
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
     /* (###) If your conduit will support PSHM, let it check the token first. */
     if_pt (gasnetc_token_is_pshm(token)) {
         retval = gasneti_AMPSHM_ReplyGeneric(gasnetc_Long, token, handler,

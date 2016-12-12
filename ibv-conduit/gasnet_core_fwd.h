@@ -35,7 +35,7 @@
 #define GASNET_MAXNODES	65535
 
   /* GASNET_PSHM defined 1 to enable PSHM for segments. leave undefined otherwise. */
-  /* GASNETI_AMPSHM defined 1 to enable AM over PSHM. leave undefined otherwise. */
+  /* GASNETI_AMPSHM defined to 1/0 to enable/disable AM over PSHM, otherwise defaults to GASNET_PSHM */
 #if GASNETI_PSHM_ENABLED
  /* As described in bug 3373, ibv_reg_mem() on Solaris only works with SYSV */
  #if !GASNET_SEGMENT_EVERYTHING && !(PLATFORM_OS_SOLARIS && !GASNETI_PSHM_SYSV)

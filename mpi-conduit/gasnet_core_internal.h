@@ -82,10 +82,8 @@ const char *gasneti_AMErrorName(int errval) {
 /* add new core API handlers here and to the bottom of gasnet_core.c */
 
 /* ------------------------------------------------------------------------------------ */
-#if GASNET_PSHM
 #define GASNETC_MAX_NUMHANDLERS 256
 extern gasneti_handler_fn_t gasnetc_handler[GASNETC_MAX_NUMHANDLERS];
-#endif
 
 /* ------------------------------------------------------------------------------------ */
 /* AM category (recommended impl if supporting PSHM) */

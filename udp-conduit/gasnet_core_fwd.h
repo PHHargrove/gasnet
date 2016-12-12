@@ -20,7 +20,7 @@
 #define GASNET_CONDUIT_UDP       1
 
   /* GASNET_PSHM defined 1 to enable PSHM for segments. leave undefined otherwise. */
-  /* GASNETI_AMPSHM defined 1 to enable AM over PSHM. leave undefined otherwise. */
+  /* GASNETI_AMPSHM defined to 1/0 to enable/disable AM over PSHM, otherwise defaults to GASNET_PSHM */
 #if GASNETI_PSHM_ENABLED
  #if !GASNET_SEGMENT_EVERYTHING
   #define GASNET_PSHM 1

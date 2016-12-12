@@ -436,7 +436,7 @@ void gasnetc_ofi_handle_am_common(ofi_am_send_buf_t *header)
 	}
 }
 
-#if !GASNET_PSHM
+#if !GASNETI_AMPSHM
 /* Handle Active Messages from self (not necessary if PSHM is enabled) */
 GASNETI_INLINE(gasnetc_ofi_handle_local_am)
 void gasnetc_ofi_handle_local_am(ofi_am_buf_t *buf)
@@ -693,7 +693,7 @@ int gasnetc_ofi_am_send_short(gasnet_node_t dest, gasnetex_handler_t handler,
 
 	len = GASNETI_ALIGNUP(sendbuf->len + offsetof(ofi_am_send_buf_t, data), GASNETI_MEDBUF_ALIGNMENT);
 
-#if !GASNET_PSHM
+#if !GASNETI_AMPSHM
 	if (dest == gasneti_mynode) {
 		gasnetc_ofi_handle_local_am(header);
 		return 0;
@@ -766,7 +766,7 @@ int gasnetc_ofi_am_send_medium(gasnet_node_t dest, gasnetex_handler_t handler,
 
 	len = GASNETI_ALIGNUP(sendbuf->len + offsetof(ofi_am_send_buf_t, data), GASNETI_MEDBUF_ALIGNMENT);
 
-#if !GASNET_PSHM
+#if !GASNETI_AMPSHM
 	if (dest == gasneti_mynode) {
 		gasnetc_ofi_handle_local_am(header);
 		return 0;
@@ -831,7 +831,7 @@ int gasnetc_ofi_am_send_long(gasnet_node_t dest, gasnetex_handler_t handler,
 	}
 	sendbuf->len = GASNETI_ALIGNUP(sendbuf->len, GASNETI_MEDBUF_ALIGNMENT);
 
-#if !GASNET_PSHM
+#if !GASNETI_AMPSHM
 	if(dest == gasneti_mynode) {
 		memcpy(dest_addr, source_addr, nbytes);
 		sendbuf->type = OFI_AM_LONG;
@@ -866,7 +866,7 @@ int gasnetc_ofi_am_send_long(gasnet_node_t dest, gasnetex_handler_t handler,
 			/* we send the am part after confirming the large rdma operation */
 			/* is successful. */
 			while(!lam_ctxt.data_sent) {
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
 				gasneti_AMPSHMPoll(0);
 #endif
 				gasnetc_ofi_rdma_poll(0);
@@ -885,7 +885,7 @@ int gasnetc_ofi_am_send_long(gasnet_node_t dest, gasnetex_handler_t handler,
 	len = GASNETI_ALIGNUP(sendbuf->len + offsetof(ofi_am_send_buf_t, data), 
 			GASNETI_MEDBUF_ALIGNMENT);
 
-#if !GASNET_PSHM
+#if !GASNETI_AMPSHM
 	if (dest == gasneti_mynode) {
 		gasnetc_ofi_handle_local_am(header);
 		return 0;
@@ -978,7 +978,7 @@ gasnetc_rdma_put_wait(gasnet_handle_t oph)
 	if (OPTYPE(op) == OPTYPE_EXPLICIT) {
 		gasnete_eop_t *eop = (gasnete_eop_t *)op;
 		while (!GASNETE_EOP_DONE(eop)) {
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
 			gasneti_AMPSHMPoll(0);
 #endif
 			gasnetc_ofi_rdma_poll(0);
@@ -986,7 +986,7 @@ gasnetc_rdma_put_wait(gasnet_handle_t oph)
 	} else {
 		gasnete_iop_t *iop = (gasnete_iop_t *)op;
 		while (!GASNETE_IOP_CNTDONE(iop,put)) {
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
 			gasneti_AMPSHMPoll(0);
 #endif
 			gasnetc_ofi_rdma_poll(0);
@@ -1003,7 +1003,7 @@ gasnetc_rdma_get_wait(gasnet_handle_t oph)
 	if (OPTYPE(op) == OPTYPE_EXPLICIT) {
 		gasnete_eop_t *eop = (gasnete_eop_t *)op;
 		while (!GASNETE_EOP_DONE(eop)) {
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
 			gasneti_AMPSHMPoll(0);
 #endif
 			gasnetc_ofi_rdma_poll(0);
@@ -1011,7 +1011,7 @@ gasnetc_rdma_get_wait(gasnet_handle_t oph)
 	} else {
 		gasnete_iop_t *iop = (gasnete_iop_t *)op;
 		while (!GASNETE_IOP_CNTDONE(iop,get)) {
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
 			gasneti_AMPSHMPoll(0);
 #endif
 			gasnetc_ofi_rdma_poll(0);

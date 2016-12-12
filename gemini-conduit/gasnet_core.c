@@ -16,10 +16,6 @@
 #include <unistd.h>
 #include <signal.h>
 
-#if !GASNET_PSHM
-#include <alloca.h>
-#endif
-
 #include <sys/mman.h>
 #include <hugetlbfs.h>
 
@@ -196,7 +192,7 @@ void gasnetc_bootstrapBarrier_gni(void))
     int pre_attach = !gasneti_attach_done;
     int i;
 
-#if GASNET_PSHM
+#if GASNET_PSHM || GASNETI_AMPSHM
     gasneti_pshmnet_bootstrapBarrier();
 #endif
  
@@ -218,7 +214,7 @@ void gasnetc_bootstrapBarrier_gni(void))
 
     if (pre_attach) gasneti_attach_done = 0;
 
-#if GASNET_PSHM
+#if GASNET_PSHM || GASNETI_AMPSHM
     gasneti_pshmnet_bootstrapBarrier();
 #endif
 
@@ -263,7 +259,7 @@ void gasnetc_bootstrapExchange_gni(void *src, size_t len, void *dest))
     uint8_t *temp = gasnetc_sys_exchange_addr(phase, len);
     int step;
 
-#if GASNET_PSHM
+#if GASNET_PSHM || GASNETI_AMPSHM
     /* Construct supernode-local contribution */
     gasneti_pshmnet_bootstrapGather(gasneti_request_pshmnet, src, len, temp, 0);
     if (gasneti_nodemap_local_rank) goto end_network_comms;
@@ -312,7 +308,7 @@ void gasnetc_bootstrapExchange_gni(void *src, size_t len, void *dest))
     memcpy(dest, temp + len * (gasneti_nodes - gasneti_mynode), len * gasneti_mynode);
     memcpy((uint8_t*)dest + len * gasneti_mynode, temp, len * (gasneti_nodes - gasneti_mynode));
 
-#if GASNET_PSHM
+#if GASNET_PSHM || GASNETI_AMPSHM
 end_network_comms:
     gasneti_pshmnet_bootstrapBroadcast(gasneti_request_pshmnet, dest, len*gasneti_nodes, dest, 0);
 #endif
@@ -334,7 +330,7 @@ static void gasnetc_sys_coll_init(void)
 {
   int i;
 
-#if GASNET_PSHM
+#if GASNET_PSHM || GASNETI_AMPSHM
   const gasnetex_rank_t size = gasneti_nodemap_global_count;
   const gasnetex_rank_t rank = gasneti_nodemap_global_rank;
 
@@ -360,7 +356,7 @@ static void gasnetc_sys_coll_init(void)
   gasneti_leak(gasnetc_dissem_peer);
   for (i = 0; i < gasnetc_dissem_peers; ++i) {
     const gasnetex_rank_t peer = (rank + size - (1<<i)) % size;
-  #if GASNET_PSHM
+  #if GASNET_PSHM || GASNETI_AMPSHM
     /* Convert supernode numbers to node numbers */
     gasnetc_dissem_peer[i] = gasneti_pshm_firsts[peer];
   #else
@@ -372,7 +368,7 @@ static void gasnetc_sys_coll_init(void)
   gasnetc_exchange_rcvd = gasneti_calloc(gasnetc_dissem_peers+1, sizeof(gasnetex_rank_t));
   gasnetc_exchange_send = gasneti_calloc(gasnetc_dissem_peers, sizeof(gasnetex_rank_t));
   { int step;
-  #if GASNET_PSHM
+  #if GASNET_PSHM || GASNETI_AMPSHM
     gasnetex_rank_t *width;
     gasnetex_rank_t sum1 = 0;
     gasnetex_rank_t sum2 = 0;
@@ -611,7 +607,7 @@ static int gasnetc_init(int *argc, char ***argv) {
     gasneti_nodemapInit(NULL, nidlist, sizeof(int), sizeof(int));
   }
 
-  #if GASNET_PSHM
+  #if GASNET_PSHM || GASNETI_AMPSHM
     /* If your conduit will support PSHM, you should initialize it here.
      * The 1st argument is normally "&gasnetc_bootstrapSNodeBroadcast" or equivalent
      * The 2nd argument is the amount of shared memory space needed for any
@@ -1053,7 +1049,7 @@ extern void gasnetc_exit(int exitcode) {
   Misc. Active Message Functions
   ==============================
 */
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
 /* (###) GASNETC_GET_HANDLER
  *   If your conduit will support PSHM, then there needs to be a way
  *   for PSHM to see your handler table.  If you use the recommended
@@ -1081,7 +1077,7 @@ extern int gasnetc_AMGetMsgSource(gasnetex_token_t token, gasnetex_rank_t *srcin
   GASNETI_CHECK_ERRR((!token),BAD_ARG,"bad token");
   GASNETI_CHECK_ERRR((!srcindex),BAD_ARG,"bad src ptr");
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   /* (###) If your conduit will support PSHM, let the PSHM code
    * have a chance to recognize the token first, as shown here. */
   if (gasneti_AMPSHMGetMsgSource(token, &sourceid) != GASNET_OK)
@@ -1101,7 +1097,7 @@ extern int gasnetc_AMPoll(GASNETI_THREAD_FARG_ALONE)
   GASNETC_DIDX_POST(GASNETI_MYTHREAD->domain_idx);
   GASNETI_CHECKATTACH();
 
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   /* (###) If your conduit will support PSHM, let it make progress here. */
   gasneti_AMPSHMPoll(0 GASNETI_THREAD_PASS);
 #endif
@@ -1139,7 +1135,8 @@ int gasnetc_general_am_send_reply(gasnetc_post_descriptor_t *gpd, gasnetex_token
 }
 
 /*------------------- local delivery cases (non-PSHM) ------------------ */
-#if !GASNET_PSHM
+#if !GASNETI_AMPSHM
+#include <alloca.h>
 
 GASNETI_INLINE(gasnetc_local_short_common)
 int gasnetc_local_short_common(int is_req, gasnetex_handler_t handler,
@@ -1202,7 +1199,7 @@ int gasnetc_local_long_common(int is_req, gasnetex_handler_t handler,
   GASNETI_RUN_HANDLER_LONG(is_req,handler,handler_fn,token,args,numargs,dest_addr,nbytes);
   return(GASNET_OK);
 }
-#endif /* !GASNET_PSHM */
+#endif /* !GASNETI_AMPSHM */
 
 /*------------------- header formatting ------------------ */
 GASNETI_INLINE(gasnetc_format_short)
@@ -1359,7 +1356,7 @@ extern int gasnetc_AMRequestShortM(
   GASNETI_COMMON_AMREQUESTSHORT(team,dest,handler,flags,numargs);
   gasneti_AMPoll(); /* poll at least once, to assure forward progress */
   va_start(argptr, numargs); /*  pass in last argument */
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   /* (###) If your conduit will support PSHM, let it check the dest first. */
   if_pt (gasneti_pshm_in_supernode(dest)) {
     retval = gasneti_AMPSHM_RequestGeneric(gasnetc_Short, dest, handler,
@@ -1396,7 +1393,7 @@ extern int gasnetc_AMRequestMediumM(
   gasneti_AMPoll(); /* poll at least once, to assure forward progress */
   gasneti_leaf_finish(lc_opt); // TODO-EX: should support async local completion
   va_start(argptr, numargs); /*  pass in last argument */
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   /* (###) If your conduit will support PSHM, let it check the dest first. */
   if_pt (gasneti_pshm_in_supernode(dest)) {
     retval = gasneti_AMPSHM_RequestGeneric(gasnetc_Medium, dest, handler,
@@ -1434,7 +1431,7 @@ extern int gasnetc_AMRequestLongM(
   gasneti_AMPoll(); /* poll at least once, to assure forward progress */
   gasneti_leaf_finish(lc_opt); // TODO-EX: should support async local completion
   va_start(argptr, numargs); /*  pass in last argument */
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   /* (###) If your conduit will support PSHM, let it check the dest first. */
   if_pt (gasneti_pshm_in_supernode(dest)) {
     retval = gasneti_AMPSHM_RequestGeneric(gasnetc_Long, dest, handler,
@@ -1495,7 +1492,7 @@ extern int gasnetc_AMReplyShortM(
   va_list argptr;
   GASNETI_COMMON_AMREPLYSHORT(token,handler,flags,numargs);
   va_start(argptr, numargs); /*  pass in last argument */
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   /* (###) If your conduit will support PSHM, let it check the token first. */
   if_pt (gasnetc_token_is_pshm(token)) {
     retval = gasneti_AMPSHM_ReplyGeneric(gasnetc_Short, token, handler,
@@ -1530,7 +1527,7 @@ extern int gasnetc_AMReplyMediumM(
   GASNETI_COMMON_AMREPLYMEDIUM(token,handler,source_addr,nbytes,lc_opt,flags,numargs);
   gasneti_leaf_finish(lc_opt); // TODO-EX: should support async local completion
   va_start(argptr, numargs); /*  pass in last argument */
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   /* (###) If your conduit will support PSHM, let it check the token first. */
   if_pt (gasnetc_token_is_pshm(token)) {
     retval = gasneti_AMPSHM_ReplyGeneric(gasnetc_Medium, token, handler,
@@ -1565,7 +1562,7 @@ extern int gasnetc_AMReplyLongM(
   GASNETI_COMMON_AMREPLYLONG(token,handler,source_addr,nbytes,dest_addr,lc_opt,flags,numargs);
   gasneti_leaf_finish(lc_opt); // TODO-EX: should support async local completion
   va_start(argptr, numargs); /*  pass in last argument */
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   /* (###) If your conduit will support PSHM, let it check the token first. */
   if_pt (gasnetc_token_is_pshm(token)) {
     retval = gasneti_AMPSHM_ReplyGeneric(gasnetc_Long, token, handler,
