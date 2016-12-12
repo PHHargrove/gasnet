@@ -200,7 +200,7 @@ extern void *gasneti_mmap(uintptr_t segsize) {
 }
 #endif /* HAVE_MMAP */
 
-#if GASNET_PSHM
+#if GASNET_PSHM || GASNETI_AMPSHM
 
 /* an array of filenames/keys with length 1+gasneti_pshm_nodes, the +1 is for AMs */
 #if defined(GASNETI_PSHM_SYSV)
@@ -397,7 +397,7 @@ static const char *gasneti_pshm_makeunique(const char *unique) {
   return unique;
 }
 #endif
-#endif /* GASNET_PSHM */
+#endif /* GASNET_PSHM || GASNETI_AMPSHM */
 
 #if defined(GASNETI_USE_HUGETLBFS)
 
@@ -431,7 +431,7 @@ extern void gasneti_huge_munmap(void *addr, uintptr_t size) {
 
 #endif /* defined(GASNETI_USE_HUGETLBFS) */
 
-#if GASNET_PSHM
+#if GASNET_PSHM || GASNETI_AMPSHM
 
 static void gasneti_pshm_unlink(int pshm_rank);
 
@@ -776,7 +776,9 @@ extern void *gasneti_mmap_shared_fixed(void *segbase, uintptr_t segsize) {
 extern void *gasneti_mmap_shared(uintptr_t segsize) {
   return gasneti_mmap_shared_internal(gasneti_pshm_mynode, NULL, segsize, 1);
 }
+#endif /* GASNET_PSHM || GASNETI_AMPSHM */
 
+#if GASNETI_AMPSHM
 extern void *gasneti_mmap_vnet(uintptr_t size, gasneti_bootstrapBroadcastfn_t snodebcastfn) {
   void *ptr = MAP_FAILED;
   int save_errno = 0;
@@ -886,7 +888,7 @@ extern void *gasneti_mmap_vnet(uintptr_t size, gasneti_bootstrapBroadcastfn_t sn
 extern void gasneti_unlink_vnet(void) {
   gasneti_pshm_unlink(gasneti_pshm_nodes);
 }
-#endif /* GASNET_PSHM */
+#endif /* GASNETI_AMPSHM */
 
 /* ------------------------------------------------------------------------------------ */
 #if HAVE_MMAP

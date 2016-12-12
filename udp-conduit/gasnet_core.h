@@ -99,15 +99,17 @@ typedef struct _gasnetex_hsl_t {
 */
 
 #define gasnet_AMMaxArgs()          ((size_t)AM_MaxShort())
-#if GASNET_PSHM
+#if GASNETI_AMPSHM
   #define gasnetex_lub_AMRequestMedium() ((size_t)MIN(AM_MaxMedium(), GASNETI_MAX_MEDIUM_PSHM))
   #define gasnetex_lub_AMReplyMedium()   ((size_t)MIN(AM_MaxMedium(), GASNETI_MAX_MEDIUM_PSHM))
+  #define gasnetex_lub_AMRequestLong()   ((size_t)MIN(AM_MaxLong(), GASNETI_MAX_LONG_PSHM))
+  #define gasnetex_lub_AMReplyLong()     ((size_t)MIN(AM_MaxLong(), GASNETI_MAX_LONG_PSHM))
 #else
   #define gasnetex_lub_AMRequestMedium() ((size_t)AM_MaxMedium())
   #define gasnetex_lub_AMReplyMedium()   ((size_t)AM_MaxMedium())
+  #define gasnetex_lub_AMRequestLong()   ((size_t)AM_MaxLong())
+  #define gasnetex_lub_AMReplyLong()     ((size_t)AM_MaxLong())
 #endif
-#define gasnetex_lub_AMRequestLong()     ((size_t)AM_MaxLong())
-#define gasnetex_lub_AMReplyLong()       ((size_t)AM_MaxLong())
 
   // TODO-EX: Can these be improved upon, at least for PSHM case
 #define gasnetex_max_AMRequestMedium(team,rank,lc_opt,flags,nargs) gasnetex_lub_AMRequestMedium()

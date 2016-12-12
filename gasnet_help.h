@@ -830,7 +830,7 @@ extern gasnet_nodeinfo_t *gasneti_nodeinfo;
 
 /* ------------------------------------------------------------------------------------ */
 /* PSHM support */
-#if GASNET_PSHM
+#if GASNET_PSHM || GASNETI_AMPSHM
 
 /* Max number of processes supported per node */
 #ifndef GASNETI_PSHM_MAX_NODES
@@ -892,7 +892,9 @@ int gasneti_pshm_in_supernode(gasnetex_rank_t node) {
 #endif
 }
 GASNETI_PUREP(gasneti_pshm_in_supernode)
+#endif /* GASNET_PSHM || GASNETI_AMPSHM */
 
+#if GASNET_PSHM
 /* Returns local version of remote in-supernode address.
  */
 GASNETI_INLINE(gasneti_pshm_addr2local) GASNETI_PURE

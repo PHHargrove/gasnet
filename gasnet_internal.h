@@ -701,7 +701,7 @@ extern void gasneti_nodemapFini(void);
 
 #include <gasnet_handler.h>
 
-#if GASNET_PSHM
+#if GASNET_PSHM || GASNETI_AMPSHM
 #include <gasnet_pshm.h>
 #endif
 

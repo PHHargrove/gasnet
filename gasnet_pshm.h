@@ -7,9 +7,10 @@
 #ifndef _GASNET_SYSV_H
 #define _GASNET_SYSV_H
 
-#if !GASNET_PSHM
+#if !GASNET_PSHM && !GASNETI_AMPSHM
   #error "gasnet_pshm.h included in a non-PSHM build"
 #endif
+// TODO-AMPSHM: prune what is defined when (GASNETI_AMPSHM && !GASNET_PSHM)
 
 /* Must defined EXACTLY one */
 /* TO DO: add to GASNet's config string */

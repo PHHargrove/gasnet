@@ -1134,7 +1134,7 @@ extern void gasneti_nodemapParse(void) {
   gasneti_assert(gasneti_nodemap[gasneti_mynode] <= gasneti_mynode);
 
   /* Check for user-imposed limit: 0 (or negative) means no limit */
-#if GASNET_PSHM
+#if GASNET_PSHM || GASNETI_AMPSHM
   limit = gasneti_getenv_int_withdefault("GASNET_SUPERNODE_MAXSIZE", 0, 0);
  #ifdef GASNETI_PSHM_GHEAP
   if (limit != 1) {

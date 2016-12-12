@@ -6,7 +6,7 @@
 
 #include <gasnet_internal.h>
 
-#if GASNET_PSHM /* Otherwise file is empty */
+#if GASNET_PSHM || GASNETI_AMPSHM /* Otherwise file is empty */
 
 #include <gasnet_core_internal.h> /* for gasnetc_{Short,Medium,Long} and gasnetc_handler[] */
 
@@ -1130,6 +1130,7 @@ static void gasneti_pshmnet_free(gasneti_pshmnet_payload_t *p)
                                                GASNETI_AMPSHM_MSG_MEDDATA_SHIFT)
 #define GASNETI_AMPSHM_MSG_LONG_NUMBYTES(msg) (((gasneti_AMPSHM_longmsg_t*)msg)->numbytes)
 #define GASNETI_AMPSHM_MSG_LONG_DATA(msg)     (((gasneti_AMPSHM_longmsg_t*)msg)->longdata)
+#define GASNETI_AMPSHM_MSG_LONG_PAYLOAD(msg)  (&((gasneti_AMPSHM_longmsg_t*)msg)->longdata + 1)
 
 #define GASNETI_AMPSHM_MAX_REPLY_PER_POLL 10
 #define GASNETI_AMPSHM_MAX_REQUEST_PER_POLL 10
@@ -1195,6 +1196,10 @@ int gasneti_AMPSHM_service_incoming_msg(gasneti_pshmnet_t *vnet, int isReq)
       { 
         void * data = GASNETI_AMPSHM_MSG_LONG_DATA(msg);
         size_t nbytes = GASNETI_AMPSHM_MSG_LONG_NUMBYTES(msg);
+      #if !GASNET_PSHM
+        memcpy(data, GASNETI_AMPSHM_MSG_LONG_PAYLOAD(msg), nbytes);
+        gasneti_local_wmb();
+      #endif
         GASNETC_ENTERING_HANDLER_HOOK(category,isReq,handler_id,token,data,nbytes,numargs,args);
         GASNETI_RUN_HANDLER_LONG(
             isReq,handler_id,handler_fn,token,args,numargs,data,nbytes);
@@ -1281,7 +1286,11 @@ int gasnetc_AMPSHM_ReqRepGeneric(int category, int isReq, gasnetex_rank_t dest,
         msgsz = sizeof(gasneti_AMPSHM_medmsg_t) - (GASNETC_MAX_MEDIUM_PSHM - nbytes);
         break;
       case gasnetc_Long:
+      #if GASNET_PSHM
         msgsz = sizeof(gasneti_AMPSHM_longmsg_t);
+      #else
+        msgsz = sizeof(gasneti_AMPSHM_longmsg_t) + nbytes;
+      #endif
         break;
       default:
         gasneti_fatalerror("internal error: unknown msg category");
@@ -1323,13 +1332,19 @@ int gasnetc_AMPSHM_ReqRepGeneric(int category, int isReq, gasnetex_rank_t dest,
       memcpy(GASNETI_AMPSHM_MSG_MED_DATA(msg), source_addr, nbytes);
       break;
     case gasnetc_Long: {
-      void *local_dest_addr = gasneti_pshm_addr2local(dest, dest_addr);
-
       GASNETI_AMPSHM_MSG_LONG_DATA(msg) = dest_addr; 
       GASNETI_AMPSHM_MSG_LONG_NUMBYTES(msg) = nbytes;
       gasneti_assert( GASNETI_AMPSHM_MSG_LONG_NUMBYTES(msg) == nbytes ); /* truncation check */
       /* deliver_msg call, below, contains write flush, so don't need here */
-      memcpy(local_dest_addr, source_addr, nbytes);
+    #if GASNET_PSHM
+      memcpy(gasneti_pshm_addr2local(dest, dest_addr), source_addr, nbytes);
+    #else
+      if (loopback) {
+        memcpy(dest_addr, source_addr, nbytes);
+      } else {
+        memcpy(GASNETI_AMPSHM_MSG_LONG_PAYLOAD(msg), source_addr, nbytes);
+      }
+    #endif
       break;
     }
   }
@@ -1367,4 +1382,4 @@ int gasnetc_AMPSHM_ReqRepGeneric(int category, int isReq, gasnetex_rank_t dest,
   return GASNET_OK;
 }
 
-#endif /* GASNET_PSHM */
+#endif /* GASNET_PSHM || GASNETI_AMPSHM */

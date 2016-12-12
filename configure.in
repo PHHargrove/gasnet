@@ -1400,9 +1400,7 @@ GASNET_PSHM_ENABLED=no
 GASNET_IF_ENABLED_WITH_AUTO(pshm,
   [Enable/disable inter-process shared memory support (default is system dependent)],
   [enabled_pshm=yes], [enabled_pshm=no],
-  [ if test "$segconfig" = everything; then
-      enabled_pshm=no
-    elif test "$cross_compiling" = yes; then
+  [ if test "$cross_compiling" = yes; then
       enabled_pshm=no
     else
       # Current default is 'probe' unless overridden in case statment below

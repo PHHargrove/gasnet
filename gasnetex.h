@@ -168,11 +168,18 @@ GASNETI_BEGIN_NOWARN
 #include <gasnet_vis_fwd.h>
 #include <gasnet_coll_fwd.h>
 
-/* GASNET_PSHM = GASNet conduit is using PSHM */
+/* GASNET_PSHM = GASNet conduit is using PSHM for segment */
 #if defined(GASNET_PSHM) && (GASNET_PSHM != 1)
   #error bad defn of GASNET_PSHM
 #elif !defined(GASNET_PSHM)
   #define GASNET_PSHM 0
+#endif
+
+/* GASNETI_AMPSHM = GASNet conduit is using PSHM for AM */
+#if defined(GASNETI_AMPSHM) && (GASNETI_AMPSHM != 1)
+  #error bad defn of GASNETI_AMPSHM
+#elif !defined(GASNETI_AMPSHM)
+  #define GASNETI_AMPSHM 0
 #endif
 
 /* GASNETI_CONDUIT_THREADS = GASNet conduit has one or more private threads
@@ -260,6 +267,17 @@ GASNETI_BEGIN_NOWARN
 /* Largest Medium supported by AMPSHM */
 #ifndef GASNETI_MAX_MEDIUM_PSHM
   #define GASNETI_MAX_MEDIUM_PSHM 65000
+#endif
+
+/* Largest Long supported by AMPSHM */
+#ifdef GASNETI_MAX_LONG_PSHM
+  // Keep existing defn
+#elif !GASNET_PSHM
+  #define GASNETI_MAX_LONG_PSHM (GASNETI_MAX_MEDIUM_PSHM-8)
+#elif PLATFORM_ARCH_64
+  #define GASNETI_MAX_LONG_PSHM (0x7fffffffffffffffllu)
+#else
+  #define GASNETI_MAX_LONG_PSHM (0x7fffffffllu)
 #endif
 
 extern const char *gasnet_ErrorName(int);
