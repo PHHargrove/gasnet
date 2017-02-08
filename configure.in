@@ -3205,7 +3205,7 @@ if test "$enabled_portals4" = yes; then
   }], [ : ], [ have_portals4=no; GASNET_ERR_SAVE() ] )
 
   # Try to compile and link Portals 4 PMI support
-  # TODO: this could be integrated with the conduit-independent PMI probe -PHH
+  # TODO: this could be moved to the conduit-independent PMI probe -PHH
   LIBS="$LIBS -lportals_runtime"
   GASNET_TRY_CACHE_LINK(for PMI support in Portals4 runtime library, portals4_pmi_works, [
       #include <stddef.h>
@@ -3213,6 +3213,7 @@ if test "$enabled_portals4" = yes; then
   ], [{
       PMI_Init(NULL);
   }], [
+      have_portals4_pmi_h=yes
       PORTALS4_LIBCFLAGS="$PORTALS4_LIBCFLAGS -I$PORTALS4_INCLUDE/portals4 -DHAVE_PMI_H"
       PORTALS4_LIBS="$PORTALS4_LIBS -lportals_runtime"
    ] )
@@ -4121,6 +4122,13 @@ have_pmi=no
 if test -n "$have_pmi_cray_h"; then
   with_pmi='no'
   have_pmi='yes'
+elif test -n "$have_portals4_pmi_h"; then
+  with_pmi='no'
+  have_pmi='yes'
+  AC_DEFINE(HAVE_PMI_H)
+  PMI_SPAWNER_INCLUDES="-I$PORTALS4_INCLUDE/portals4"
+  PMI_SPAWNER_LIBDIR="-L$PORTALS4_LIBDIR"
+  PMI_SPAWNER_LIBS="-lportals_runtime"
 elif test "$with_pmi" = yes; then
   with_pmi='/usr'
 fi
