@@ -2536,7 +2536,7 @@ gasneti_count0s_copy(void * GASNETI_RESTRICT dst, const void * GASNETI_RESTRICT 
 size_t
 gasneti_count0s(const void * src, size_t bytes) {
 #if 0 /* Naive byte-oriented loop */
-  const uint8_t *s = (volatile uint8_t *)src;
+  const uint8_t *s = src;
   size_t zeros = 0;
   while (bytes--) { zeros += !*(s++); }
 #else /* Carefully optimized (but still portable) word-oriented loop */
