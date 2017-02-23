@@ -2348,7 +2348,7 @@ size_t gasneti_count0s_xform2(uintptr_t x) {
 
 /* Count non-zero bytes in a word-aligned region */
 GASNETI_ALWAYS_INLINE(gasneti_count0s_nzs_aligned_region) GASNETI_PURE
-size_t gasneti_count0s_nzs_aligned_region(volatile uintptr_t *p, size_t words) {
+size_t gasneti_count0s_nzs_aligned_region(const uintptr_t *p, size_t words) {
   size_t non_zeros = 0;
   int i;
 
@@ -2536,22 +2536,22 @@ gasneti_count0s_copy(void * GASNETI_RESTRICT dst, const void * GASNETI_RESTRICT 
 size_t
 gasneti_count0s(const void * src, size_t bytes) {
 #if 0 /* Naive byte-oriented loop */
-  volatile uint8_t *s = (volatile uint8_t *)src;
+  const uint8_t *s = (volatile uint8_t *)src;
   size_t zeros = 0;
   while (bytes--) { zeros += !*(s++); }
 #else /* Carefully optimized (but still portable) word-oriented loop */
-  volatile uintptr_t *s;
+  const uintptr_t *s;
   size_t zeros, tmp;
 
   /* Short cut on less than full word, simplifying the logic below */
   if (bytes < SIZEOF_VOID_P) {
-    volatile uint8_t *s8 = (volatile uint8_t *)src;
+    const uint8_t *s8 = src;
     zeros = 0;
     while (bytes--) { zeros += !*(s8++); }
     return zeros;
   }
 
-  s = (volatile uintptr_t *)GASNETI_ALIGNUP(src, SIZEOF_VOID_P);
+  s = (uintptr_t *)GASNETI_ALIGNUP(src, SIZEOF_VOID_P);
   zeros = bytes;
 
   /* Count partial leading word (if any) */
@@ -2570,7 +2570,7 @@ gasneti_count0s(const void * src, size_t bytes) {
   /* Count partial trailing word (if any) */
   tmp = bytes & (SIZEOF_VOID_P - 1);
   if_pf (tmp) {
-    volatile uint8_t *s8 = (volatile uint8_t *)s;
+    const uint8_t *s8 = (const uint8_t *)s;
     do { zeros -= !!*(s8++); } while (--tmp);
   }
 #endif
