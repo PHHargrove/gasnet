@@ -2348,7 +2348,7 @@ size_t gasneti_count0s_xform2(uintptr_t x) {
 
 /* Count non-zero bytes in a word-aligned region */
 GASNETI_ALWAYS_INLINE(gasneti_count0s_nzs_aligned_region) GASNETI_PURE
-size_t gasneti_count0s_nzs_aligned_region(const uintptr_t *p, size_t words) {
+size_t gasneti_count0s_nzs_aligned_region(volatile uintptr_t *p, size_t words) {
   size_t non_zeros = 0;
   int i;
 
@@ -2373,10 +2373,10 @@ size_t gasneti_count0s_nzs_aligned_region(const uintptr_t *p, size_t words) {
 
 /* Copy and count non-zero bytes w/o any alignment requirement */
 GASNETI_ALWAYS_INLINE(gasneti_count0s_copy_bytes)
-int gasneti_count0s_copy_bytes(void * GASNETI_RESTRICT dst, const void * GASNETI_RESTRICT src, size_t bytes) {
+int gasneti_count0s_copy_bytes(void * GASNETI_RESTRICT dst, volatile void * GASNETI_RESTRICT src, size_t bytes) {
   int non_zeros = 0;
   uint8_t *d = dst;
-  const uint8_t *s = src;
+  volatile uint8_t *s = src;
   gasneti_assert(bytes < SIZEOF_VOID_P);
 
   switch (bytes) {
@@ -2397,10 +2397,10 @@ int gasneti_count0s_copy_bytes(void * GASNETI_RESTRICT dst, const void * GASNETI
 
 /* Copy and count non-zero bytes w/ both dst and src word-aligned */
 GASNETI_ALWAYS_INLINE(gasneti_count0s_copy_dstsrc_aligned)
-size_t gasneti_count0s_copy_dstsrc_aligned(void * GASNETI_RESTRICT dst, const void * GASNETI_RESTRICT src, size_t words) {
+size_t gasneti_count0s_copy_dstsrc_aligned(void * GASNETI_RESTRICT dst, volatile void * GASNETI_RESTRICT src, size_t words) {
   size_t non_zeros = 0;
   uintptr_t *d = dst;
-  const uintptr_t *s = src;
+  volatile uintptr_t *s = src;
   int i;
 
   gasneti_assert(!((uintptr_t)dst & (SIZEOF_VOID_P - 1)));
@@ -2427,13 +2427,13 @@ size_t gasneti_count0s_copy_dstsrc_aligned(void * GASNETI_RESTRICT dst, const vo
 
 /* Copy and count non-zero bytes w/ dst word-aligned, but not src */
 GASNETI_ALWAYS_INLINE(gasneti_count0s_copy_dst_aligned)
-size_t gasneti_count0s_copy_dst_aligned(void * GASNETI_RESTRICT dst, const void * GASNETI_RESTRICT src, size_t words) {
+size_t gasneti_count0s_copy_dst_aligned(void * GASNETI_RESTRICT dst, volatile void * GASNETI_RESTRICT src, size_t words) {
   #if !WORDS_BIGENDIAN
     #define GASNETI_MEMCPY0_MERGE(w0,s0,w1,s1) (((w0)>>(s0)) | ((w1)<<(s1)))
   #else
     #define GASNETI_MEMCPY0_MERGE(w0,s0,w1,s1) (((w0)<<(s0)) | ((w1)>>(s1)))
   #endif
-  const uintptr_t *s = (uintptr_t *)GASNETI_ALIGNDOWN(src, SIZEOF_VOID_P);
+  volatile uintptr_t *s = (volatile uintptr_t *)GASNETI_ALIGNDOWN(src, SIZEOF_VOID_P);
   const size_t s0 = ((uintptr_t)src & (SIZEOF_VOID_P - 1)) << 3;
   const size_t s1 = (SIZEOF_VOID_P * 8) - s0;
   uintptr_t *d = dst;
@@ -2490,21 +2490,19 @@ gasneti_count0s_copy(void * GASNETI_RESTRICT dst, const void * GASNETI_RESTRICT 
 #if 0 /* Naive byte-oriented loop */
   size_t zeros = 0;
   uint8_t *d = dst;
-  const uint8_t *s = src;
+  volatile uint8_t *s = (volatile uint8_t *)src;
   while (bytes--) zeros += !(*(d++) = *(s++));
   return zeros;
 #else /* Carefully optimized (but still portable) word-oriented loop */
   size_t tmp, remain, zeros;
-  const uint8_t *s;
-  uint8_t *d;
+  volatile uint8_t *s = (volatile uint8_t *)src;
+  uint8_t *d = (uint8_t *)dst;
   
   /* Short cut on less than full word, simplifying the logic below */
   if (bytes < SIZEOF_VOID_P) {
-    return (bytes - gasneti_count0s_copy_bytes(dst, src, bytes));
+    return (bytes - gasneti_count0s_copy_bytes(d, s, bytes));
   }
 
-  s = (uint8_t *)src;
-  d = (uint8_t *)dst;
   remain = zeros = bytes;
 
   /* Copy by bytes until dst is aligned */
@@ -2538,22 +2536,22 @@ gasneti_count0s_copy(void * GASNETI_RESTRICT dst, const void * GASNETI_RESTRICT 
 size_t
 gasneti_count0s(const void * src, size_t bytes) {
 #if 0 /* Naive byte-oriented loop */
-  const uint8_t *s = src;
+  volatile uint8_t *s = (volatile uint8_t *)src;
   size_t zeros = 0;
   while (bytes--) { zeros += !*(s++); }
 #else /* Carefully optimized (but still portable) word-oriented loop */
-  const uintptr_t *s;
+  volatile uintptr_t *s;
   size_t zeros, tmp;
 
   /* Short cut on less than full word, simplifying the logic below */
   if (bytes < SIZEOF_VOID_P) {
-    const uint8_t *s8 = src;
+    volatile uint8_t *s8 = (volatile uint8_t *)src;
     zeros = 0;
     while (bytes--) { zeros += !*(s8++); }
     return zeros;
   }
 
-  s = (uintptr_t *)GASNETI_ALIGNUP(src, SIZEOF_VOID_P);
+  s = (volatile uintptr_t *)GASNETI_ALIGNUP(src, SIZEOF_VOID_P);
   zeros = bytes;
 
   /* Count partial leading word (if any) */
@@ -2572,7 +2570,7 @@ gasneti_count0s(const void * src, size_t bytes) {
   /* Count partial trailing word (if any) */
   tmp = bytes & (SIZEOF_VOID_P - 1);
   if_pf (tmp) {
-    const uint8_t *s8 = (const uint8_t *)s;
+    volatile uint8_t *s8 = (volatile uint8_t *)s;
     do { zeros -= !!*(s8++); } while (--tmp);
   }
 #endif
