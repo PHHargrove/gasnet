@@ -487,6 +487,7 @@ void doit8(void) { GASNET_BEGIN_FUNCTION();
     static long dst[(1024 + sizeof(void*)) / sizeof(long)];
     const char *s = (const char *)src;
     char *d = (char *)dst;
+    volatile int junk = 0;
 
     TEST_SECTION_BEGIN();
     if (TEST_SECTION_ENABLED()) {
@@ -497,41 +498,38 @@ void doit8(void) { GASNET_BEGIN_FUNCTION();
     }
 
     TIME_OPERATION("1024-byte gasnett_count0s()",
-      { int junk = gasnett_count0s(s, 1024); });
+      { junk += gasnett_count0s(s, 1024); });
     TIME_OPERATION("1024-byte gasnett_count0s_copy()",
-      { int junk = gasnett_count0s_copy(d, s, 1024); });
-    TIME_OPERATION("1024-byte gasnett_count0s() + memcpy()",
-      { int junk = gasnett_count0s(s, 1024);
-        (void)memcpy(d,s,1024);
+      { junk += gasnett_count0s_copy(d, s, 1024); });
+    TIME_OPERATION("1024-byte memcpy() + gasnett_count0s()",
+      { (void)memcpy(d,s,1024);
+        junk += gasnett_count0s(d, 1024);
       });
 
     s += sizeof(void*) / 2;
     d += sizeof(void*) / 2;
     TIME_OPERATION("unaligned 1024-byte gasnett_count0s()",
-      { int junk = gasnett_count0s(s, 1024); });
+      { junk += gasnett_count0s(s, 1024); });
     TIME_OPERATION("unaligned 1024-byte gasnett_count0s_copy()",
-      { int junk = gasnett_count0s_copy(d, s, 1024); });
-    TIME_OPERATION("unaligned 1024-byte gasnett_count0s() + memcpy()",
-      { int junk = gasnett_count0s(s, 1024);
-        (void)memcpy(d,s,1024);
+      { junk += gasnett_count0s_copy(d, s, 1024); });
+    TIME_OPERATION("unaligned memcpy() + 1024-byte gasnett_count0s()()",
+      { (void)memcpy(d,s,1024);
+        junk += gasnett_count0s(d, 1024);
       });
 
     s -= 1;
     d += 1;
     TIME_OPERATION("misaligned 1024-byte gasnett_count0s_copy()",
-      { int junk = gasnett_count0s_copy(d, s, 1024); });
-    TIME_OPERATION("misaligned 1024-byte gasnett_count0s() + memcpy()",
-      { int junk = gasnett_count0s(s, 1024);
-        (void)memcpy(d,s,1024);
+      { junk += gasnett_count0s_copy(d, s, 1024); });
+    TIME_OPERATION("misaligned 1024-byte memcpy() + gasnett_count0s()",
+      { (void)memcpy(d,s,1024);
+        junk += gasnett_count0s(d, 1024);
       });
 
-    { volatile int temp;
-      int volatile *ptr = &temp;
       TIME_OPERATION("gasnett_count0s_uint32_t()",
-        { (*ptr) = gasnett_count0s_uint32_t((uint32_t)i); });
+        { junk += gasnett_count0s_uint32_t((uint32_t)i); });
       TIME_OPERATION("gasnett_count0s_uint64_t()",
-        { (*ptr) = gasnett_count0s_uint64_t((uint64_t)i); });
-    }
+        { junk += gasnett_count0s_uint64_t((uint64_t)i); });
 }
 /* ------------------------------------------------------------------------------------ */
 
