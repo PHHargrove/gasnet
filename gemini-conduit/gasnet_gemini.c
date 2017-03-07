@@ -2774,6 +2774,12 @@ extern int gasnetc_sys_exit(int *exitcode_p)
     gasneti_local_rmb(); /* Acquire */
     exitcode = lead->exitcode;
 
+    /* Acknowledge */
+    self->present = 0;
+#if GASNET_DEBUG
+    gasnetc_exitcodes = NULL; // SEGV on any "late" accesses
+#endif
+
     goto out;
   } else {
     int i;
@@ -2828,6 +2834,20 @@ extern int gasnetc_sys_exit(int *exitcode_p)
     self->exitcode = exitcode;
     gasneti_local_wmb(); /* Release */
     self->present = 1;
+
+    /* await acknowledgements */
+    for (int i = 1; i < gasneti_nodemap_local_count; ++i) {
+static int once = 1;
+      gasnetc_exitcode_t * const peer = &gasnetc_exitcodes[i];
+      while (peer->present) {
+if (once) {
+fprintf(stderr, "@%d Spinning for ack from peer %d\n", gasneti_mynode, i);
+once = 0;
+}
+        gasnetc_poll(GASNETC_DIDX_PASS_ALONE);
+once = 1;
+      }
+    }
   }
 #endif
 
