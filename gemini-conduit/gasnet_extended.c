@@ -929,9 +929,8 @@ extern gasnet_handle_t gasnete_end_nbi_accessregion(GASNETE_THREAD_FARG_ALONE) {
 #define gasnete_val_assign(_dst, _val) \
     (*(gasnet_register_value_t *)(_dst) = (gasnet_register_value_t)(_val))
 
-extern void gasnete_put_val(gasnet_node_t node, void *dest, gasnet_register_value_t value, size_t nbytes GASNETE_THREAD_FARG) {
-  GASNETI_CHECKPSHM_PUTVAL(V);
-  {
+GASNETI_INLINE(gasnetc_put_val)
+void gasnetc_put_val(gasnet_node_t node, void *dest, gasnet_register_value_t value, size_t nbytes GASNETE_THREAD_FARG) {
     GASNETC_DIDX_POST(GASNETE_MYTHREAD->domain_idx);
     gasnetc_post_descriptor_t *gpd;
     volatile int done = 0;
@@ -943,7 +942,11 @@ extern void gasnete_put_val(gasnet_node_t node, void *dest, gasnet_register_valu
     gasnetc_rdma_put_buff(node, dest, GASNETE_STARTOFBITS(gpd->u.immediate, nbytes), nbytes, gpd);
     gasneti_resume_spinpollers();
     gasneti_polluntil(done);
-  }
+}
+
+extern void gasnete_put_val(gasnet_node_t node, void *dest, gasnet_register_value_t value, size_t nbytes GASNETE_THREAD_FARG) {
+  GASNETI_CHECKPSHM_PUTVAL(V);
+  gasnetc_put_val(node, dest, value, nbytes GASNETE_THREAD_PASS);
 }
 
 extern gasnet_handle_t gasnete_put_nb_val(gasnet_node_t node, void *dest, gasnet_register_value_t value, size_t nbytes GASNETE_THREAD_FARG) {
@@ -995,9 +998,9 @@ gasnet_register_value_t gasnete_get_val_help(void *src, size_t nbytes) {
 #endif
 }
  
-extern gasnet_register_value_t gasnete_get_val(gasnet_node_t node, void *src, size_t nbytes GASNETE_THREAD_FARG) {
-  GASNETI_CHECKPSHM_GETVAL();
-  {
+
+GASNETI_INLINE(gasnetc_get_val)
+gasnet_register_value_t gasnetc_get_val(gasnet_node_t node, void *src, size_t nbytes GASNETE_THREAD_FARG) {
     gasnet_register_value_t result;
     GASNETC_DIDX_POST(GASNETE_MYTHREAD->domain_idx);
     gasnetc_post_descriptor_t *gpd;
@@ -1014,7 +1017,11 @@ extern gasnet_register_value_t gasnete_get_val(gasnet_node_t node, void *src, si
     result = gasnete_get_val_help(buffer, nbytes);
     gasnetc_free_post_descriptor(gpd);
     return result;
-  }
+}
+
+extern gasnet_register_value_t gasnete_get_val(gasnet_node_t node, void *src, size_t nbytes GASNETE_THREAD_FARG) {
+  GASNETI_CHECKPSHM_GETVAL();
+  return gasnetc_get_val(node, src, nbytes GASNETE_THREAD_PASS);
 }
 
 /* Following implementation of valget_handle_t and associated operations
@@ -1194,6 +1201,101 @@ static gasnet_valget_handle_t gasnete_fetchop_u64_nb_val(
   return retval;
 }
 
+static gasnet_handle_t gasnete_fetchop_u32_nb(
+        uint32_t *dest, gasnet_node_t node, uint32_t *src,
+        gni_fma_cmd_type_t cmd, uint32_t operand GASNETE_THREAD_FARG)
+{
+  gasnete_threaddata_t * const mythread = GASNETE_MYTHREAD;
+  GASNETC_DIDX_POST(mythread->domain_idx);
+  gasnete_eop_t * const eop = _gasnete_eop_new(mythread);
+  gasnetc_post_descriptor_t *gpd;
+
+  gasneti_suspend_spinpollers();
+  gpd = gasnete_cntr_gpd(GASNETE_EOP_CNTRS(eop) GASNETC_DIDX_PASS);
+  gpd->gpd_get_dst = (uintptr_t) dest;
+  gpd->flags |= GC_POST_COPY_IMM;
+  gasnetc_fetchop_u32(node, src, cmd, operand, gpd);
+  gasneti_resume_spinpollers();
+
+  return (gasnet_handle_t) eop;
+}
+
+static void gasnete_fetchop_u32_nbi(
+        uint32_t *dest, gasnet_node_t node, uint32_t *src,
+        gni_fma_cmd_type_t cmd, uint32_t operand GASNETE_THREAD_FARG)
+{
+  gasnete_threaddata_t * const mythread = GASNETE_MYTHREAD;
+  GASNETC_DIDX_POST(mythread->domain_idx);
+  gasnete_iop_t * const iop = mythread->current_iop;
+  gasnetc_post_descriptor_t *gpd;
+
+  gasneti_suspend_spinpollers();
+  gpd = gasnete_cntr_gpd(GASNETE_IOP_CNTRS(iop, get) GASNETC_DIDX_PASS);
+  gpd->gpd_get_dst = (uintptr_t) dest;
+  gpd->flags |= GC_POST_COPY_IMM;
+  gasnetc_fetchop_u32(node, src, cmd, operand, gpd);
+  gasneti_resume_spinpollers();
+}
+
+static uint32_t gasnete_fetchop_u32_val(
+        gasnet_node_t node, void *src, gni_fma_cmd_type_t cmd,
+        uint32_t operand GASNETE_THREAD_FARG)
+{
+  uint32_t result;
+  GASNETC_DIDX_POST(GASNETE_MYTHREAD->domain_idx);
+  gasnetc_post_descriptor_t *gpd;
+  volatile int done = 0;
+
+  gasneti_suspend_spinpollers();
+  gpd = gasnetc_alloc_post_descriptor(GASNETC_DIDX_PASS_ALONE);
+  gpd->gpd_completion = (uintptr_t) &done;
+  gpd->flags = GC_POST_COMPLETION_FLAG | GC_POST_KEEP_GPD;
+  gasnetc_fetchop_u32(node, src, cmd, operand, gpd);
+  gasneti_resume_spinpollers();
+
+  gasneti_polluntil(done);
+  result = * (uint32_t *) gpd->u.immediate;
+  gasnetc_free_post_descriptor(gpd);
+  return result;
+}
+
+static gasnet_valget_handle_t gasnete_fetchop_u32_nb_val(
+        gasnet_node_t node, void *src, gni_fma_cmd_type_t cmd,
+        uint32_t operand GASNETE_THREAD_FARG)
+{
+  gasnete_threaddata_t * const mythread = GASNETE_MYTHREAD;
+  GASNETC_DIDX_POST(mythread->domain_idx);
+  gasnetc_post_descriptor_t *gpd;
+
+  gasnet_valget_handle_t retval = gasnete_new_valget_handle(mythread);
+  retval->done = 0;
+
+  gasneti_suspend_spinpollers();
+  gpd = gasnetc_alloc_post_descriptor(GASNETC_DIDX_PASS_ALONE);
+  gpd->gpd_completion = (uintptr_t) &retval->done;
+  gpd->gpd_get_dst = (uintptr_t) &retval->val;
+  gpd->flags = GC_POST_COMPLETION_FLAG | GC_POST_COPY_IMM;
+  gasnetc_fetchop_u32(node, src, cmd, operand, gpd);
+  gasneti_resume_spinpollers();
+
+  return retval;
+}
+
+extern uint32_t gasnetX_read_u32_val(gasnet_node_t node, void *src GASNETE_THREAD_FARG) {
+  return gasnetc_get_val(node, src, sizeof(uint32_t) GASNETE_THREAD_PASS);
+}
+
+extern uint64_t gasnetX_read_u64_val(gasnet_node_t node, void *src GASNETE_THREAD_FARG) {
+  return gasnetc_get_val(node, src, sizeof(uint64_t) GASNETE_THREAD_PASS);
+}
+
+extern void gasnetX_set_u32_val(gasnet_node_t node, void *dest, uint64_t value GASNETE_THREAD_FARG) {
+  return gasnetc_put_val(node, dest, value, sizeof(uint32_t) GASNETE_THREAD_PASS);
+}
+
+extern void gasnetX_set_u64_val(gasnet_node_t node, void *dest, uint64_t value GASNETE_THREAD_FARG) {
+  return gasnetc_put_val(node, dest, value, sizeof(uint64_t) GASNETE_THREAD_PASS);
+}
 
 #define GASNETX_FETCHOP_DEFNS(_op,_suff,_type,_cmd)                       \
     extern void                                                           \
@@ -1238,11 +1340,59 @@ static gasnet_valget_handle_t gasnete_fetchop_u64_nb_val(
 #undef or
 #undef xor
 
+GASNETX_FETCHOP_DEFNS(add,u32,uint32_t,GNI_FMA_ATOMIC2_FIADD_S)
+GASNETX_FETCHOP_DEFNS(and,u32,uint32_t,GNI_FMA_ATOMIC2_FAND_S )
+GASNETX_FETCHOP_DEFNS( or,u32,uint32_t,GNI_FMA_ATOMIC2_FOR_S  )
+GASNETX_FETCHOP_DEFNS(xor,u32,uint32_t,GNI_FMA_ATOMIC2_FXOR_S )
+
 GASNETX_FETCHOP_DEFNS(add,u64,uint64_t,GNI_FMA_ATOMIC_FADD)
 GASNETX_FETCHOP_DEFNS(and,u64,uint64_t,GNI_FMA_ATOMIC_FAND)
 GASNETX_FETCHOP_DEFNS( or,u64,uint64_t,GNI_FMA_ATOMIC_FOR )
 GASNETX_FETCHOP_DEFNS(xor,u64,uint64_t,GNI_FMA_ATOMIC_FXOR)
 
+extern uint64_t _gasnetX_cswap_u64_val(
+        gasnet_node_t node, void *src,
+        uint64_t oldval, uint64_t newval GASNETE_THREAD_FARG)
+{
+  uint64_t result;
+  GASNETC_DIDX_POST(GASNETE_MYTHREAD->domain_idx);
+  gasnetc_post_descriptor_t *gpd;
+  volatile int done = 0;
+
+  gasneti_suspend_spinpollers();
+  gpd = gasnetc_alloc_post_descriptor(GASNETC_DIDX_PASS_ALONE);
+  gpd->gpd_completion = (uintptr_t) &done;
+  gpd->flags = GC_POST_COMPLETION_FLAG | GC_POST_KEEP_GPD;
+  gasnetc_cswap_u64(node, src, oldval, newval, gpd);
+  gasneti_resume_spinpollers();
+
+  gasneti_polluntil(done);
+  result = * (uint64_t *) gpd->u.immediate;
+  gasnetc_free_post_descriptor(gpd);
+  return result;
+}
+
+extern uint32_t _gasnetX_cswap_u32_val(
+        gasnet_node_t node, void *src,
+        uint32_t oldval, uint32_t newval GASNETE_THREAD_FARG)
+{
+  uint32_t result;
+  GASNETC_DIDX_POST(GASNETE_MYTHREAD->domain_idx);
+  gasnetc_post_descriptor_t *gpd;
+  volatile int done = 0;
+
+  gasneti_suspend_spinpollers();
+  gpd = gasnetc_alloc_post_descriptor(GASNETC_DIDX_PASS_ALONE);
+  gpd->gpd_completion = (uintptr_t) &done;
+  gpd->flags = GC_POST_COMPLETION_FLAG | GC_POST_KEEP_GPD;
+  gasnetc_cswap_u32(node, src, oldval, newval, gpd);
+  gasneti_resume_spinpollers();
+
+  gasneti_polluntil(done);
+  result = * (uint32_t *) gpd->u.immediate;
+  gasnetc_free_post_descriptor(gpd);
+  return result;
+}
 #endif /* GASNETC_GNI_FETCHOP */
 
 /* ------------------------------------------------------------------------------------ */

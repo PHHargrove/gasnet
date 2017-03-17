@@ -374,6 +374,15 @@ size_t gasnetc_rdma_get_fh(gasnet_node_t node,
 void gasnetc_fetchop_u64(gasnet_node_t node,
                  void *source_addr, gni_fma_cmd_type_t cmd, uint64_t operand,
                  gasnetc_post_descriptor_t *gpd);
+void gasnetc_fetchop_u32(gasnet_node_t node,
+                 void *source_addr, gni_fma_cmd_type_t cmd, uint32_t operand,
+                 gasnetc_post_descriptor_t *gpd);
+void gasnetc_cswap_u64(gasnet_node_t node,
+                 void *source_addr, uint64_t oldval, uint64_t newval,
+                 gasnetc_post_descriptor_t *gpd);
+void gasnetc_cswap_u32(gasnet_node_t node,
+                 void *source_addr, uint32_t oldval, uint32_t newval,
+                 gasnetc_post_descriptor_t *gpd);
 #endif
 
 

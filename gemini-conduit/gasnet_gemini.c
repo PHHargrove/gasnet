@@ -2305,7 +2305,9 @@ void gasnetc_rdma_put_buff(gasnet_node_t node,
   gni_post_descriptor_t * const pd = &gpd->pd;
   gni_return_t status;
 
+#if !GASNETC_GNI_FETCHOP
   gasneti_assert(!node_is_local(node));
+#endif
 
   /* confirm that the destination is in-segment on the far end */
   gasneti_boundscheck(node, dest_addr, nbytes);
@@ -2546,7 +2548,9 @@ int gasnetc_rdma_get_buff(gasnet_node_t node,
   unsigned int pre = (uintptr_t) source_addr & 3;
   size_t       length = GASNETI_ALIGNUP(nbytes + pre, 4);
 
+#if !GASNETC_GNI_FETCHOP
   gasneti_assert(!node_is_local(node));
+#endif
   gasneti_assert(nbytes  <= GASNETC_GNI_IMMEDIATE_BOUNCE_SIZE);
 
   /* confirm that the source is in-segment on the far end */
@@ -2574,6 +2578,35 @@ int gasnetc_rdma_get_buff(gasnet_node_t node,
 }
 
 #if GASNETC_GNI_FETCHOP
+/* Perform an 4-byte fetch-and-op */
+void gasnetc_fetchop_u32(
+                gasnet_node_t node, void *source_addr,
+                gni_fma_cmd_type_t cmd, uint32_t operand,
+                gasnetc_post_descriptor_t *gpd)
+{
+  GASNETC_DIDX_POST(gpd->domain_idx);
+  DOMAIN_SPECIFIC_VAR(peer_struct_t * const, peer_data);
+  peer_struct_t * const peer = &peer_data[node];
+  gni_post_descriptor_t * const pd = &gpd->pd;
+  gni_return_t status;
+
+  pd->type = GNI_POST_AMO;
+  pd->amo_cmd = cmd;
+  pd->first_operand = operand;
+  pd->cq_mode = GNI_CQMODE_GLOBAL_EVENT;
+  pd->dlvr_mode = GNI_DLVMODE_PERFORMANCE;
+  pd->remote_addr = (uint64_t) source_addr;
+  pd->remote_mem_hndl = peer->mem_handle;
+  pd->local_addr = (uint64_t) gpd->u.immediate;
+  pd->local_mem_hndl = my_mem_handle;
+  pd->length = 4;
+
+  status = myPostFma(peer->ep_handle, gpd);
+  if_pf (status != GNI_RC_SUCCESS) {
+    gasnetc_GNIT_Abort("GNI_POST_AMO failed with %s", gasnetc_gni_rc_string(status));
+  }
+}
+
 /* Perform an 8-byte fetch-and-op */
 void gasnetc_fetchop_u64(
                 gasnet_node_t node, void *source_addr,
@@ -2591,6 +2624,65 @@ void gasnetc_fetchop_u64(
   pd->type = GNI_POST_AMO;
   pd->amo_cmd = cmd;
   pd->first_operand = operand;
+  pd->cq_mode = GNI_CQMODE_GLOBAL_EVENT;
+  pd->dlvr_mode = GNI_DLVMODE_PERFORMANCE;
+  pd->remote_addr = (uint64_t) source_addr;
+  pd->remote_mem_hndl = peer->mem_handle;
+  pd->local_addr = (uint64_t) gpd->u.immediate;
+  pd->local_mem_hndl = my_mem_handle;
+  pd->length = 8;
+
+  status = myPostFma(peer->ep_handle, gpd);
+  if_pf (status != GNI_RC_SUCCESS) {
+    gasnetc_GNIT_Abort("GNI_POST_AMO failed with %s", gasnetc_gni_rc_string(status));
+  }
+}
+
+/* Perform an 4-byte compare-and-swap */
+void gasnetc_cswap_u32(
+                gasnet_node_t node, void *source_addr,
+                uint32_t oldval, uint32_t newval,
+                gasnetc_post_descriptor_t *gpd)
+{
+  GASNETC_DIDX_POST(gpd->domain_idx);
+  DOMAIN_SPECIFIC_VAR(peer_struct_t * const, peer_data);
+  peer_struct_t * const peer = &peer_data[node];
+  gni_post_descriptor_t * const pd = &gpd->pd;
+  gni_return_t status;
+
+  pd->type = GNI_POST_AMO;
+  pd->amo_cmd = GNI_FMA_ATOMIC2_FCSWAP_S;
+  pd->first_operand = oldval;
+  pd->second_operand = newval;
+  pd->cq_mode = GNI_CQMODE_GLOBAL_EVENT;
+  pd->dlvr_mode = GNI_DLVMODE_PERFORMANCE;
+  pd->remote_addr = (uint64_t) source_addr;
+  pd->remote_mem_hndl = peer->mem_handle;
+  pd->local_addr = (uint64_t) gpd->u.immediate;
+  pd->local_mem_hndl = my_mem_handle;
+  pd->length = 4;
+
+  status = myPostFma(peer->ep_handle, gpd);
+  if_pf (status != GNI_RC_SUCCESS) {
+    gasnetc_GNIT_Abort("GNI_POST_AMO failed with %s", gasnetc_gni_rc_string(status));
+  }
+}
+
+void gasnetc_cswap_u64(
+                gasnet_node_t node, void *source_addr,
+                uint64_t oldval, uint64_t newval,
+                gasnetc_post_descriptor_t *gpd)
+{
+  GASNETC_DIDX_POST(gpd->domain_idx);
+  DOMAIN_SPECIFIC_VAR(peer_struct_t * const, peer_data);
+  peer_struct_t * const peer = &peer_data[node];
+  gni_post_descriptor_t * const pd = &gpd->pd;
+  gni_return_t status;
+
+  pd->type = GNI_POST_AMO;
+  pd->amo_cmd = GNI_FMA_ATOMIC_CSWAP; // GNI_FMA_ATOMIC2_FCSWAP?
+  pd->first_operand = oldval;
+  pd->second_operand = newval;
   pd->cq_mode = GNI_CQMODE_GLOBAL_EVENT;
   pd->dlvr_mode = GNI_DLVMODE_PERFORMANCE;
   pd->remote_addr = (uint64_t) source_addr;
