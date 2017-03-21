@@ -16,6 +16,7 @@ BEGIN {
 
 # Globals
 my @mpi_args = ();
+my $proxy = undef;
 my $numproc = undef;
 my $numnode = undef;
 my $restart = 0;
@@ -115,6 +116,9 @@ sub fullpath($)
 	    usage ("-E option given without an argument\n") unless @ARGV >= 1;
 	} elsif ($_ =~ /^-spawner=(.+)$/) {
 	    $spawner = $1;
+	    pop @mpi_args;	# not known to mpi/pmi spawner
+	} elsif ($_ =~ /^-proxy=(.+)$/) {
+	    $proxy = $1;
 	    pop @mpi_args;	# not known to mpi/pmi spawner
 	} elsif ($_ eq '-restart') {
 	    shift;
@@ -280,6 +284,7 @@ if (($conduit eq 'IBV') && !exists($ENV{'OMPI_MCA_mpi_warn_on_fork'})) {
         $ENV{'GASNET_SPAWN_ARGS'} = join(',', (($restart?'R':'M').($verbose?'v':'')),
                                          $fileno, $numproc, $numnode, $wrapper);
         print("gasnetrun: set GASNET_SPAWN_ARGS=|$ENV{GASNET_SPAWN_ARGS}|\n") if ($verbose);
+        unshift @ARGV, $proxy if defined $proxy;
         print("gasnetrun: running: ", join(' ', @ARGV), "\n") if ($verbose);
         unless ($dryrun) { exec(@ARGV) or die "failed to exec $exebase\n"; }
     } else {
