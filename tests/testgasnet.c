@@ -716,9 +716,138 @@ void doit5(int partner, int *partnerseg) {
     }
   }
 
+  BARRIER();
+
+#if GASNETC_GNI_FETCHOP /// GNI specific!
+  {
+    uint64_t *lvar = (uint64_t *)TEST_MYSEG();
+    uint64_t *rvar = (uint64_t *)partnerseg;
+    uint64_t res;
+    const gasnet_node_t self = gasnet_mynode();
+    int err;
+
+    err = 0;
+    *lvar = self;
+    res = gasnetX_fetchadd_u64_val(self, lvar, 0);
+    err += (res != self);
+    res = gasnetX_fetchadd_u64_val(self, lvar, 2);
+    err += (res != self);
+    res = gasnetX_fetchadd_u64_val(self, lvar, (uint64_t)(int64_t)(-1));
+    err += (res != ((uint64_t)self)+2);
+    res = gasnetX_read_u64_val(self, lvar);
+    err += (res != ((uint64_t)self)+1);
+    if (err) MSG("*** ERROR - FAILED LOCAL FADD64 TEST!!!!!");
+    else MSG("*** passed local fadd64 test!!");
+
+    err = 0;
+    *lvar = self;
+    res = gasnetX_cswap_u64_val(self, lvar, self^1, self);
+    err += (res != self);
+    res = gasnetX_cswap_u64_val(self, lvar, self, self^1);
+    err += (res != self);
+    res = gasnetX_cswap_u64_val(self, lvar, self^1, self+2);
+    err += (res != self^1);
+    res = gasnetX_read_u64_val(self, lvar);
+    err += (res != ((uint64_t)self)+2);
+    if (err) MSG("*** ERROR - FAILED LOCAL CSWAP64 TEST!!!!!");
+    else MSG("*** passed local cswap64 test!!");
+
+    BARRIER();
+
+    err = 0;
+    gasnetX_set_u64_val(partner, rvar, partner);
+    res = gasnetX_fetchadd_u64_val(partner, rvar, 0);
+    err += (res != partner);
+    res = gasnetX_fetchadd_u64_val(partner, rvar, 2);
+    err += (res != partner);
+    res = gasnetX_fetchadd_u64_val(partner, rvar, (uint64_t)(int64_t)(-1));
+    err += (res != ((uint64_t)partner)+2);
+    res = gasnetX_read_u64_val(partner, rvar);
+    err += (res != ((uint64_t)partner)+1);
+    if (err) MSG("*** ERROR - FAILED REMOTE FADD64 TEST!!!!!");
+    else MSG("*** passed remote fadd64 test!!");
+
+    err = 0;
+    gasnetX_set_u64_val(partner, rvar, partner);
+    res = gasnetX_cswap_u64_val(partner, lvar, partner^1, partner);
+    err += (res != partner);
+    res = gasnetX_cswap_u64_val(partner, lvar, partner, partner^1);
+    err += (res != partner);
+    res = gasnetX_cswap_u64_val(partner, lvar, partner^1, partner+2);
+    err += (res != partner^1);
+    res = gasnetX_read_u64_val(partner, lvar);
+    err += (res != ((uint64_t)partner)+2);
+    if (err) MSG("*** ERROR - FAILED REMOTE CSWAP64 TEST!!!!!");
+    else MSG("*** passed remote cswap64 test!!");
+
+    BARRIER();
+  }
+  {
+    uint32_t *lvar = (uint32_t *)TEST_MYSEG();
+    uint32_t *rvar = (uint32_t *)partnerseg;
+    uint32_t res;
+    const gasnet_node_t self = gasnet_mynode();
+    int err;
+
+    err = 0;
+    *lvar = self;
+    res = gasnetX_fetchadd_u32_val(self, lvar, 0);
+    err += (res != self);
+    res = gasnetX_fetchadd_u32_val(self, lvar, 2);
+    err += (res != self);
+    res = gasnetX_fetchadd_u32_val(self, lvar, (uint32_t)(int32_t)(-1));
+    err += (res != ((uint32_t)self)+2);
+    res = gasnetX_read_u32_val(self, lvar);
+    err += (res != ((uint32_t)self)+1);
+    if (err) MSG("*** ERROR - FAILED LOCAL FADD32 TEST!!!!!");
+    else MSG("*** passed local fadd32 test!!");
+
+    err = 0;
+    *lvar = self;
+    res = gasnetX_cswap_u32_val(self, lvar, self^1, self);
+    err += (res != self);
+    res = gasnetX_cswap_u32_val(self, lvar, self, self^1);
+    err += (res != self);
+    res = gasnetX_cswap_u32_val(self, lvar, self^1, self+2);
+    err += (res != self^1);
+    res = gasnetX_read_u32_val(self, lvar);
+    err += (res != ((uint32_t)self)+2);
+    if (err) MSG("*** ERROR - FAILED LOCAL CSWAP32 TEST!!!!!");
+    else MSG("*** passed local cswap32 test!!");
+
+    BARRIER();
+
+    err = 0;
+    gasnetX_set_u32_val(partner, rvar, partner);
+    res = gasnetX_fetchadd_u32_val(partner, rvar, 0);
+    err += (res != partner);
+    res = gasnetX_fetchadd_u32_val(partner, rvar, 2);
+    err += (res != partner);
+    res = gasnetX_fetchadd_u32_val(partner, rvar, (uint32_t)(int32_t)(-1));
+    err += (res != ((uint32_t)partner)+2);
+    res = gasnetX_read_u32_val(partner, rvar);
+    err += (res != ((uint32_t)partner)+1);
+    if (err) MSG("*** ERROR - FAILED REMOTE FADD32 TEST!!!!!");
+    else MSG("*** passed remote fadd32 test!!");
+
+    err = 0;
+    gasnetX_set_u32_val(partner, rvar, partner);
+    res = gasnetX_cswap_u32_val(partner, lvar, partner^1, partner);
+    err += (res != partner);
+    res = gasnetX_cswap_u32_val(partner, lvar, partner, partner^1);
+    err += (res != partner);
+    res = gasnetX_cswap_u32_val(partner, lvar, partner^1, partner+2);
+    err += (res != partner^1);
+    res = gasnetX_read_u32_val(partner, lvar);
+    err += (res != ((uint32_t)partner)+2);
+    if (err) MSG("*** ERROR - FAILED REMOTE CSWAP32 TEST!!!!!");
+    else MSG("*** passed remote cswap32 test!!");
+
+    BARRIER();
+  }
+#endif
+
   /* Serial tests of optional internal 128-bit atomics have
    * moved to gasnet_diagnostic.c (run from testinternal).
    */
-  
-  BARRIER();
 }
