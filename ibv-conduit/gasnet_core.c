@@ -101,6 +101,7 @@ static unsigned int gasnetc_fh_maxsize    = 131072;
 
 /* ------------------------------------------------------------------------------------ */
 
+static int      gasnetc_max_hcas = GASNETC_IB_MAX_HCAS;
 int		gasnetc_num_hcas = 1;
 gasnetc_hca_t	gasnetc_hca[GASNETC_IB_MAX_HCAS];
 uintptr_t	gasnetc_max_msg_sz;
@@ -827,7 +828,7 @@ static int gasnetc_load_settings(void) {
         GASNETI_RETURN_ERRR(BAD_ARG, "("#env_key" < "#minval") in environment");     \
       program_var = _tmp;                                                            \
     } while (0)
-  
+
   GASNETC_ENVINT(i, GASNET_MAX_MTU, 0, -1, 1);
   switch (i) {
     default: fprintf(stderr,
@@ -876,6 +877,7 @@ static int gasnetc_load_settings(void) {
   GASNETC_ENVINT(gasnetc_rbuf_limit, GASNET_RBUF_COUNT, GASNETC_DEFAULT_RBUF_COUNT, 0, 0);
 #endif
   GASNETC_ENVINT(gasnetc_num_qps, GASNET_NUM_QPS, GASNETC_DEFAULT_NUM_QPS, 0, 0);
+  GASNETC_ENVINT(gasnetc_max_hcas, GASNET_NUM_HCAS, 0, 0, 0);
   GASNETC_ENVINT(gasnetc_inline_limit, GASNET_INLINESEND_LIMIT, GASNETC_DEFAULT_INLINESEND_LIMIT, -1, 0);
   GASNETC_ENVINT(gasnetc_bounce_limit, GASNET_NONBULKPUT_BOUNCE_LIMIT, GASNETC_DEFAULT_NONBULKPUT_BOUNCE_LIMIT, 0, 1);
   GASNETC_ENVINT(gasnetc_packedlong_limit, GASNET_PACKEDLONG_LIMIT, GASNETC_DEFAULT_PACKEDLONG_LIMIT, 0, 1);
@@ -1005,6 +1007,11 @@ static int gasnetc_load_settings(void) {
     GASNETI_TRACE_PRINTF(I,  ("  GASNET_IBV_PORTS                = '%s'", gasnetc_ibv_ports));
   } else {
     GASNETI_TRACE_PRINTF(I,  ("  GASNET_IBV_PORTS                = empty or unset (probe all)"));
+  }
+  if (gasnetc_max_hcas) {
+    GASNETI_TRACE_PRINTF(I,  ("  GASNET_NUM_HCAS                 = %d", gasnetc_max_hcas));
+  } else {
+    GASNETI_TRACE_PRINTF(I,  ("  GASNET_NUM_HCAS                 = 0 (no limit)"));
   }
   if (gasnetc_num_qps) {
     GASNETI_TRACE_PRINTF(I,  ("  GASNET_NUM_QPS                  = %d", gasnetc_num_qps));
@@ -1186,10 +1193,12 @@ static void gasnetc_probe_ports(int max_ports) {
     return;
   }
 
+  int max_hcas = gasnetc_max_hcas ? gasnetc_max_hcas : GASNETC_IB_MAX_HCAS;
   if (max_ports) {
-    GASNETI_TRACE_PRINTF(C,("Probing HCAs for active ports (max %d)", max_ports));
+    GASNETI_TRACE_PRINTF(C,("Probing HCAs (max %d) for active ports (max %d)",
+                            max_hcas, max_ports));
   } else {
-    GASNETI_TRACE_PRINTF(C,("Probing HCAs for active ports"));
+    GASNETI_TRACE_PRINTF(C,("Probing HCAs (max %d) for active ports", max_hcas));
     max_ports = 128;	/* If you have more than 128 IB ports per node, then I owe you $20 :-) */
   }
 
@@ -1208,18 +1217,19 @@ static void gasnetc_probe_ports(int max_ports) {
     ib_hcas -= (hca_list[curr_hca]->transport_type != IBV_TRANSPORT_IB);
   }
 #endif
+  if (gasnetc_max_hcas) ib_hcas = MIN(ib_hcas, gasnetc_max_hcas);
 
   if ((ib_hcas > GASNETC_IB_MAX_HCAS) && (gasnetc_port_list == NULL)) {
     fprintf(stderr, "WARNING: Found %d IB HCAs, but GASNet was configured with '--with-ibv-max-hcas="
 		    _STRINGIFY(GASNETC_IB_MAX_HCAS) "'.  To utilize all your HCAs, you should "
 		    "reconfigure GASNet with '--with-ibv-max-hcas=%d'.  You can silence this warning "
-		    "by setting the environment variable GASNET_IBV_PORTS as described in the file "
-		    "'gasnet/ibv-conduit/README'.\n", num_hcas, num_hcas);
+		    "by setting the environment variables GASNET_IBV_PORTS or GASNET_NUM_HCAS "
+                    "as described in the ibv-conduit README.\n", num_hcas, num_hcas);
   }
 
   /* Loop over list of HCAs */
   for (curr_hca = 0;
-       (hca_count < GASNETC_IB_MAX_HCAS) && (port_count < max_ports) && (curr_hca < num_hcas);
+       (hca_count < ib_hcas) && (port_count < max_ports) && (curr_hca < num_hcas);
        ++curr_hca) {
     const char *hca_name = ibv_get_device_name(hca_list[curr_hca]);
     int rc;
