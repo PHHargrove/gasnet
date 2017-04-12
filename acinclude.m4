@@ -166,8 +166,9 @@ GASNET_FUN_END([$0($1)])
 ])
 
 dnl do AC_CHECK_SIZEOF and also AC_SUBST the result, second arg is optional prefix
+dnl third arg is optional includes
 AC_DEFUN([GASNET_CHECK_SIZEOF],[
-  GASNET_FUN_BEGIN([$0($1,$2)])
+  GASNET_FUN_BEGIN([$0($1,$2,$3)])
   pushdef([typename],patsubst(patsubst([$1], [\ ], [_]), [\*], [p]))
   pushdef([barename],sizeof_[]typename)
   pushdef([lowername],translit($2[]barename,'A-Z','a-z'))
@@ -175,7 +176,7 @@ AC_DEFUN([GASNET_CHECK_SIZEOF],[
 
   if test "$cross_compiling" = "yes" ; then
     uppername=
-    GASNET_TRY_CACHE_EXTRACT_EXPR([sizeof($1) (binary probe)],uppername,[],[sizeof($1)],uppername)
+    GASNET_TRY_CACHE_EXTRACT_EXPR([sizeof($1) (binary probe)],uppername,[$3],[sizeof($1)],uppername)
     if test -z "$uppername" ; then # last resort is to use CROSS var
       GASNET_CROSS_VAR(uppername,uppername)
     fi
@@ -190,7 +191,7 @@ AC_DEFUN([GASNET_CHECK_SIZEOF],[
   if test "$2" != "" ; then
     AC_MSG_CHECKING([$2 size:])
   fi
-  AC_CHECK_SIZEOF($1, $uppername) 
+  AC_CHECK_SIZEOF($1, $uppername, [$3])
   gasnet_checksizeoftmp_[]lowername="$ac_cv_[]barename"
   GASNET_POPVAR(ac_cv_[]barename)
   ac_cv_[]lowername=$gasnet_checksizeoftmp_[]lowername
@@ -213,7 +214,7 @@ AC_DEFUN([GASNET_CHECK_SIZEOF],[
   popdef([typename])
   popdef([lowername])
   popdef([uppername])
-  GASNET_FUN_END([$0($1,$2)])
+  GASNET_FUN_END([$0($1,$2,$3)])
 ])
 
 dnl GASNET_CHECK_INTTYPES(headername) 
