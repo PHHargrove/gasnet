@@ -1318,49 +1318,14 @@ uintptr_t gasneti_mmapLimit(uintptr_t localLimit, uint64_t sharedLimit,
 #endif
   return maxsz;
 }
-#endif /* GASNETI_MMAP_OR_PSHM */
 
-/* do the work necessary for initing a standard segment map in arbitrary memory 
-     uses mmap if available, or malloc otherwise
-   requires an exchange callback function that can be used to exchange data
-   sets max local & global segment size
-   localSegmentLimit provides an optional conduit-specific limit on max segment sz
-    (for example, to limit size based on physical memory availability)
-    pass (uintptr_t)-1 for unlimited
-    Use of gasneti_mmapLimit() can help determine the right value to pass here
-   keeps internal state for attach
- */
-void gasneti_segmentInit(uintptr_t localSegmentLimit,
-                         gasneti_bootstrapExchangefn_t exchangefn) {
-#if GASNET_PSHM
-  gasneti_pshm_cs_enter(&gasneti_cleanup_shm);
-#endif
-
-  gasneti_assert(gasneti_MaxLocalSegmentSize == 0);
-  gasneti_assert(gasneti_MaxGlobalSegmentSize == 0);
-  gasneti_assert(exchangefn);
-  gasneti_assert(gasneti_nodes > 0);
-  gasneti_assert(gasneti_mynode < gasneti_nodes);
-
-  gasneti_segexch = (gasneti_segexch_t *)gasneti_malloc(gasneti_nodes*sizeof(gasneti_segexch_t));
-
-  if (localSegmentLimit != (uintptr_t)-1) 
-    localSegmentLimit = GASNETI_PAGE_ALIGNDOWN(localSegmentLimit);
-
-  #ifdef GASNETI_MMAP_OR_PSHM
-  { gasneti_segexch_t se;
+static void gasneti_segmentInitMmap(gasneti_bootstrapExchangefn_t exchangefn)
+{
+    gasneti_segexch_t se;
     int i;
 
-    // NOTE: If the conduit did not derive localSegmentLimit from a call to
-    // gasneti_mmapLimit(), then this call might lead to unexpected failures
-    // (such as bug 651) due to it's lack of coordination among processes.
-    gasneti_segment = gasneti_mmap_segment_search(localSegmentLimit == (uintptr_t)-1 ?
-                                                  GASNETI_MMAP_LIMIT : 
-                                                  MIN(localSegmentLimit,GASNETI_MMAP_LIMIT));
-    GASNETI_TRACE_PRINTF(C, ("My segment: addr="GASNETI_LADDRFMT"  sz=%lu",
-      GASNETI_LADDRSTR(gasneti_segment.addr), (unsigned long)gasneti_segment.size));
-
     se.seginfo = gasneti_segment;
+
   #if PLATFORM_OS_DARWIN
     /* sbrk() is "emulated", making the heap-separation test invalid. */
     /* TODO: is there an alternative separation test we could/should apply? */
@@ -1462,7 +1427,47 @@ void gasneti_segmentInit(uintptr_t localSegmentLimit,
         gasneti_MaxGlobalSegmentSize = minsize;
       #endif
     }
-  }
+}
+#endif /* GASNETI_MMAP_OR_PSHM */
+
+/* do the work necessary for initing a standard segment map in arbitrary memory 
+     uses mmap if available, or malloc otherwise
+   requires an exchange callback function that can be used to exchange data
+   sets max local & global segment size
+   localSegmentLimit provides an optional conduit-specific limit on max segment sz
+    (for example, to limit size based on physical memory availability)
+    pass (uintptr_t)-1 for unlimited
+    Use of gasneti_mmapLimit() can help determine the right value to pass here
+   keeps internal state for attach
+ */
+void gasneti_segmentInit(uintptr_t localSegmentLimit,
+                         gasneti_bootstrapExchangefn_t exchangefn) {
+#if GASNET_PSHM
+  gasneti_pshm_cs_enter(&gasneti_cleanup_shm);
+#endif
+
+  gasneti_assert(gasneti_MaxLocalSegmentSize == 0);
+  gasneti_assert(gasneti_MaxGlobalSegmentSize == 0);
+  gasneti_assert(exchangefn);
+  gasneti_assert(gasneti_nodes > 0);
+  gasneti_assert(gasneti_mynode < gasneti_nodes);
+
+  gasneti_segexch = (gasneti_segexch_t *)gasneti_malloc(gasneti_nodes*sizeof(gasneti_segexch_t));
+
+  if (localSegmentLimit != (uintptr_t)-1) 
+    localSegmentLimit = GASNETI_PAGE_ALIGNDOWN(localSegmentLimit);
+
+  #ifdef GASNETI_MMAP_OR_PSHM
+    // NOTE: If the conduit did not derive localSegmentLimit from a call to
+    // gasneti_mmapLimit(), then this call might lead to unexpected failures
+    // (such as bug 651) due to it's lack of coordination among processes.
+    gasneti_segment = gasneti_mmap_segment_search(localSegmentLimit == (uintptr_t)-1 ?
+                                                  GASNETI_MMAP_LIMIT : 
+                                                  MIN(localSegmentLimit,GASNETI_MMAP_LIMIT));
+    GASNETI_TRACE_PRINTF(C, ("My segment: addr="GASNETI_LADDRFMT"  sz=%lu",
+      GASNETI_LADDRSTR(gasneti_segment.addr), (unsigned long)gasneti_segment.size));
+
+    gasneti_segmentInitMmap(exchangefn);
   #else /* !GASNETI_MMAP_OR_PSHM */
     #if GASNET_ALIGNED_SEGMENTS && !GASNET_CONDUIT_SMP
       #error bad config: dont know how to provide GASNET_ALIGNED_SEGMENTS when !HAVE_MMAP
@@ -1490,6 +1495,30 @@ void gasneti_segmentInit(uintptr_t localSegmentLimit,
 
 /* ------------------------------------------------------------------------------------ */
 
+/* Sets gasneti_Max*SegmentSize and othet setup required for gasneti_segmentAttach().
+ * However, does not make any mmap() calls.  As a result:
+ *  + localSegmentSize is accepted without testing other than bounding by GASNETI_MMAP_LIMIT
+ *  + No (pre-)segment is allocated.
+ */
+void gasneti_segmentInit_nomap(uintptr_t localSegmentSize,
+                               gasneti_bootstrapExchangefn_t exchangefn) {
+  gasneti_assert(gasneti_MaxLocalSegmentSize == 0);
+  gasneti_assert(gasneti_MaxGlobalSegmentSize == 0);
+  gasneti_assert(exchangefn);
+  gasneti_assert(gasneti_nodes > 0);
+  gasneti_assert(gasneti_mynode < gasneti_nodes);
+  gasneti_assert(localSegmentSize % GASNET_PAGESIZE == 0);
+
+  gasneti_segexch = (gasneti_segexch_t *)gasneti_malloc(gasneti_nodes*sizeof(gasneti_segexch_t));
+
+  gasneti_segment.addr = NULL;
+  gasneti_segment.size = MIN(localSegmentSize,GASNETI_MMAP_LIMIT);
+
+  gasneti_segmentInitMmap(exchangefn);
+}
+
+/* ------------------------------------------------------------------------------------ */
+
 void gasneti_segmentAttach(uintptr_t segsize, uintptr_t minheapoffset,
                            gasnet_seginfo_t *seginfo,
                            gasneti_bootstrapExchangefn_t exchangefn) {
@@ -1506,7 +1535,10 @@ void gasneti_segmentAttach(uintptr_t segsize, uintptr_t minheapoffset,
   #endif
 
   #ifdef GASNETI_MMAP_OR_PSHM
-  { /* TODO: this assumes heap grows up */
+  if (NULL == gasneti_segment.addr) {
+    segbase = gasneti_do_mmap(segsize);
+  } else {
+    /* TODO: this assumes heap grows up */
     uintptr_t topofheap;
     #if GASNET_ALIGNED_SEGMENTS
       #if GASNETI_USE_HIGHSEGMENT
