@@ -12,6 +12,10 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#define GASNETI_NO_MUNMAP 1
+#define GASNETI_MMAP_FIXED_FLAG 0
+#define GASNETI_PSHM_MAP_FIXED_IGNORED 1
+
 #if defined(GASNETI_MMAP_OR_PSHM) && !defined(HAVE_MMAP)
  #if PLATFORM_OS_CYGWIN && (GASNETI_PSHM_POSIX || GASNETI_PSHM_FILE)
   /* Use of mmap() for PSHM over POSIX or FILE is a less-than-general case.
@@ -1363,6 +1367,21 @@ void gasneti_segmentInit(uintptr_t localSegmentLimit,
 
   gasneti_segexch = (gasneti_segexch_t *)gasneti_malloc(gasneti_nodes*sizeof(gasneti_segexch_t));
 
+#if GASNETI_NO_MUNMAP
+  localSegmentLimit /= gasneti_myhost.node_count;
+  localSegmentLimit = GASNETI_PAGE_ALIGNDOWN(localSegmentLimit);
+  gasneti_MaxLocalSegmentSize =
+  gasneti_MaxGlobalSegmentSize =
+  gasneti_MaxGlobalSegmentSize =
+  gasneti_MaxLocalSegmentSize = MIN(localSegmentLimit, GASNETI_MMAP_LIMIT);
+
+  #if GASNET_PSHM
+    gasneti_unlink_segments(); // NOP?
+    gasneti_pshm_cs_leave();
+  #endif
+  return;
+#endif
+
   if (localSegmentLimit != (uintptr_t)-1) 
     localSegmentLimit = GASNETI_PAGE_ALIGNDOWN(localSegmentLimit);
 
@@ -1599,9 +1618,11 @@ void gasneti_segmentAttach(uintptr_t segsize, uintptr_t minheapoffset,
       if (gasneti_segment.addr != segbase || gasneti_segment.size != segsize)
     #endif
       {
+#if !GASNETI_NO_MUNMAP
         gasneti_assert(segbase >= gasneti_segment.addr &&
                (uintptr_t)segbase + segsize <= (uintptr_t)gasneti_segment.addr + gasneti_segment.size);
         gasneti_do_munmap(gasneti_segment.addr, gasneti_segment.size);
+#endif
 #if GASNETI_PSHM_MAP_FIXED_IGNORED
         segbase =
 #endif

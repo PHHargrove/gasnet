@@ -16,7 +16,7 @@
   #define container_of(ptr,type,field) ((type*) ((uintptr_t)(ptr) - offsetof(type,field)))
 #endif
 
-#define GASNETC_NETWORKDEPTH_SPACE_DEFAULT (12*1024)
+#define GASNETC_NETWORKDEPTH_SPACE_DEFAULT (1*1024)
 #define GASNETC_NETWORKDEPTH_TOTAL_DEFAULT 64
 
 #ifdef GASNET_CONDUIT_GEMINI

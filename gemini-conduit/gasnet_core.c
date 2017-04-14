@@ -530,9 +530,13 @@ extern uintptr_t gasnetc_MaxPinMem(uintptr_t msgspace)
   }
   pm_limit -= msgspace;
 
+#if 0
   limit = gasneti_mmapLimit((uintptr_t)-1, pm_limit,
                             &gasnetc_bootstrapExchange_gni,
                             &gasnetc_bootstrapBarrier_gni);
+#else
+  limit = pm_limit;
+#endif
 
 
   if_pf (gasneti_getenv_yesno_withdefault("GASNET_PHYSMEM_NOPROBE", 0)) {
