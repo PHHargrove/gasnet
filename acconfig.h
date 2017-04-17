@@ -405,6 +405,7 @@
 #undef GASNETC_GNI_MULTI_DOMAIN
 #undef GASNETC_GNI_UDREG
 #undef GASNETC_GNI_FIREHOSE
+#undef GASNETC_GNI_NO_UNMAP
 
 /* GASNet ofi-conduit settings */
 #undef GASNETC_OFI_MAX_MEDIUM

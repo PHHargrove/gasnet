@@ -3519,6 +3519,8 @@ if test ${gni_network}:${enabled_[]lowername} = lowername[]:yes; then
     GASNET_POPVAR(CPPFLAGS)
   fi
 
+  GASNET_IF_DISABLED(gni-munmap,[Avoid use of munmap() in Aries and Gemini],[AC_DEFINE(GASNETC_GNI_NO_UNMAP)])
+
   GASNET_IF_ENABLED_WITH_AUTO(gni-udreg,
      [Use Cray's UDREG to cache memory registration on Aries and Gemini (enabled by default if available)],
      [gni_udreg=yes], [gni_udreg=no], [gni_udreg=probe])

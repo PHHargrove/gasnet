@@ -534,9 +534,14 @@ extern uintptr_t gasnetc_MaxPinMem(uintptr_t msgspace)
   }
   pm_limit -= msgspace;
 
+#if GASNETC_GNI_NO_UNMAP
+  /* Cannot call gasneti_mmapLimit() when instructed to avoid munmap() */
+  limit = GASNETI_PAGE_ALIGNDOWN(pm_limit);
+#else
   limit = gasneti_mmapLimit((uintptr_t)-1, pm_limit,
                             &gasnetc_bootstrapExchange_gni,
                             &gasnetc_bootstrapBarrier_gni);
+#endif
 
   if (limit < granularity) {
     gasnetc_GNIT_Abort("Unable to alloc and pin minimal memory of size %d bytes",(int)granularity);
@@ -622,9 +627,12 @@ static int gasnetc_init(int *argc, char ***argv) {
       /* localSegmentLimit provides a conduit-specific limit on the max segment size.
        * can use (uintptr_t)-1 as unlimited.
        */
+    #if GASNETC_GNI_NO_UNMAP
+      /* Instructed to avoid munmap() */
+      gasneti_segmentInit_nomap( max_pin, &gasnetc_bootstrapExchange_gni);
+    #else
       gasneti_segmentInit( max_pin, &gasnetc_bootstrapExchange_gni);
-
-
+    #endif
     }
   #elif GASNET_SEGMENT_EVERYTHING
     /* segment is everything - nothing to do */
