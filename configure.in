@@ -5008,7 +5008,7 @@ have_fca=no
 if test "$enable_fca" != "no"; then
   GASNET_PACKAGE_HOME([FCA],[FCA drivers],[fca_config],[/opt/mellanox/fca],[include/fca/fca_api.h])
   GASNET_PACKAGE_CFLAGS([FCA],[],0)
-  GASNET_PACKAGE_LDFLAGS([FCA],[fca],[],0)
+  GASNET_PACKAGE_LDFLAGS([FCA],[fca]) # E.g. for -Wl,-rpath or similar
   FCA_LIBS='-lfca'
 
   # Try to compile and link a basic FCA program
@@ -5061,7 +5061,7 @@ if test "$enable_blcr" = 'yes'; then
   have_blcr=yes
   GASNET_PACKAGE_HOME([BLCR],[BLCR library],[cr_checkpoint],[/usr/local],[include/libcr.h])
   GASNET_PACKAGE_CFLAGS([BLCR],[],0)
-  GASNET_PACKAGE_LDFLAGS([BLCR],[cr],[],0)
+  GASNET_PACKAGE_LDFLAGS([BLCR],[cr]) # E.g. for -Wl,-rpath or similar
   BLCR_LIBS='-lcr'
 
   AC_MSG_CHECKING([for BLCR bin directory])
