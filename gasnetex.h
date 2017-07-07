@@ -334,6 +334,7 @@ typedef struct {
     const char *       _name;
     const void *       _cdata;
     gex_Flags_t        _flags;
+    int                _index;
     // TODO-EX: more fields to come
   #ifdef GASNETI_CLIENT_EXTRA
     // conduit-specific fields w/o full override
@@ -406,6 +407,7 @@ typedef struct {
     const void *       _cdata;
     gasneti_Segment_t  _segment;
     gex_Flags_t        _flags;
+    int                _index;
     gex_AM_Entry_t     _amtbl[GASNETC_MAX_NUMHANDLERS];
     // TODO-EX: more fields to come
   #ifdef GASNETI_EP_EXTRA

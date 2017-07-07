@@ -804,6 +804,20 @@ extern void gasnetc_exchg_reqh(gex_Token_t token, void *buf, size_t nbytes,
 
 /* ------------------------------------------------------------------------------------ */
 
+#ifndef GASNETI_MAX_CLIENTS
+#define GASNETI_MAX_CLIENTS 4 // TODO-EX: can/should this move to configure?
+#endif
+extern gasneti_Client_t _gasneti_client_table[GASNETI_MAX_CLIENTS];
+#define gasneti_index2client(i) (_gasneti_client_table[i])
+
+#ifndef GASNETI_MAX_ENDPOINTS
+#define GASNETI_MAX_ENDPOINTS 1024 // TODO-EX: can/should this move to configure?
+#endif
+extern gasneti_EP_t _gasneti_endpoint_table[GASNETI_MAX_ENDPOINTS];
+#define gasneti_index2endpoint(i) (_gasneti_endpoint_table[i])
+
+/* ------------------------------------------------------------------------------------ */
+
 #include <gasnet_handler_internal.h>
 
 #if GASNET_PSHM
