@@ -809,12 +809,14 @@ extern void gasnetc_exchg_reqh(gex_Token_t token, void *buf, size_t nbytes,
 #endif
 extern gasneti_Client_t _gasneti_client_table[GASNETI_CLIENT_MAX];
 #define gasneti_idx2client(i) (_gasneti_client_table[i])
+extern uint32_t _gasneti_client_livecnt, _gasneti_client_maxidx;
 
 #ifndef GASNETI_ENDPOINT_MAX
 #define GASNETI_ENDPOINT_MAX 1024 // TODO-EX: can/should this move to configure?
 #endif
 extern gasneti_EP_t _gasneti_endpoint_table[GASNETI_ENDPOINT_MAX];
 #define gasneti_idx2endpoint(i) (_gasneti_endpoint_table[i])
+extern uint32_t _gasneti_endpoint_livecnt, _gasneti_endpoint_maxidx;
 
 /* ------------------------------------------------------------------------------------ */
 

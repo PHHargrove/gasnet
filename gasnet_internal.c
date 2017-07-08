@@ -514,23 +514,62 @@ extern void gasneti_amtbl_check(const gex_AM_Entry_t *entry, int nargs,
 #endif
 /* ------------------------------------------------------------------------------------ */
 
+// Insert into and delete from an object table.
+//
+// 'type' is just "client", "endpoint" etc.
+// 'object' is evaluated multiple times by INSERT - must not have side-effects.
+#define GASNETI_OBJTBL_INSERT(type, object) do {                               \
+    gasneti_mutex_assertlocked(&gasneti_##type##_table_lock);                  \
+    uint32_t _max_cnt = sizeof(_gasneti_##type##_table) / sizeof(object);      \
+    if_pf (++_gasneti_##type##_livecnt > _max_cnt)                             \
+      gasneti_fatalerror("too many " #type " objects (max %d)", (int)_max_cnt);\
+    uint32_t _new_idx;                                                         \
+    for (_new_idx = 0; _new_idx < _max_cnt; ++_new_idx) {                      \
+      if (NULL == _gasneti_##type##_table[_new_idx]) break;                    \
+    }                                                                          \
+    gasneti_assert_always(_new_idx < _max_cnt);                                \
+    _gasneti_##type##_maxidx = MAX(_gasneti_##type##_maxidx, _new_idx);        \
+    (object)->_idx = _new_idx;                                                 \
+    gasneti_sync_writes();                                                     \
+    _gasneti_##type##_table[_new_idx] = (object);                              \
+  } while(0)
+#define GASNETI_OBJTBL_DELETE(type, object) do {                               \
+    gasneti_mutex_assertlocked(&gasneti_##type##_table_lock);                  \
+    uint32_t _max_cnt = sizeof(_gasneti_##type##_table) / sizeof(object);      \
+    uint32_t _the_idx = (object)->_idx;                                        \
+    gasneti_assert(_the_idx < _max_cnt);                                       \
+    gasneti_assert(_gasneti_##type##_livecnt > 0);                             \
+    _gasneti_##type##_livecnt -= 1;                                            \
+    if (! _gasneti_##type##_livecnt) {                                         \
+      _gasneti_##type##_maxidx = 0;                                            \
+    } else if (_the_idx == _gasneti_##type##_maxidx) {                         \
+      gasneti_assert(_the_idx > 0);                                            \
+      uint32_t _tmp_idx;                                                       \
+      for (_tmp_idx = (_the_idx - 1); _tmp_idx != 0; _tmp_idx--) {             \
+        if (_gasneti_##type##_table[_tmp_idx]) break;                          \
+      }                                                                        \
+      _gasneti_##type##_maxidx = _tmp_idx;                                     \
+    }                                                                          \
+    gasneti_sync_writes();                                                     \
+    _gasneti_##type##_table[_the_idx] = NULL;                                  \
+  } while(0)
+
+/* ------------------------------------------------------------------------------------ */
+
 gasneti_Client_t _gasneti_client_table[GASNETI_CLIENT_MAX];
+static gasneti_mutex_t gasneti_client_table_lock = GASNETI_MUTEX_INITIALIZER;
+uint32_t _gasneti_client_livecnt = 0;
+uint32_t _gasneti_client_maxidx = 0;
 
 #ifndef _GEX_CLIENT_T
-// TODO-EX: either ensure name is unique OR perform "auto-increment" according to flags
 gasneti_Client_t gasneti_alloc_client(
                        const char *name,
                        gex_Flags_t flags)
 {
-  static gasneti_weakatomic_t counter = gasneti_weakatomic_init((gasneti_weakatomic_val_t)(-1));
-  gasneti_weakatomic_val_t index = gasneti_weakatomic_add(&counter, 1, 0);
-  if (index >= GASNETI_CLIENT_MAX) {
-    gasneti_fatalerror("Limit of %d clients exceeded", GASNETI_CLIENT_MAX);
-  }
+  if_pf (_gasneti_client_livecnt > GASNETI_CLIENT_MAX)
+    gasneti_fatalerror("too many client objects (max %d)", GASNETI_CLIENT_MAX);
 
   gasneti_Client_t client = gasneti_malloc(sizeof(*client));
-  gasneti_idx2client(index) = client;
-  client->_idx = index;
   GASNETI_INIT_MAGIC(client, GASNETI_CLIENT_MAGIC);
   client->_name = gasneti_strdup(name);
   client->_cdata = NULL;
@@ -538,11 +577,20 @@ gasneti_Client_t gasneti_alloc_client(
 #ifdef GASNETI_CLIENT_ALLOC_EXTRA
   GASNETI_CLIENT_ALLOC_EXTRA(client);
 #endif
+
+  gasneti_mutex_lock(&gasneti_client_table_lock);
+    // TODO-EX: either ensure name is unique OR perform "auto-increment" according to flags
+    GASNETI_OBJTBL_INSERT(client, client);
+  gasneti_mutex_unlock(&gasneti_client_table_lock);
   return client;
 }
 
 void gasneti_free_client(gasneti_Client_t client)
 {
+  gasneti_mutex_lock(&gasneti_client_table_lock);
+    GASNETI_OBJTBL_DELETE(client, client);
+  gasneti_mutex_unlock(&gasneti_client_table_lock);
+
 #ifdef GASNETI_CLIENT_FREE_EXTRA
   GASNETI_CLIENT_FREE_EXTRA(client);
 #endif
@@ -587,6 +635,9 @@ void gasneti_free_segment(gasneti_Segment_t segment)
 
 
 gasneti_EP_t _gasneti_endpoint_table[GASNETI_ENDPOINT_MAX];
+static gasneti_mutex_t gasneti_endpoint_table_lock = GASNETI_MUTEX_INITIALIZER;
+uint32_t _gasneti_endpoint_livecnt = 0;
+uint32_t _gasneti_endpoint_maxidx = 0;
 
 #ifndef _GEX_EP_T
 // TODO-EX: probably need to add to a per-client container of some sort
@@ -594,15 +645,10 @@ extern gasneti_EP_t gasneti_alloc_ep(
                        gasneti_Client_t client,
                        gex_Flags_t flags)
 {
-  static gasneti_weakatomic_t counter = gasneti_weakatomic_init((gasneti_weakatomic_val_t)(-1));
-  gasneti_weakatomic_val_t index = gasneti_weakatomic_add(&counter, 1, 0);
-  if (index >= GASNETI_ENDPOINT_MAX) {
-    gasneti_fatalerror("Limit of %d endpoints exceeded", GASNETI_ENDPOINT_MAX);
-  }
+  if_pf (_gasneti_endpoint_livecnt > GASNETI_ENDPOINT_MAX)
+    gasneti_fatalerror("too many endpoint objects (max %d)", GASNETI_ENDPOINT_MAX);
 
   gasneti_EP_t endpoint = gasneti_malloc(sizeof(*endpoint));
-  gasneti_idx2endpoint(index) = endpoint;
-  endpoint->_idx = index;
   GASNETI_INIT_MAGIC(endpoint, GASNETI_EP_MAGIC);
   endpoint->_client = client;
   endpoint->_cdata = NULL;
@@ -612,11 +658,19 @@ extern gasneti_EP_t gasneti_alloc_ep(
 #ifdef GASNETI_EP_ALLOC_EXTRA
   GASNETI_EP_ALLOC_EXTRA(endpoint);
 #endif
+
+  gasneti_mutex_lock(&gasneti_endpoint_table_lock);
+    GASNETI_OBJTBL_INSERT(endpoint, endpoint);
+  gasneti_mutex_unlock(&gasneti_endpoint_table_lock);
   return endpoint;
 }
 
 void gasneti_free_ep(gasneti_EP_t endpoint)
 {
+  gasneti_mutex_lock(&gasneti_endpoint_table_lock);
+    GASNETI_OBJTBL_DELETE(endpoint, endpoint);
+  gasneti_mutex_unlock(&gasneti_endpoint_table_lock);
+
 #ifdef GASNETI_EP_FREE_EXTRA
   GASNETI_EP_FREE_EXTRA(endpoint);
 #endif
