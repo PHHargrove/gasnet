@@ -807,12 +807,30 @@ extern void gasnetc_exchg_reqh(gex_Token_t token, void *buf, size_t nbytes,
 #ifndef GASNETI_CLIENT_MAX
 #define GASNETI_CLIENT_MAX 4 // TODO-EX: can/should this move to configure?
 #endif
+#if GASNETI_CLIENT_MAX <= 256
+  typedef uint8_t gasneti_clientidx_t;
+#elif GASNETI_CLIENT_MAX <= 65536
+  typedef uint16_t gasneti_clientidx_t;
+#elif GASNETI_CLIENT_MAX < 4294967296
+  typedef uint32_t gasneti_clientidx_t;
+#else
+  #error "GASNETI_CLIENT_MAX too large"
+#endif
 extern gasneti_Client_t _gasneti_client_table[GASNETI_CLIENT_MAX];
 #define gasneti_idx2client(i) (_gasneti_client_table[i])
 extern uint32_t _gasneti_client_livecnt, _gasneti_client_maxidx;
 
 #ifndef GASNETI_ENDPOINT_MAX
 #define GASNETI_ENDPOINT_MAX 1024 // TODO-EX: can/should this move to configure?
+#endif
+#if GASNETI_ENDPOINT_MAX <= 256
+  typedef uint8_t gasneti_endpointidx_t;
+#elif GASNETI_ENDPOINT_MAX <= 65536
+  typedef uint16_t gasneti_endpointidx_t;
+#elif GASNETI_ENDPOINT_MAX < 4294967296
+  typedef uint32_t gasneti_endpointidx_t;
+#else
+  #error "GASNETI_ENDPOINT_MAX too large"
 #endif
 extern gasneti_EP_t _gasneti_endpoint_table[GASNETI_ENDPOINT_MAX];
 #define gasneti_idx2endpoint(i) (_gasneti_endpoint_table[i])
