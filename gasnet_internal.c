@@ -514,7 +514,7 @@ extern void gasneti_amtbl_check(const gex_AM_Entry_t *entry, int nargs,
 #endif
 /* ------------------------------------------------------------------------------------ */
 
-gasneti_Client_t _gasneti_client_table[GASNETI_MAX_CLIENTS];
+gasneti_Client_t _gasneti_client_table[GASNETI_CLIENT_MAX];
 
 #ifndef _GEX_CLIENT_T
 // TODO-EX: either ensure name is unique OR perform "auto-increment" according to flags
@@ -524,13 +524,13 @@ gasneti_Client_t gasneti_alloc_client(
 {
   static gasneti_weakatomic_t counter = gasneti_weakatomic_init((gasneti_weakatomic_val_t)(-1));
   gasneti_weakatomic_val_t index = gasneti_weakatomic_add(&counter, 1, 0);
-  if (index >= GASNETI_MAX_CLIENTS) {
-    gasneti_fatalerror("Limit of %d clients exceeded", GASNETI_MAX_CLIENTS);
+  if (index >= GASNETI_CLIENT_MAX) {
+    gasneti_fatalerror("Limit of %d clients exceeded", GASNETI_CLIENT_MAX);
   }
 
   gasneti_Client_t client = gasneti_malloc(sizeof(*client));
-  gasneti_index2client(index) = client;
-  client->_index = index;
+  gasneti_idx2client(index) = client;
+  client->_idx = index;
   GASNETI_INIT_MAGIC(client, GASNETI_CLIENT_MAGIC);
   client->_name = gasneti_strdup(name);
   client->_cdata = NULL;
@@ -586,7 +586,7 @@ void gasneti_free_segment(gasneti_Segment_t segment)
 #endif // _GEX_SEGMENT_T
 
 
-gasneti_EP_t _gasneti_endpoint_table[GASNETI_MAX_ENDPOINTS];
+gasneti_EP_t _gasneti_endpoint_table[GASNETI_ENDPOINT_MAX];
 
 #ifndef _GEX_EP_T
 // TODO-EX: probably need to add to a per-client container of some sort
@@ -596,13 +596,13 @@ extern gasneti_EP_t gasneti_alloc_ep(
 {
   static gasneti_weakatomic_t counter = gasneti_weakatomic_init((gasneti_weakatomic_val_t)(-1));
   gasneti_weakatomic_val_t index = gasneti_weakatomic_add(&counter, 1, 0);
-  if (index >= GASNETI_MAX_ENDPOINTS) {
-    gasneti_fatalerror("Limit of %d endpoints exceeded", GASNETI_MAX_ENDPOINTS);
+  if (index >= GASNETI_ENDPOINT_MAX) {
+    gasneti_fatalerror("Limit of %d endpoints exceeded", GASNETI_ENDPOINT_MAX);
   }
 
   gasneti_EP_t endpoint = gasneti_malloc(sizeof(*endpoint));
-  gasneti_index2endpoint(index) = endpoint;
-  endpoint->_index = index;
+  gasneti_idx2endpoint(index) = endpoint;
+  endpoint->_idx = index;
   GASNETI_INIT_MAGIC(endpoint, GASNETI_EP_MAGIC);
   endpoint->_client = client;
   endpoint->_cdata = NULL;
