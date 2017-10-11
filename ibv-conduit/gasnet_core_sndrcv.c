@@ -2182,6 +2182,9 @@ int gasnetc_ReqRepGeneric(gasnetc_category_t category, gasnetc_rbuf_t *token,
       }
     }
     switch (category) {
+    default:
+      gasneti_fatalerror("invalid AM category field");
+
     case gasnetc_Short:
       args = buf->shortmsg.args;
       break;
