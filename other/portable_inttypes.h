@@ -206,6 +206,26 @@
       #define uint64_t  _pit_uint64_t
       #define  intptr_t  _pit_intptr_t
       #define uintptr_t _pit_uintptr_t
+
+#define __intptr_t_defined 1
+#define __UINT_LEAST8_TYPE__ unsigned char
+#define __UINTMAX_TYPE__ long unsigned int
+#define __INT_FAST16_TYPE__ long int
+#define __INT_FAST64_TYPE__ long int
+#define __INT_FAST32_TYPE__ long int
+#define __UINT_LEAST16_TYPE__ short unsigned int
+#define __INT_LEAST16_TYPE__ short int
+#define __UINT_LEAST64_TYPE__ long unsigned int
+#define __UINT_FAST16_TYPE__ long unsigned int
+#define __INT_LEAST64_TYPE__ long int
+#define __INT_LEAST8_TYPE__ signed char
+#define __UINT_FAST64_TYPE__ long unsigned int
+#define __UINT_LEAST32_TYPE__ unsigned int
+#define __INT_LEAST32_TYPE__ int
+#define __INT_FAST8_TYPE__ signed char
+#define __UINT_FAST32_TYPE__ long unsigned int
+#define __INTMAX_TYPE__ long int
+#define __UINT_FAST8_TYPE__ unsigned char
   #else
     /* no information available, so try inttypes.h and hope for the best 
        if we die here, the correct fix is to detect the sizes using configure 
