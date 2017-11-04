@@ -100,6 +100,10 @@
    *   Compiler suffers from "tpr 17075" in which extended asm() may load only 32 bits of
    *   a 64-bit operand at -O1 (but is OK at -O0 and -O2).
    *
+   * GASNETI_PGI_ASM_BUG3674
+   *   C++ compiler generates code that is consistent with having lost the volatile
+   *   qualifier from the integer member of the atomic type struct.
+   *
    * See GASNet bug 1621 (http://gasnet-bugs.lbl.gov/bugzilla/show_bug.cgi?id=1621) for more
    * info on the bugs indicated by GASNETI_PGI_ASM_THREADSAFE and GASNETI_PGI_ASM_X86_A.
    *
@@ -142,6 +146,9 @@
   #endif
   #if PLATFORM_COMPILER_VERSION_GE(7,0,0) && PLATFORM_COMPILER_VERSION_LT(10,8,0)
     #define GASNETI_PGI_ASM_BUG2843 1
+  #endif
+  #if PLATFORM_COMPILER_PGI && PLATFORM_COMPILER_VERSION_GE(17,0,0)
+    #define GASNETI_PGI_ASM_BUG3674 1
   #endif
   #define GASNETI_ASM_SPECIAL(mnemonic) asm(mnemonic)
 #elif PLATFORM_COMPILER_SUN 
