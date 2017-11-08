@@ -1558,7 +1558,7 @@ extern int gasnetc_AMRequestMediumM(
   va_list argptr;
   GASNETI_COMMON_AMREQUESTMEDIUM(tm,dest,handler,source_addr,nbytes,lc_opt,flags,numargs);
   gasneti_AMPoll(); /* poll at least once, to assure forward progress */
-  gasneti_leaf_finish(lc_opt); // TODO-EX: should support async local completion
+  gasneti_leaf_finish(lc_opt); // No support for async local completion, lacking a gather-on-send
   va_start(argptr, numargs); /*  pass in last argument */
   if_pt (gasnetc_local_request(dest)) {
     retval = gasnetc_local_medium_common(1, NULL, dest, handler, source_addr, nbytes, flags, numargs, argptr);
@@ -1666,7 +1666,7 @@ extern int gasnetc_AMReplyMediumM(
   va_list argptr;
 
   GASNETI_COMMON_AMREPLYMEDIUM(token,handler,source_addr,nbytes,lc_opt,flags,numargs);
-  gasneti_leaf_finish(lc_opt); // TODO-EX: should support async local completion
+  gasneti_leaf_finish(lc_opt); // No support for async local completion, lacking a gather-on-send
   va_start(argptr, numargs); /*  pass in last argument */
   if_pt (gasnetc_local_reply(token)) {
     retval = gasnetc_local_medium_common(0, token, 0, handler, source_addr, nbytes, flags, numargs, argptr);
