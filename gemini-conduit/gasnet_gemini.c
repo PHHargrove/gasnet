@@ -2112,10 +2112,11 @@ again:
           GASNETE_IOP_CNT_FINISH((gasnete_iop_t *) gpd->gpd_completion, get, 1, 0);
           break;
         case GC_POST_COMPLETION_SEND: {
-          gasnetc_post_descriptor_t *next = (gasnetc_post_descriptor_t *) gpd->gpd_completion;
-          if (gasneti_weakatomic_decrement_and_test(&next->u.counter, 0)) {
-            int rc = gasnetc_send_am(next);
-            gasneti_assert_always (rc == GASNET_OK);
+          gasnetc_gpd_chain_t *chain = (gasnetc_gpd_chain_t *) gpd->gpd_completion;
+          if (gasneti_weakatomic_decrement_and_test(&chain->counter, GASNETI_ATOMIC_ACQ)) {
+            gasneti_assert(chain->gpd);
+            gasneti_assert_zeroret( gasnetc_send_am(chain->gpd) );
+            gasneti_lifo_push(&gasnetc_gpd_chain_pool, (void*)chain);
           }
           break;
         }

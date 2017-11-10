@@ -425,5 +425,14 @@ gasnetc_post_descriptor_t *gasnetc_alloc_request_post_descriptor(gex_Rank_t dest
                                                                  gex_Flags_t flags
                                                                  GASNETI_THREAD_FARG);
 
+/* Handling of deferred Long headers */
+
+extern gasneti_lifo_head_t gasnetc_gpd_chain_pool;
+
+typedef struct {
+  gasneti_weakatomic_t counter;
+  gasnetc_post_descriptor_t *gpd;
+} gasnetc_gpd_chain_t;
+
 #endif /* GASNET_GEMINI_H */
 

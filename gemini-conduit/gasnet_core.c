@@ -1235,14 +1235,16 @@ extern int gasnetc_AMPoll(GASNETI_THREAD_FARG_ALONE)
   ================================
 */
 
+/* Chain Long headers to send after payload RC */
+gasneti_lifo_head_t gasnetc_gpd_chain_pool = GASNETI_LIFO_INITIALIZER;
+
 GASNETI_INLINE(gasnetc_general_am_send_common)
 int gasnetc_general_am_send_common(gasnetc_post_descriptor_t *gpd)
 {
-  int retval;
   gasneti_suspend_spinpollers();
-  retval = gasnetc_send_am(gpd);
+  gasneti_assert_zeroret( gasnetc_send_am(gpd) );
   gasneti_resume_spinpollers();
-  return(retval);
+  return GASNET_OK;
 }
 
 #define gasnetc_general_am_send_request gasnetc_general_am_send_common
@@ -1454,67 +1456,47 @@ void gasnetc_wait_long_payload( const int initiated,
 }
 
 GASNETI_INLINE(gasnetc_put_long_payload)
-int gasnetc_put_long_payload( gex_Rank_t dest,
+gasnetc_gpd_chain_t *
+gasnetc_put_long_payload(     gex_Rank_t dest,
                               void *dst_addr,
                               void *src_addr,
                               size_t nbytes,
                               gex_Flags_t flags,
-                              gasneti_weakatomic_t *completed_p
+                              unsigned int *initiated_lc,
+                              volatile unsigned int *completed_lc
                               GASNETC_DIDX_FARG)
 {
-  int initiated = 0;
+  unsigned int init_lc = 0;
   size_t chunk = nbytes;
+
+  gasnetc_gpd_chain_t *chain = gasneti_lifo_pop(&gasnetc_gpd_chain_pool);
+  if (!chain) chain = gasneti_malloc(sizeof(*chain));
+  gasneti_weakatomic_t * const counter = &chain->counter;
+  gasneti_weakatomic_set(counter, 2, 0);
   
   gasneti_suspend_spinpollers();
   for (;;) {
     gasnetc_post_descriptor_t *gpd = gasnetc_alloc_post_descriptor(flags GASNETC_DIDX_PASS);
-    if_pf (!gpd) break;
+    if_pf (!gpd) goto out_immediate;
     flags &= ~GEX_FLAG_IMMEDIATE;
-    gpd->gpd_completion = (uintptr_t) completed_p;
-    gpd->gpd_flags = GC_POST_COMPLETION_CNTR;
-    chunk = gasnetc_rdma_put_bulk(dest, dst_addr, src_addr, chunk, gpd);
-    initiated += 1;
-    if_pt (0 == (nbytes -= chunk)) break; /* expect to finish in one pass */
-
-    dst_addr = (char *)dst_addr + chunk;
-    src_addr = (char *)src_addr + chunk;
-  }
-  gasneti_resume_spinpollers();
-  return initiated;
-}
-
-GASNETI_INLINE(gasnetc_put_longasync_payload)
-int gasnetc_put_longasync_payload( gex_Rank_t dest,
-                                   void *dst_addr,
-                                   void *src_addr,
-                                   size_t nbytes,
-                                   gasnetc_post_descriptor_t *header_gpd
-                                   GASNETC_DIDX_FARG)
-{
-  int retval = GASNET_OK;
-  size_t chunk = nbytes;
-  gasneti_weakatomic_t * const counter = &header_gpd->u.counter;
-  
-  gasneti_weakatomic_set(counter, 2, 0);
-
-  gasneti_suspend_spinpollers();
-  for (;;) {
-    gasnetc_post_descriptor_t *gpd = gasnetc_alloc_post_descriptor(0 GASNETC_DIDX_PASS);
-    gpd->gpd_completion = (uintptr_t) header_gpd;
+    gpd->gpd_completion = (uintptr_t) chain;
     gpd->gpd_flags = GC_POST_COMPLETION_SEND;
-    chunk = gasnetc_rdma_put_bulk(dest, dst_addr, src_addr, chunk, gpd);
+    gpd->gpd_put_lc = (uint64_t) completed_lc;
+    chunk = gasnetc_rdma_put_lc(dest, dst_addr, src_addr, chunk, &init_lc, gpd);
     if_pt (0 == (nbytes -= chunk)) break; /* expect to finish in one pass */
 
     dst_addr = (char *)dst_addr + chunk;
     src_addr = (char *)src_addr + chunk;
     gasneti_weakatomic_increment(counter, 0);
   }
-  if (gasneti_weakatomic_decrement_and_test(counter, 0)) {
-    retval = gasnetc_send_am(header_gpd);
-  }
   gasneti_resume_spinpollers();
-  
-  return retval;
+  *initiated_lc = init_lc;
+  return chain;
+
+out_immediate:
+  gasneti_resume_spinpollers();
+  gasneti_lifo_push(&gasnetc_gpd_chain_pool, (void*)chain);
+  return NULL;
 }
 
 /*------------------- external requests ------------------ */
@@ -1595,18 +1577,20 @@ extern int gasnetc_AMRequestLongM(
     retval = gasnetc_local_long_common(1, NULL, dest, handler, source_addr, nbytes, dest_addr, flags, numargs, argptr);
   } else {
     GASNETC_DIDX_POST((gasnete_mythread())->domain_idx);
-    int initiated = 0;
-    gasneti_weakatomic_t completed = gasneti_weakatomic_init(0);
+    unsigned int initiated_lc = 0;
+    volatile unsigned int completed_lc = 0;
     const int is_packed = (nbytes <= GASNETC_MAX_PACKED_LONG(numargs));
     const size_t head_len = GASNETC_HEADLEN(long, numargs);
     const size_t total_len = head_len + (is_packed ? nbytes : 0);
     gasnetc_post_descriptor_t *gpd;
     gasnetc_packet_t *p;
+    gasnetc_gpd_chain_t *chain = NULL;
 
     if (!is_packed) { /* Launch RDMA put as early as possible */
-      initiated = gasnetc_put_long_payload(dest, dest_addr, source_addr,
-                                           nbytes, flags, &completed GASNETC_DIDX_PASS);
-      if_pf (!initiated) goto out_immediate;
+      chain = gasnetc_put_long_payload(dest, dest_addr, source_addr,
+                                       nbytes, flags, &initiated_lc, &completed_lc
+                                       GASNETC_DIDX_PASS);
+      if_pf (NULL == chain) goto out_immediate;
       flags &= ~GEX_FLAG_IMMEDIATE;
     }
     
@@ -1618,11 +1602,20 @@ extern int gasnetc_AMRequestLongM(
 
     if (is_packed) {
       memcpy((void*)(gpd->gpd_am_packet + head_len), source_addr, nbytes);
+      retval = gasnetc_general_am_send_request(gpd);
     } else {
-      /* Poll for the RDMA completion */
-      gasnetc_wait_long_payload(initiated, &completed GASNETC_DIDX_PASS);
+      /* Chain header to send after RDMA completion */
+      chain->gpd = gpd;
+      if (gasneti_weakatomic_decrement_and_test(&chain->counter, GASNETI_ATOMIC_REL | GASNETI_ATOMIC_ACQ)) {
+        gasneti_lifo_push(&gasnetc_gpd_chain_pool, (void*)chain);
+        gasneti_assert_zeroret( gasnetc_send_am(gpd) );
+      } else {
+        /* Encourage progress */
+        gasnetc_poll_local_queue(GASNETC_DIDX_PASS_ALONE);
+      }
+      /* Stall for LC */
+      gasneti_polluntil(initiated_lc == completed_lc);
     }
-    retval = gasnetc_general_am_send_request(gpd);
   }
 out_immediate:
   va_end(argptr);
@@ -1700,20 +1693,22 @@ extern int gasnetc_AMReplyLongM(
     retval = gasnetc_local_long_common(0, token, 0, handler, source_addr, nbytes, dest_addr, flags, numargs, argptr);
   } else {
     GASNETC_DIDX_POST((gasnete_mythread())->domain_idx);
-    int initiated = 0;
-    gasneti_weakatomic_t completed = gasneti_weakatomic_init(0);
+    unsigned int initiated_lc = 0;
+    volatile unsigned int completed_lc = 0;
     const int is_packed = (nbytes <= GASNETC_MAX_PACKED_LONG(numargs));
     const size_t head_len = GASNETC_HEADLEN(long, numargs);
     const size_t total_len = head_len + (is_packed ? nbytes : 0);
     gasnetc_post_descriptor_t *gpd;
+    gasnetc_gpd_chain_t *chain = NULL;
 
     if (!is_packed) { /* Launch RDMA put as early as possible */
-      initiated = gasnetc_put_long_payload(reply_node(token), dest_addr, source_addr,
-                                           nbytes, flags, &completed GASNETC_DIDX_PASS);
-      if_pf (!initiated) goto out_immediate;
+      chain = gasnetc_put_long_payload(reply_node(token), dest_addr, source_addr,
+                                       nbytes, flags, &initiated_lc, &completed_lc
+                                       GASNETC_DIDX_PASS);
+      if_pf (NULL == chain) goto out_immediate;
       flags &= ~GEX_FLAG_IMMEDIATE;
     }
-    
+
     /* Overlap gpd stall, if any, w/ the RDMA */
     gpd = gasnetc_alloc_reply_post_descriptor(token, total_len, flags);
     if_pf (!gpd) goto out_immediate;
@@ -1722,11 +1717,20 @@ extern int gasnetc_AMReplyLongM(
 
     if (is_packed) {
       memcpy((void*)(gpd->gpd_am_packet + head_len), source_addr, nbytes);
-    } else {    
-      /* Poll for the RDMA completion */
-      gasnetc_wait_long_payload(initiated, &completed GASNETC_DIDX_PASS);
+      retval = gasnetc_general_am_send_reply(gpd, token);
+    } else {
+      /* Chain header to send after RDMA completion */
+      chain->gpd = gpd;
+      if (gasneti_weakatomic_decrement_and_test(&chain->counter, GASNETI_ATOMIC_REL | GASNETI_ATOMIC_ACQ)) {
+        gasneti_lifo_push(&gasnetc_gpd_chain_pool, (void*)chain);
+        gasneti_assert_zeroret( gasnetc_send_am(gpd) );
+      } else {
+        /* Encourage progress */
+        gasnetc_poll_local_queue(GASNETC_DIDX_PASS_ALONE);
+      }
+      /* Stall for LC */
+      gasneti_polluntil(initiated_lc == completed_lc);
     }
-    retval = gasnetc_general_am_send_reply(gpd, token);
   }
 out_immediate:
   va_end(argptr);
