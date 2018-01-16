@@ -756,7 +756,8 @@ extern volatile int AMUDP_SPMDIsActiveControlSocket;
   extern char volatile identName[];         \
   char volatile identName[] = identText;    \
   extern char *_##identName##_identfn(void) { return (char*)identName; } 
-#if PLATFORM_COMPILER_CRAY && !PLATFORM_ARCH_X86_64 /* fouls up concatenation in ident string */
+#if PLATFORM_COMPILER_CRAY && !(PLATFORM_ARCH_X86_64 || \
+                                PLATFORM_ARCH_AARCH64) /* fouls up concatenation in ident string */
   #define AMUDP_IDENT(identName, identText) \
     AMUDP_PRAGMA(_CRI ident identText);     \
     _AMUDP_IDENT(identName, identText)

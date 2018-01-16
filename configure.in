@@ -729,6 +729,7 @@ case "$CC_FAMILY" in
     GASNET_POPVAR(CFLAGS)
     case "$target_cpu" in
       x86_64)   MISC_CFLAGS="-hnomessage=$crayc_warn_flags" ;; # XT, XE, XK, XC, etc. 
+      aarch64)  MISC_CFLAGS="-hnomessage=$crayc_warn_flags" ;;
       *)        AC_MSG_ERROR(Cray C compiler for unknown target CPU) ;;
     esac 
     AC_MSG_RESULT([$MISC_CFLAGS])
@@ -2867,6 +2868,7 @@ AC_DEFUN([GASNET_LINKHELPER_TRY_RUN],[GASNET_LINKHELPER_TRY_INNER([RUN_WITHCC],$
     Cray)
      case "$target_cpu" in
       x86_64)   MISC_CXXFLAGS="-hnomessage=236:3185 -hexceptions -hnew_for_init" ;; # XT, XE, XK, XC, etc.
+      aarch64)   MISC_CXXFLAGS="-hnomessage=236:3185 -hexceptions -hnew_for_init" ;;
       *)        AC_MSG_ERROR(Cray C++ compiler for unknown target CPU) ;;
      esac ;;
     Pathscale)  CXXDEBUGFLAGS="-g3 -O0"  # consistent with CCDEBUGFLAGS

@@ -775,7 +775,8 @@ extern int AMMPI_PostRecvBuffer(ammpi_buf_t *rxBuf, MPI_Request *prxHandle, MPI_
   char volatile identName[] = identText;    \
   extern char *_##identName##_identfn(void) { return (char*)identName; } \
   static int _dummy_##identName = sizeof(_dummy_##identName)
-#if PLATFORM_COMPILER_CRAY && !PLATFORM_ARCH_X86_64 /* fouls up concatenation in ident string */
+#if PLATFORM_COMPILER_CRAY && !(PLATFORM_ARCH_X86_64 || \
+                                PLATFORM_ARCH_AARCH64 ) /* fouls up concatenation in ident string */
   #define AMMPI_IDENT(identName, identText) \
     AMMPI_PRAGMA(_CRI ident identText);     \
     _AMMPI_IDENT(identName, identText)
