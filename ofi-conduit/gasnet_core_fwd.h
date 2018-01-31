@@ -20,6 +20,12 @@
 #define GASNET_CONDUIT_NAME_STR  _STRINGIFY(GASNET_CONDUIT_NAME)
 #define GASNET_CONDUIT_OFI 1
 
+/* OFI specifies a minimum of 32 bits of immediate data. In some cases,
+ * the conduit will use this immediate data to send a node-id/sequence
+ * number combo. 16 of the bits will be used to identify the node,
+ * while 16 will identify the sequence number. */
+#define GASNET_MAXNODES (1 << 16) /* 2^16 */
+
   /* GASNET_PSHM defined 1 if this conduit supports PSHM. leave undefined otherwise. */
 #if GASNETI_PSHM_ENABLED
 #define GASNET_PSHM 1

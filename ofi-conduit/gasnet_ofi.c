@@ -17,6 +17,13 @@
 #include <rdma/fi_cm.h>
 #include <rdma/fi_errno.h>
 
+/* GASNet won't let the uthash header compile without using its special memory
+ * allocation functions */
+#define uthash_malloc(sz) gasneti_malloc(sz);
+#define uthash_free(ptr, sz) gasneti_free(ptr);
+#define HASH_FUNCTION HASH_SFH
+#include <uthash.h>
+
 #if HAVE_SYS_UIO_H
 #include <sys/uio.h> /* For struct iovec */
 #endif
@@ -77,6 +84,18 @@ static uint64_t* gasnetc_ofi_target_keys;
         }\
     } while(0)
 
+#define OFI_WRITEDATA(ep, src_addr, nbytes, dest, dest_addr, ctxt_ptr, data)\
+    do {\
+        if (GASNETC_OFI_HAS_MR_SCALABLE){\
+            ret = fi_writedata(ep, src_addr, nbytes, NULL, data, GET_RDMA_DEST(dest), \
+                GET_REMOTEADDR(dest_addr, dest), 0, ctxt_ptr);\
+        }\
+        else {\
+            ret = fi_writedata(ep, src_addr, nbytes, NULL, data, GET_RDMA_DEST(dest), \
+                (uintptr_t)dest_addr, GASNETC_OFI_GET_MR_KEY(dest), ctxt_ptr);\
+        }\
+    } while(0)
+
 #define OFI_READ(ep, dest_buf, nbytes, src, src_addr, ctxt_ptr)\
     do {\
         if (GASNETC_OFI_HAS_MR_SCALABLE) {\
@@ -117,6 +136,8 @@ static gasneti_lifo_head_t ofi_am_request_pool = GASNETI_LIFO_INITIALIZER;
 static gasneti_lifo_head_t ofi_am_reply_pool = GASNETI_LIFO_INITIALIZER;
 static gasneti_lifo_head_t ofi_bbuf_pool = GASNETI_LIFO_INITIALIZER;
 static gasneti_lifo_head_t ofi_bbuf_ctxt_pool = GASNETI_LIFO_INITIALIZER;
+static gasneti_lifo_head_t ofi_async_long_ctxt_pool = GASNETI_LIFO_INITIALIZER;
+static gasneti_lifo_head_t ofi_hash_entry_pool = GASNETI_LIFO_INITIALIZER;
 
 static size_t num_multirecv_buffs;
 static size_t multirecv_buff_size;
@@ -157,6 +178,29 @@ static gasnetc_paratomic_t pending_am = gasnetc_paratomic_init(0);
 
 static int gasnetc_ofi_inited = 0;
 
+static gasneti_weakatomic_t async_long_count = gasneti_weakatomic_init(0);
+
+typedef struct am_long_async_cache {
+    gasnetc_ofi_ctxt_t *header;
+    gasnetc_ofi_am_send_buf_t *recv_buf;
+    size_t msg_len;
+    int id; /* used as hashtable key */
+    UT_hash_handle hh;
+} am_long_async_cache_t;
+
+static am_long_async_cache_t* am_long_cache = NULL;
+
+GASNETI_INLINE(find_cached_long)
+am_long_async_cache_t* find_cached_long(int id) {
+    am_long_async_cache_t *elt;
+    HASH_FIND_INT(am_long_cache, &id, elt);
+    if (elt) {
+        HASH_DEL(am_long_cache, elt);
+        return elt;
+    } else
+        return NULL;
+}
+
 #define OFI_CONDUIT_VERSION FI_VERSION(1, 0)
 
 #if GASNET_PSHM
@@ -194,7 +238,7 @@ static inline int gasnetc_is_exiting(void) {
  * Function Declarations
  *-------------------------------------------------*/
 GASNETI_INLINE(gasnetc_ofi_handle_am)
-void gasnetc_ofi_handle_am(gasnetc_ofi_am_send_buf_t *header, int isreq, size_t msg_len, size_t nbytes);
+void gasnetc_ofi_handle_am(gasnetc_ofi_am_send_buf_t *header, int isreq, size_t msg_len);
 void gasnetc_ofi_release_request_am(struct fi_cq_data_entry *re, void *buf);
 void gasnetc_ofi_release_reply_am(struct fi_cq_data_entry *re, void *buf);
 void gasnetc_ofi_tx_poll();
@@ -403,7 +447,6 @@ int gasnetc_ofi_init(int *argc, char ***argv,
   hints->domain_attr->threading			= FI_THREAD_SAFE;
 #endif
 
-  hints->domain_attr->control_progress	= FI_PROGRESS_MANUAL;
   /* resource_mgmt: FI_RM_ENABLED - provider protects against overrunning 
 	 local and remote resources. */
   hints->domain_attr->resource_mgmt		= FI_RM_ENABLED;
@@ -521,7 +564,7 @@ int gasnetc_ofi_init(int *argc, char ***argv,
   if (FI_SUCCESS != ret) gasneti_fatalerror("fi_endpoint for rdma failed: %d\n", ret);
 
   /* Allocate a new active endpoint for AM operations buffer */
-  hints->caps     = FI_MSG | FI_MULTI_RECV;
+  hints->caps     = FI_REMOTE_WRITE | FI_MSG | FI_MULTI_RECV;
 
   ret = fi_getinfo(OFI_CONDUIT_VERSION, NULL, NULL, 0ULL, hints, &info);
   if(FI_SUCCESS != ret)
@@ -554,6 +597,9 @@ int gasnetc_ofi_init(int *argc, char ***argv,
   /* Bind CQs to endpoints */
   ret = fi_ep_bind(gasnetc_ofi_rdma_epfd, &gasnetc_ofi_tx_cqfd->fid, FI_TRANSMIT);
   if (FI_SUCCESS != ret) gasneti_fatalerror("fi_ep_bind for tx_cq to rdma_epfd failed: %d\n", ret);
+
+  ret = fi_ep_bind(gasnetc_ofi_rdma_epfd, &gasnetc_ofi_request_cqfd->fid, FI_RECV);
+  if (FI_SUCCESS != ret) gasneti_fatalerror("fi_ep_bind for am request cq to rdma_epfd failed: %d\n", ret);
 
   ret = fi_ep_bind(gasnetc_ofi_request_epfd, &gasnetc_ofi_tx_cqfd->fid, FI_TRANSMIT);
   if (FI_SUCCESS != ret) gasneti_fatalerror("fi_ep_bind for tx_cq to am request CQ failed: %d\n", ret);
@@ -767,7 +813,7 @@ void gasnetc_ofi_exit(void)
 
 /* Handle Active Messages */
 GASNETI_INLINE(gasnetc_ofi_handle_am)
-void gasnetc_ofi_handle_am(gasnetc_ofi_am_send_buf_t *header, int isreq, size_t msg_len, size_t nbytes)
+void gasnetc_ofi_handle_am(gasnetc_ofi_am_send_buf_t *header, int isreq, size_t msg_len)
 {
 	uint8_t *addr;
 	int handler = header->handler;
@@ -775,6 +821,7 @@ void gasnetc_ofi_handle_am(gasnetc_ofi_am_send_buf_t *header, int isreq, size_t 
 	gasnet_handlerarg_t *args;
 	int numargs = header->argnum;
     int data_offset;
+    size_t nbytes;
 	switch(header->type) {
 		case OFI_AM_SHORT:
             args = (gasnet_handlerarg_t *)header->short_buf.data;
@@ -783,6 +830,7 @@ void gasnetc_ofi_handle_am(gasnetc_ofi_am_send_buf_t *header, int isreq, size_t 
 		case OFI_AM_MEDIUM:
             data_offset = GASNETI_ALIGNUP(sizeof(gasnet_handlerarg_t)*numargs, GASNETI_MEDBUF_ALIGNMENT);
             args = (gasnet_handlerarg_t *)header->medium_buf.data;
+            nbytes = header->medium_buf.nbytes;
 			addr = header->medium_buf.data + data_offset;
 			GASNETI_RUN_HANDLER_MEDIUM(isreq, handler, handler_fn, header, args, numargs, addr, nbytes);
 			break;
@@ -790,12 +838,21 @@ void gasnetc_ofi_handle_am(gasnetc_ofi_am_send_buf_t *header, int isreq, size_t 
             data_offset = sizeof(gasnet_handlerarg_t)*numargs;
             args = (gasnet_handlerarg_t *)header->long_buf.data;
 			addr = header->long_buf.dest_ptr;
+            nbytes = header->long_buf.nbytes;
+			GASNETI_RUN_HANDLER_LONG(isreq, handler, handler_fn, header, args, numargs, addr, nbytes);
+			break;
+		case OFI_AM_LONG_ASYNC:
+            data_offset = sizeof(gasnet_handlerarg_t)*numargs;
+            args = (gasnet_handlerarg_t *)header->long_buf.data;
+			addr = header->long_buf.dest_ptr;
+            nbytes = header->long_buf.nbytes;
 			GASNETI_RUN_HANDLER_LONG(isreq, handler, handler_fn, header, args, numargs, addr, nbytes);
 			break;
 		case OFI_AM_LONG_MEDIUM:
             data_offset = sizeof(gasnet_handlerarg_t)*numargs;
             args = (gasnet_handlerarg_t *)header->long_buf.data;
 			addr = header->long_buf.dest_ptr;
+            nbytes = header->long_buf.nbytes;
 			memcpy(addr, header->long_buf.data + data_offset, nbytes);
 			GASNETI_RUN_HANDLER_LONG(isreq, handler, handler_fn, header, args, numargs, addr, nbytes);
 			break;
@@ -810,7 +867,7 @@ void gasnetc_ofi_handle_am(gasnetc_ofi_am_send_buf_t *header, int isreq, size_t 
 GASNETI_INLINE(gasnetc_ofi_handle_local_am)
 void gasnetc_ofi_handle_local_am(gasnetc_ofi_am_buf_t *buf, int isreq, size_t msg_len, int nbytes)
 {
-    gasnetc_ofi_handle_am(&buf->sendbuf, isreq, msg_len, nbytes);
+    gasnetc_ofi_handle_am(&buf->sendbuf, isreq, msg_len);
     gasneti_lifo_push( isreq ? &ofi_am_request_pool : &ofi_am_reply_pool, buf);
 }
 #endif
@@ -846,6 +903,8 @@ void gasnetc_ofi_handle_rdma(void *buf)
 			{
 				ptr->data_sent = 1;
 			}
+			break;
+		case OFI_TYPE_AM_ASYNC_DATA:
 			break;
 		default:
 			gasneti_fatalerror("receive undefined OP type in gasnetc_ofi_rdma_poll: %d\n", ptr->type);
@@ -1022,6 +1081,8 @@ void gasnetc_ofi_tx_poll()
 #endif
                     gasnetc_ofi_op_ctxt_t *header = (gasnetc_ofi_op_ctxt_t *)re[i].op_context;
                     header->callback(header);
+		    if (header->type == OFI_TYPE_AM_ASYNC_DATA)
+                        gasneti_free(header);
                 }
                 else {
                     gasneti_fatalerror("Unknown completion type received for gasnetc_ofi_tx_poll\n");
@@ -1029,6 +1090,24 @@ void gasnetc_ofi_tx_poll()
             }
         }
     }
+}
+
+void gasnetc_ofi_am_ref_count(gasnetc_ofi_ctxt_t* header, struct fid_ep* ep)
+{
+    /* The atomic here ensures that the buffer is not reposted while an AM handler is
+     * still running. */
+    int post_ret;
+    uint64_t tmp = gasnetc_paratomic_add(&header->consumed_cntr, 1, GASNETI_ATOMIC_ACQ);
+    if_pf (tmp == (GASNETI_ATOMIC_MAX & header->final_cntr)) {
+        gasnetc_ofi_recv_metadata_t* metadata = header->metadata;
+        struct fi_msg* am_buff_msg = &metadata->am_buff_msg;
+        GASNETC_OFI_LOCK(&gasnetc_ofi_locks.am_rx);
+        post_ret = fi_recvmsg(ep, am_buff_msg, FI_MULTI_RECV);
+        GASNETC_OFI_UNLOCK(&gasnetc_ofi_locks.am_rx);
+        if_pf (FI_SUCCESS != post_ret)
+            gasneti_fatalerror("fi_recvmsg failed inside am_ref_count: %d\n", post_ret);
+    }
+
 }
 
 GASNETI_PLEASE_INLINE(gasnetc_ofi_am_recv_poll)
@@ -1056,7 +1135,7 @@ void gasnetc_ofi_am_recv_poll(int is_request)
 #endif
     }
 
-
+retry_recv_poll:
     /* Read from Completion Queue */
     if(EBUSY == GASNETC_OFI_PAR_TRYLOCK(lock_p)) return;
 
@@ -1073,6 +1152,22 @@ void gasnetc_ofi_am_recv_poll(int is_request)
         gasneti_fatalerror("fi_cq_read for am_recv_poll failed with error: %s\n", fi_strerror(e.err));
     }
 
+    /* Handle RMA transfers associated with long AMs */
+    if (re.flags & FI_REMOTE_WRITE) {
+            GASNETC_OFI_PAR_UNLOCK(lock_p);
+            am_long_async_cache_t* entry = find_cached_long(re.data);
+            if (entry) { // Header has been received
+                gasnetc_ofi_handle_am(entry->recv_buf, 1, entry->msg_len);
+                gasnetc_ofi_am_ref_count(entry->header, ep);
+                gasneti_free(entry);
+            } else { //Header has yet to be received
+                entry = gasneti_calloc(1, sizeof(am_long_async_cache_t)); 
+                entry->id = re.data;
+                HASH_ADD_INT(am_long_cache, id, entry);
+            }
+            return;
+    }
+
     gasnetc_ofi_ctxt_t *header;
     header = (gasnetc_ofi_ctxt_t *)re.op_context;
     /* Count number of completions read for this posted buffer */
@@ -1083,23 +1178,29 @@ void gasnetc_ofi_am_recv_poll(int is_request)
         header->final_cntr = header->event_cntr;
     }
     GASNETC_OFI_PAR_UNLOCK(lock_p);
-
     if_pt (re.flags & FI_RECV) {
-        /* re.data contains the number of bytes transferred in a medium or long message */
-        gasnetc_ofi_handle_am(re.buf, is_request, re.len, re.data);
+        gasnetc_ofi_am_send_buf_t *msg_buf = (gasnetc_ofi_am_send_buf_t*)re.buf;
+        /* Handle async longs AMs, which have a separate data transfer */
+        if (msg_buf->type == OFI_AM_LONG_ASYNC) {
+            am_long_async_cache_t* entry = find_cached_long(re.data);
+            if (!entry) { /* RMA has yet to be received */
+                entry = gasneti_calloc(1, sizeof(am_long_async_cache_t));
+                entry->id = re.data;
+                entry->header = header;
+                entry->recv_buf = msg_buf;
+                entry->msg_len = re.len;
+                HASH_ADD_INT(am_long_cache, id, entry);
+                /* Return early to avoid ref-counting the multi-recv header since
+                   the transfer is still ongoing */
+                return;
+            } else {
+                gasneti_free(entry);
+            }
+        }
+        gasnetc_ofi_handle_am(re.buf, is_request, re.len);
     }
-
-    /* The atomic here ensures that the buffer is not reposted while an AM handler is
-     * still running. */
-    uint64_t tmp = gasnetc_paratomic_add(&header->consumed_cntr, 1, GASNETI_ATOMIC_ACQ);
-    if_pf (tmp == (GASNETI_ATOMIC_MAX & header->final_cntr)) {
-        gasnetc_ofi_recv_metadata_t* metadata = header->metadata;
-        struct fi_msg* am_buff_msg = &metadata->am_buff_msg;
-        GASNETC_OFI_LOCK(&gasnetc_ofi_locks.am_rx);
-        post_ret = fi_recvmsg(ep, am_buff_msg, FI_MULTI_RECV);
-        GASNETC_OFI_UNLOCK(&gasnetc_ofi_locks.am_rx);
-        if_pf (FI_SUCCESS != post_ret) gasneti_fatalerror("fi_recvmsg failed inside am_recv_poll: %d\n", ret);
-    }
+    
+    gasnetc_ofi_am_ref_count(header, ep);
 }
 
 /* General progress function */
@@ -1223,7 +1324,8 @@ int gasnetc_ofi_am_send_medium(gasnet_node_t dest, gasnet_handler_t handler,
 
 	memcpy((uint8_t *)(sendbuf->medium_buf.data)+ len, source_addr, nbytes);
 
-	len += (nbytes + offsetof(gasnetc_ofi_am_send_buf_t, medium_buf));
+	len += (nbytes + offsetof(gasnetc_ofi_am_send_buf_t, medium_buf) 
+            + offsetof(struct gasnetc_ofi_am_medium_buf, data));
     len = GASNETI_ALIGNUP(len, GASNETI_MEDBUF_ALIGNMENT);
 
 	/* Copy arg and handle into the buffer */
@@ -1231,6 +1333,7 @@ int gasnetc_ofi_am_send_medium(gasnet_node_t dest, gasnet_handler_t handler,
 	sendbuf->sourceid = gasneti_mynode;
 	sendbuf->type = OFI_AM_MEDIUM;
 	sendbuf->argnum = numargs;
+    sendbuf->medium_buf.nbytes = nbytes;
 
 #if !GASNET_PSHM
 	if (dest == gasneti_mynode) {
@@ -1241,12 +1344,12 @@ int gasnetc_ofi_am_send_medium(gasnet_node_t dest, gasnet_handler_t handler,
 
 	if(len <= max_buffered_send) {
             OFI_INJECT_RETRY(&gasnetc_ofi_locks.am_tx,
-                ret = fi_injectdata(ep, sendbuf, len, nbytes, am_dest), poll_type);
+                ret = fi_inject(ep, sendbuf, len, am_dest), poll_type);
 		if (FI_SUCCESS != ret) gasneti_fatalerror("fi_inject for medium ashort failed: %d\n", ret);
 		header->callback(NULL, header);
 	} else {
             OFI_INJECT_RETRY(&gasnetc_ofi_locks.am_tx,
-                ret = fi_senddata(ep, sendbuf, len, NULL, nbytes, am_dest, &header->ctxt), poll_type);
+                ret = fi_send(ep, sendbuf, len, NULL, am_dest, &header->ctxt), poll_type);
 		if (FI_SUCCESS != ret) gasneti_fatalerror("fi_send for medium am failed: %d\n", ret);
 #if GASNET_DEBUG
 		gasnetc_paratomic_increment(&pending_am,0);
@@ -1270,6 +1373,8 @@ int gasnetc_ofi_am_send_long(gasnet_node_t dest, gasnet_handler_t handler,
     struct fid_ep* ep;
     fi_addr_t am_dest;
     int poll_type;
+    int id;
+    gasnetc_ofi_op_ctxt_t lam_ctxt;
     if (isreq) {
         ep = gasnetc_ofi_request_epfd;
         am_dest = GET_AM_REQUEST_DEST(dest);
@@ -1300,6 +1405,7 @@ int gasnetc_ofi_am_send_long(gasnet_node_t dest, gasnet_handler_t handler,
 	if(dest == gasneti_mynode) {
 		memcpy(dest_addr, source_addr, nbytes);
 		sendbuf->type = OFI_AM_LONG;
+        lam_ctx.data_sent = 1;
 	} else
 #endif
 	if(len + nbytes < long_rma_threshold)
@@ -1308,42 +1414,73 @@ int gasnetc_ofi_am_send_long(gasnet_node_t dest, gasnet_handler_t handler,
 		memcpy(sendbuf->long_buf.data + len, source_addr, nbytes);
 		len += nbytes;
 		sendbuf->type = OFI_AM_LONG_MEDIUM;
-	} else {
-		/* Launch the long data payload transfer with RMA operation */
-			gasnetc_ofi_op_ctxt_t lam_ctxt;
-			lam_ctxt.type = OFI_TYPE_AM_DATA;
-			lam_ctxt.data_sent = 0;
-			lam_ctxt.callback = gasnetc_ofi_handle_rdma;
+        } else {
+            /* Launch the long data payload transfer with RMA operation */
+            gasnetc_ofi_op_ctxt_t *rma_ctxt;
+            if (!isasync) {
+                rma_ctxt = &lam_ctxt;
+                sendbuf->type = OFI_AM_LONG;
+                rma_ctxt->type = OFI_TYPE_AM_DATA;
+                rma_ctxt->data_sent = 0;
+            } else {
+                id = gasneti_weakatomic_add(&async_long_count, 1, 0) % (1<<16);
+                id |= (gasneti_mynode << 16);
+                rma_ctxt = gasneti_calloc(1, sizeof(gasnetc_ofi_op_ctxt_t));
+                sendbuf->type = OFI_AM_LONG_ASYNC;
+                rma_ctxt->type = OFI_TYPE_AM_ASYNC_DATA;
+            }
+            rma_ctxt->callback = gasnetc_ofi_handle_rdma;
 
-			GASNETC_OFI_LOCK_EXPR(&gasnetc_ofi_locks.rdma_tx, 
-                OFI_WRITE(gasnetc_ofi_rdma_epfd, source_addr, nbytes, dest, dest_addr, &lam_ctxt.ctxt));
-			while (ret == -FI_EAGAIN) {
-				GASNETC_OFI_POLL_SELECTIVE(poll_type);
+            if (!isasync) {
                 GASNETC_OFI_LOCK_EXPR(&gasnetc_ofi_locks.rdma_tx, 
-				    OFI_WRITE(gasnetc_ofi_rdma_epfd, source_addr, nbytes, dest, dest_addr, &lam_ctxt.ctxt));
-			}
-			if (FI_SUCCESS != ret) 
-				gasneti_fatalerror("fi_write failed for AM long: %d\n", ret);
+                        OFI_WRITE(gasnetc_ofi_rdma_epfd, source_addr, nbytes, dest, dest_addr, &rma_ctxt->ctxt));
+                while (ret == -FI_EAGAIN) {
+                    GASNETC_OFI_POLL_SELECTIVE(poll_type);
+                    GASNETC_OFI_LOCK_EXPR(&gasnetc_ofi_locks.rdma_tx, 
+                            OFI_WRITE(gasnetc_ofi_rdma_epfd, source_addr, nbytes, dest, dest_addr, &rma_ctxt->ctxt));
+                }
+            /* In the async case, send a unique identifier for the data transfer and message header
+             * in order to repair the RMA and the header on the target node.*/
+            } else {
+                GASNETC_OFI_LOCK_EXPR(&gasnetc_ofi_locks.rdma_tx, 
+                        OFI_WRITEDATA(gasnetc_ofi_rdma_epfd, source_addr, nbytes,
+                            dest, dest_addr, &rma_ctxt->ctxt, id));
+                while (ret == -FI_EAGAIN) {
+                    GASNETC_OFI_POLL_SELECTIVE(poll_type);
+                    GASNETC_OFI_LOCK_EXPR(&gasnetc_ofi_locks.rdma_tx, 
+                            OFI_WRITEDATA(gasnetc_ofi_rdma_epfd, source_addr, nbytes,
+                                dest, dest_addr, &rma_ctxt->ctxt, id));
+
+                }
+		
+            }
+            if (FI_SUCCESS != ret) 
+                gasneti_fatalerror("fi_writedata failed for AM long: %d\n", ret);
 #if GASNET_DEBUG
-			gasnetc_paratomic_increment(&pending_rdma,0);
+            gasnetc_paratomic_increment(&pending_rdma,0);
 #endif
 
 			/* Because the order is not guaranteed between different ep, */
 			/* we send the am part after confirming the large rdma operation */
 			/* is successful. */
-			while(!lam_ctxt.data_sent) {
-				GASNETC_OFI_POLL_SELECTIVE(poll_type);
-			}
-		sendbuf->type = OFI_AM_LONG;
 	}
-    len += offsetof(gasnetc_ofi_am_long_buf_t, data) + offsetof(gasnetc_ofi_am_send_buf_t, long_buf);
-    len = GASNETI_ALIGNUP(len, GASNETI_MEDBUF_ALIGNMENT);
+        len += offsetof(gasnetc_ofi_am_long_buf_t, data) + offsetof(gasnetc_ofi_am_send_buf_t, long_buf);
+        len = GASNETI_ALIGNUP(len, GASNETI_MEDBUF_ALIGNMENT);
 
 	/* Copy arg and handle into the buffer */
 	sendbuf->handler = (uint8_t) handler;
 	sendbuf->sourceid = gasneti_mynode;
 	sendbuf->argnum = numargs;
 	sendbuf->long_buf.dest_ptr = dest_addr;
+        sendbuf->long_buf.nbytes = nbytes;
+
+        /* Need to wait for the data transfer to complete to ensure correct
+         * buffer reuse semantics. */
+        if (sendbuf->type == OFI_AM_LONG) {
+            while(!lam_ctxt.data_sent) {
+                GASNETC_OFI_POLL_SELECTIVE(poll_type);
+            }
+        }
 
 #if !GASNET_PSHM
 	if (dest == gasneti_mynode) {
@@ -1353,17 +1490,17 @@ int gasnetc_ofi_am_send_long(gasnet_node_t dest, gasnet_handler_t handler,
 #endif
 
 	if(len <= max_buffered_send) {
-        OFI_INJECT_RETRY(&gasnetc_ofi_locks.am_tx,
-            ret = fi_injectdata(ep, sendbuf, len, nbytes, am_dest), poll_type);
-		if (FI_SUCCESS != ret) gasneti_fatalerror("fi_inject for long ashort failed: %d\n", ret);
-		header->callback(NULL, header);
+            OFI_INJECT_RETRY(&gasnetc_ofi_locks.am_tx,
+                    ret = fi_injectdata(ep, sendbuf, len, id, am_dest), poll_type);
+            if (FI_SUCCESS != ret) gasneti_fatalerror("fi_inject for long ashort failed: %d\n", ret);
+            header->callback(NULL, header);
 	} else {
-        OFI_INJECT_RETRY(&gasnetc_ofi_locks.am_tx,
-            ret = fi_senddata(ep, sendbuf, len, NULL, nbytes, am_dest, &header->ctxt), poll_type);
+            OFI_INJECT_RETRY(&gasnetc_ofi_locks.am_tx,
+                    ret = fi_senddata(ep, sendbuf, len, NULL, id, am_dest, &header->ctxt), poll_type);
 
-		if (FI_SUCCESS != ret) gasneti_fatalerror("fi_send for long am failed: %d\n", ret);
+            if (FI_SUCCESS != ret) gasneti_fatalerror("fi_send for long am failed: %d\n", ret);
 #if GASNET_DEBUG
-		gasnetc_paratomic_increment(&pending_am,0);
+            gasnetc_paratomic_increment(&pending_am,0);
 #endif
 	}
 

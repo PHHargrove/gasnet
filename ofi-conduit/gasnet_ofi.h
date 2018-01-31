@@ -67,6 +67,7 @@ typedef struct
 typedef enum GASNETC_OFI_OP_TYPE {
   OFI_TYPE_AM = 0,
   OFI_TYPE_AM_DATA,
+  OFI_TYPE_AM_ASYNC_DATA,
   OFI_TYPE_EGET,
   OFI_TYPE_EPUT,
   OFI_TYPE_IGET,
@@ -77,7 +78,8 @@ typedef enum GASNETC_OFI_AM_TYPE {
   OFI_AM_SHORT = 0,
   OFI_AM_MEDIUM,
   OFI_AM_LONG,
-  OFI_AM_LONG_MEDIUM
+  OFI_AM_LONG_MEDIUM,
+  OFI_AM_LONG_ASYNC
 } gasnetc_ofi_am_type;
 
 typedef  void (*event_callback_fn) (struct fi_cq_data_entry *re, void *buf);
@@ -90,20 +92,22 @@ typedef struct gasnetc_ofi_am_short_buf {
 } gasnetc_ofi_am_short_buf_t;
 
 typedef struct gasnetc_ofi_am_medium_buf {
-   uint8_t 				data[OFI_AM_MAX_DATA_LENGTH]
+    size_t nbytes;
+    uint8_t 				data[OFI_AM_MAX_DATA_LENGTH]
                             __attribute__((aligned(GASNETI_MEDBUF_ALIGNMENT)));
    
 } gasnetc_ofi_am_medium_buf_t;
 
 typedef struct gasnetc_ofi_am_long_buf {
-  void 					*dest_ptr;
-  uint8_t 				data[OFI_AM_MAX_DATA_LENGTH];
+    size_t nbytes;
+    void 					*dest_ptr;
+    uint8_t 				data[OFI_AM_MAX_DATA_LENGTH];
 
 } gasnetc_ofi_am_long_buf_t;
 
 typedef struct gasnetc_ofi_am_send_buf {
-    gasnetc_ofi_am_type type:2;
-    uint8_t argnum:6;
+    gasnetc_ofi_am_type type:3;
+    uint8_t argnum:5;
     uint8_t handler;
     gasnet_node_t			sourceid;
     union {
@@ -131,7 +135,6 @@ typedef struct gasnetc_ofi_ctxt {
   char _pad2[GASNETI_CACHE_PAD(sizeof(uint64_t))];
   uint64_t event_cntr;
 } gasnetc_ofi_ctxt_t;
-
 
 typedef struct gasnetc_ofi_op_ctxt {
   struct fi_context 	ctxt;
