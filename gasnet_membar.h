@@ -191,11 +191,16 @@
    #pragma mc_func _gasneti_do_compilerfence { "" }
    #pragma reg_killed_by _gasneti_do_compilerfence
    #define gasneti_compiler_fence() _gasneti_do_compilerfence()
- #else
+ #elif GASNETI_HAVE_GCC_ASM
    /* "lwsync" = "sync 1", executed as "sync" on older CPUs */
    /* XXX: Can't count on older assemblers to recognize "lwsync" mnemonic */
    #define GASNETI_PPC_WMB_ASM ".long 0x7c2004ac"
    #define gasneti_local_wmb() GASNETI_ASM(GASNETI_PPC_WMB_ASM)
+ #elif !GASNETI_COMPILER_IS_CC
+   /* Compiler w/o necessary asm support (could be CXX, MPI_CC or unknown) */
+   #define GASNETI_USING_SLOW_MEMBARS 1
+ #else
+   #error "Don't know how to construct memory barriers with your compiler"
  #endif
 
  #define GASNETI_PPC_RMB_ASM GASNETI_PPC_WMB_ASM
@@ -319,8 +324,8 @@
  * or any compiler without an effective inline compiler fence.
  */
  
-#if GASNETI_USING_SLOW_MEMBARS && !defined(__cplusplus)
-  #error Slow membars are only a hack-around for C++ compilers lacking inline assembly support
+#if GASNETI_USING_SLOW_MEMBARS && GASNETI_COMPILER_IS_CC
+  #error Slow membars are only a hack-around for compilers lacking inline assembly support
 #endif
 #if GASNETI_USING_SLOW_MEMBARS || defined(GASNETI_LOCAL_WMB_BODY)
   extern void gasneti_slow_local_wmb();

@@ -309,6 +309,11 @@
         return ((uint64_t)hi << 32) | lo;
       } 
    #endif
+ #elif !GASNETI_COMPILER_IS_CC
+   /* Compiler w/o necessary asm support (could be CXX, MPI_CC or unknown) */
+   #define GASNETI_USING_SLOW_TIMERS 1
+ #else
+   #error "Don't know how to read timer registers with your compiler"
  #endif
   #define GASNETI_TIMER_DEFN \
          double gasneti_timer_Tick = 0.0; \
@@ -561,6 +566,9 @@ extern uint64_t gasneti_wallclock_ns(void);
   #define GASNETI_USING_SLOW_TIMERS 1
   extern void gasneti_slow_ticks_now(void);
   #define gasneti_ticks_now()    ((*(gasneti_tick_t (*)(void))(&gasneti_slow_ticks_now))())
+#elif defined(GASNETI_USING_SLOW_TIMERS)
+  extern gasneti_tick_t gasneti_slow_ticks_now(void);
+  #define gasneti_ticks_now()    gasneti_slow_ticks_now()
 #endif
 
 #ifndef gasneti_ticks_to_us
