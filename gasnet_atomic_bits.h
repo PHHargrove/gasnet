@@ -207,8 +207,32 @@
 	GASNETI_NEVER_INLINE(name, extern void name(void)) { body; }
 
 /* ------------------------------------------------------------------------------------ */
+/* Logic to handle unknown compilers */
+// NOTE: probably incomplete with respect to a "private" atomic type
 
-#if defined(GASNETI_USE_GENERIC_ATOMICOPS)
+#if GASNETI_COMPILER_IS_UNKNOWN
+  // TODO: do not yet make any attempt to identify "safe" cases (such as later
+  // version of same compiler family) that could safely use the native atomics.
+  #define GASNETI_MISMATCHED_ATOMICOPS 1
+
+  #if (GASNETI_ATOMIC32_IMPL_CONFIGURE != GASNETI_ATOMIC_IMPL_GENERIC)
+    #define GASNETI_HAVE_ATOMIC32_T 1
+    #define GASNETI_USING_SLOW_ATOMIC32 1
+  #endif
+
+  #if (GASNETI_ATOMIC64_IMPL_CONFIGURE != GASNETI_ATOMIC_IMPL_GENERIC)
+    #define GASNETI_HAVE_ATOMIC64_T 1
+    #define GASNETI_USING_SLOW_ATOMIC64 1
+  #endif
+#endif
+
+
+/* ------------------------------------------------------------------------------------ */
+
+#if defined(GASNETI_MISMATCHED_ATOMICOPS)
+  /* Logic above has determind current compiler cannot safely use these implementations. */
+  /* This case exists only to prevent the following cases from matching. */
+#elif defined(GASNETI_USE_GENERIC_ATOMICOPS)
   /* Use a very slow but portable implementation of atomic ops using mutexes */
   /* This case exists only to prevent the following cases from matching. */
 #elif defined(GASNETI_USE_COMPILER_ATOMICOPS)
