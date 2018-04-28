@@ -315,24 +315,24 @@
       // SPECIAL library is assumed COMPATIBLE with NATIVE and SYNC
       // Exceptions should be added here
     #else
-      #define GASNETI_WANT_SLOW_ATOMIC32 1
+      #define GASNETI_ATOMIC32_WANT_SLOW 1
     #endif
   #elif (GASNETI_ATOMIC32_IMPL_CONFIGURE == GASNETI_ATOMIC32_IMPL)
     // EQUAL - nothing to #define
   #elif (GASNETI_ATOMIC32_IMPL_CONFIGURE == GASNETI_ATOMIC_IMPL_GENERIC)
-    #define GASNETI_WANT_GENERIC_ATOMIC32 1
+    #define GASNETI_ATOMIC32_WANT_GENERIC 1
   #elif (GASNETI_ATOMIC32_IMPL_CONFIGURE == GASNETI_ATOMIC_IMPL_OS)
-    #define GASNETI_WANT_OS_ATOMIC32 1
+    #define GASNETI_ATOMIC32_WANT_OS 1
   #elif (GASNETI_ATOMIC32_IMPL_CONFIGURE == GASNETI_ATOMIC_IMPL_NATIVE)
     #if (GASNETI_ATOMIC32_IMPL != GASNETI_ATOMIC_IMPL_SYNC)
-      #define GASNETI_WANT_SLOW_ATOMIC32 1
+      #define GASNETI_ATOMIC32_WANT_SLOW 1
     #else
       // NATIVE and SYNC are assumed to be COMPATIBLE (see note above)
       // Exceptions should be added here
     #endif
   #elif (GASNETI_ATOMIC32_IMPL_CONFIGURE == GASNETI_ATOMIC_IMPL_SYNC)
     #if (GASNETI_ATOMIC32_IMPL != GASNETI_ATOMIC_IMPL_NATIVE)
-      #define GASNETI_WANT_SLOW_ATOMIC32 1
+      #define GASNETI_ATOMIC32_WANT_SLOW 1
     #else
       // NATIVE and SYNC are assumed to be COMPATIBLE (see note above)
       // Exceptions should be added here
@@ -351,31 +351,31 @@
       // SPECIAL library is assumed COMPATIBLE with NATIVE and SYNC
       // Exceptions should be added here
     #else
-      #define GASNETI_WANT_SLOW_ATOMIC64 1
+      #define GASNETI_ATOMIC64_WANT_SLOW 1
     #endif
   #elif (GASNETI_ATOMIC64_IMPL_CONFIGURE == GASNETI_ATOMIC64_IMPL)
     // EQUAL - nothing to #define
   #elif (GASNETI_ATOMIC64_IMPL_CONFIGURE == GASNETI_ATOMIC_IMPL_GENERIC)
-    #define GASNETI_WANT_GENERIC_ATOMIC64 1
+    #define GASNETI_ATOMIC64_WANT_GENERIC 1
   #elif (GASNETI_ATOMIC64_IMPL_CONFIGURE == GASNETI_ATOMIC_IMPL_OS)
-    #define GASNETI_WANT_OS_ATOMIC64 1
+    #define GASNETI_ATOMIC64_WANT_OS 1
   #elif (GASNETI_ATOMIC64_IMPL_CONFIGURE == GASNETI_ATOMIC_IMPL_NATIVE)
     #if (GASNETI_ATOMIC64_IMPL != GASNETI_ATOMIC_IMPL_SYNC)
-      #define GASNETI_WANT_SLOW_ATOMIC64 1
+      #define GASNETI_ATOMIC64_WANT_SLOW 1
     #else
       // NATIVE and SYNC are assumed to be COMPATIBLE (see note above)
       // Exceptions should be added here
     #endif
   #elif (GASNETI_ATOMIC64_IMPL_CONFIGURE == GASNETI_ATOMIC_IMPL_SYNC)
     #if (GASNETI_ATOMIC64_IMPL != GASNETI_ATOMIC_IMPL_NATIVE)
-      #define GASNETI_WANT_SLOW_ATOMIC64 1
+      #define GASNETI_ATOMIC64_WANT_SLOW 1
     #else
       // NATIVE and SYNC are assumed to be COMPATIBLE (see note above)
       // Exceptions should be added here
     #endif
   #elif (GASNETI_ATOMIC64_IMPL_CONFIGURE == GASNETI_ATOMIC_IMPL_HYBRID)
     // Note that hybrid is not "compatible" with anything but itself
-    #define GASNETI_WANT_SLOW_ATOMIC64 1
+    #define GASNETI_ATOMIC64_WANT_SLOW 1
   #else
     #error Internal error - unexpected atomics configuration
   #endif
@@ -385,46 +385,46 @@
   // may be used for 64-bit atomics.  As a result, the disposition of 32-bit
   // atomics is the sole determining factor in how the main implementation
   // ladder will be traversed.
-  #if GASNETI_WANT_GENERIC_ATOMIC32
+  #if GASNETI_ATOMIC32_WANT_GENERIC
     #define GASNETI_USE_GENERIC_ATOMICOPS 1
-  #elif GASNETI_WANT_OS_ATOMIC32
+  #elif GASNETI_ATOMIC32_WANT_OS
     #define GASNETI_USE_OS_ATOMICOPS 1
-  #elif GASNETI_WANT_SLOW_ATOMIC32
+  #elif GASNETI_ATOMIC32_WANT_SLOW
     #define GASNETI_USING_SLOW_ATOMIC32 1
-    #define GASNETI_NOINLINE_ATOMIC32 1 // Suppress OS, SYNC and NATIVE
+    #define GASNETI_ATOMIC32_NOINLINE 1 // Suppress OS, SYNC and NATIVE
     #define GASNETI_HAVE_ATOMIC32_T   1 // Suppress GENERIC
   #endif
 
   // Disposition of 64-bit atomics must suppress cases which could be
   // reachable in the main ladder, but are undesired.
-  #if GASNETI_WANT_GENERIC_ATOMIC64
-    #define GASNETI_NOINLINE_ATOMIC64 1 // Suppress OS, SYNC, NATIVE, HYBRID
-  #elif GASNETI_WANT_SLOW_ATOMIC64
+  #if GASNETI_ATOMIC64_WANT_GENERIC
+    #define GASNETI_ATOMIC64_NOINLINE 1 // Suppress OS, SYNC, NATIVE, HYBRID
+  #elif GASNETI_ATOMIC64_WANT_SLOW
     #define GASNETI_USING_SLOW_ATOMIC64 1
-    #define GASNETI_NOINLINE_ATOMIC64 1 // Suppress OS, SYNC, NATIVE, HYBRID
+    #define GASNETI_ATOMIC64_NOINLINE 1 // Suppress OS, SYNC, NATIVE, HYBRID
     #define GASNETI_HAVE_ATOMIC64_T 1   // Suppress GENERIC
   #endif
 
   // Check for cases in which desired 64-bit atomics are unreachable.
   // Any #error here which does not first trip an #error at the end of
   // gasnet_atomic_fwd.h indicates a flaw in the logic above.
-  #if (GASNETI_NOINLINE_ATOMIC32 && !GASNETI_NOINLINE_ATOMIC64) || \
-      (GASNETI_WANT_OS_ATOMIC64 && !GASNETI_USE_OS_ATOMICOPS)
+  #if (GASNETI_ATOMIC32_NOINLINE && !GASNETI_ATOMIC64_NOINLINE) || \
+      (GASNETI_ATOMIC64_WANT_OS && !GASNETI_USE_OS_ATOMICOPS)
     #error Internal error - unexpected atomics configuration
   #endif
 
   // For local use only
-  #undef GASNETI_WANT_GENERIC_ATOMIC32
-  #undef GASNETI_WANT_GENERIC_ATOMIC64
-  #undef GASNETI_WANT_OS_ATOMIC32
-  #undef GASNETI_WANT_OS_ATOMIC64
-  #undef GASNETI_WANT_SLOW_ATOMIC32
-  #undef GASNETI_WANT_SLOW_ATOMIC64
+  #undef GASNETI_ATOMIC32_WANT_GENERIC
+  #undef GASNETI_ATOMIC64_WANT_GENERIC
+  #undef GASNETI_ATOMIC32_WANT_OS
+  #undef GASNETI_ATOMIC64_WANT_OS
+  #undef GASNETI_ATOMIC32_WANT_SLOW
+  #undef GASNETI_ATOMIC64_WANT_SLOW
 #endif
 
 /* ------------------------------------------------------------------------------------ */
 
-#if defined(GASNETI_NOINLINE_ATOMIC32)
+#if defined(GASNETI_ATOMIC32_NOINLINE)
   /* Logic above has determined current compiler cannot safely use these implementations. */
   /* This case exists only to prevent the following cases from matching. */
 #elif defined(GASNETI_USE_GENERIC_ATOMICOPS)
@@ -509,7 +509,7 @@
     }
 
     // TODO: use 64-bit sync atomics on ILP32 iff signal safe (otherwise probably equivalent to generics)
-    #if GASNETI_NOINLINE_ATOMIC64
+    #if GASNETI_ATOMIC64_NOINLINE
       // Using SLOW or GENERIC alternative
     #elif PLATFORM_ARCH_64 && GASNETI_HAVE_SYNC_ATOMICS_64
       #if 0 // Update if/when using 64-bit __sync atomic where they are not signal-safe
@@ -573,7 +573,7 @@
       #define gasneti_atomic32_fetchadd(p,op,f) InterlockedExchangeAdd((LONG *)&((p)->gasneti_ctr), op)
       #define gasneti_atomic32_swap(p,op,f) InterlockedExchange((LONG *)&((p)->gasneti_ctr), op)
 
-      #if GASNETI_NOINLINE_ATOMIC64
+      #if GASNETI_ATOMIC64_NOINLINE
         // Using SLOW or GENERIC alternative
       #elif PLATFORM_ARCH_64 /* TODO: Identify ILP32 running on 64-bit CPU */
         #define GASNETI_HAVE_ATOMIC64_T 1
@@ -632,7 +632,7 @@
      #define gasneti_atomic32_init(v)      { (v) }
 
 
-      #if !(GASNETI_NOINLINE_ATOMIC64 || (PLATFORM_COMPILER_OPEN64 && PLATFORM_ARCH_32))
+      #if !(GASNETI_ATOMIC64_NOINLINE || (PLATFORM_COMPILER_OPEN64 && PLATFORM_ARCH_32))
         #define GASNETI_HAVE_ATOMIC64_T 1
         typedef struct { volatile uint64_t gasneti_ctr; } gasneti_atomic64_t;
         #define gasneti_atomic64_init(v)      { (v) }
@@ -748,7 +748,7 @@
       #define _gasneti_atomic32_fetchadd _gasneti_atomic32_fetchadd
 
       /* 64-bit differ between x86 and x86-64: */
-      #if GASNETI_NOINLINE_ATOMIC64
+      #if GASNETI_ATOMIC64_NOINLINE
         // Using SLOW or GENERIC alternative
       #elif PLATFORM_ARCH_64
        #if GASNETI_PGI_ASM_BUG3674
@@ -1067,7 +1067,7 @@
       #endif
 
       /* Optionally build a 128-bit atomic type using 64-bit types for all args */
-      #if GASNETI_HAVE_X86_CMPXCHG16B && !GASNETI_NOINLINE_ATOMIC64
+      #if GASNETI_HAVE_X86_CMPXCHG16B && !GASNETI_ATOMIC64_NOINLINE
 	#define GASNETI_HAVE_ATOMIC128_T 16 /* Encodes aligment */
 	typedef struct { volatile uint64_t lo, hi; } gasneti_atomic128_t;
 	#define gasneti_atomic128_init(hi,lo) {(lo),(hi)}
@@ -1393,7 +1393,7 @@
     #endif
   /* ------------------------------------------------------------------------------------ */
   #elif PLATFORM_ARCH_IA64 /* Itanium */
-    #if GASNETI_NOINLINE_ATOMIC64
+    #if GASNETI_ATOMIC64_NOINLINE
       #error Internal error - unexpected split atomics implementation on IA64
     #endif
     #if PLATFORM_COMPILER_INTEL
@@ -1637,7 +1637,7 @@
         }
         #define _gasneti_atomic32_compare_and_swap _gasneti_atomic32_compare_and_swap
 
-        #if GASNETI_NOINLINE_ATOMIC64
+        #if GASNETI_ATOMIC64_NOINLINE
           // Using SLOW or GENERIC alternative
         #elif PLATFORM_ARCH_64
           #define GASNETI_HAVE_ATOMIC64_T 1
@@ -1839,7 +1839,7 @@
 	  GASNETI_SPECIAL_ASM_DEFN(_gasneti_special_atomic32_fetchadd,         \
 				   GASNETI_ATOMIC32_FETCHADD_BODY)
 
-        #if GASNETI_NOINLINE_ATOMIC64
+        #if GASNETI_ATOMIC64_NOINLINE
           // Using SLOW or GENERIC alternative
         #elif PLATFORM_ARCH_64
           #define GASNETI_HAVE_ATOMIC64_T 1
@@ -2061,7 +2061,7 @@
       #pragma reg_killed_by _gasneti_atomic32_addfetch cr0, gr4, gr5
       #define _gasneti_atomic32_addfetch _gasneti_atomic32_addfetch
 
-      #if GASNETI_NOINLINE_ATOMIC64
+      #if GASNETI_ATOMIC64_NOINLINE
         // Using SLOW or GENERIC alternative
       #elif PLATFORM_ARCH_64
 	#define GASNETI_HAVE_ATOMIC64_T 1
@@ -2353,7 +2353,7 @@
       } 
       #define _gasneti_atomic32_compare_and_swap _gasneti_atomic32_compare_and_swap
 
-      #if GASNETI_NOINLINE_ATOMIC64
+      #if GASNETI_ATOMIC64_NOINLINE
         // Using SLOW or GENERIC alternative
       #elif PLATFORM_ARCH_64
 	#define GASNETI_HAVE_ATOMIC64_T 1
@@ -2688,7 +2688,7 @@
       }
       #define _gasneti_atomic32_compare_and_swap _gasneti_atomic32_compare_and_swap
 
-      #if GASNETI_NOINLINE_ATOMIC64
+      #if GASNETI_ATOMIC64_NOINLINE
         // Using SLOW or GENERIC alternative
       #elif defined(_MIPS_SIM) && (_MIPS_SIM >= 2) /* N32 or 64-bit ABI */
         #define GASNETI_HAVE_ATOMIC64_T 1
@@ -2914,8 +2914,8 @@
 #endif
 #undef GASNETI_ASM_REGISTER_KEYWORD
 // Not for use beyond this point:
-#undef GASNETI_NOINLINE_ATOMIC32
-#undef GASNETI_NOINLINE_ATOMIC64
+#undef GASNETI_ATOMIC32_NOINLINE
+#undef GASNETI_ATOMIC64_NOINLINE
 
 /* ------------------------------------------------------------------------------------ */
 /* Configure non-default features of generic atomics IFF required for the current platform. */
