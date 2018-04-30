@@ -145,6 +145,9 @@
 // the __sync* atomic functions as built-ins, allowing this preprocess-time
 // probe.  However, we apply this only to compilers not probed for this support
 // by configure.
+// Lack of a __builtin prefix on these functions necessitates use of the
+// _GASNETI_HAS_BUILTIN macro, not originally intended for use outside
+// of gasnet_basic.h.
 #if GASNETI_COMPILER_IS_UNKNOWN
   #if _GASNETI_HAS_BUILTIN(__sync_bool_compare_and_swap) && \
       _GASNETI_HAS_BUILTIN(__sync_val_compare_and_swap)  && \
