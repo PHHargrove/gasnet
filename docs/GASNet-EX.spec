@@ -2918,8 +2918,9 @@ gex_Event_t gex_Coll_BroadcastNB(
 //
 // LIMITATIONS of the current release:
 //  + The current implementation may limit the product `dt_sz * dt_cnt` to as
-//    little as 24 bytes in some configurations.
-//    The precise limit depends on the size of the job and team.
+//    little as 32 bytes in some configurations.  The precise limit depends on
+//    the size of the job and team.  If you encounter this limit, a message
+//    will provide information on a temporary work-around.
 // It is anticipated that this limitation will be removed in the next release.
 
 gex_Event_t gex_Coll_ReduceToOneNB(

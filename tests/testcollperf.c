@@ -757,9 +757,10 @@ int main(int argc, char **argv)
     reduce_limit = INT_MAX;
   } else {
     int logN; for (logN = 0; nodes > (1<<logN); ++logN) {/*empty*/}
-    int eager_min = gasnett_getenv_int_withdefault("GASNET_COLL_P2P_EAGER_MIN", 16, 0);
-    int eager_scale = gasnett_getenv_int_withdefault("GASNET_COLL_P2P_EAGER_SCALE", 16, 0);
-    int eager_limit = MAX(eager_min, eager_scale * nodes) / logN;
+    size_t eager_min = gasnett_getenv_int_withdefault("GASNET_COLL_P2P_EAGER_MIN", 16, 0);
+    size_t eager_lin = nodes * gasnett_getenv_int_withdefault("GASNET_COLL_P2P_EAGER_SCALE", 16, 0);
+    size_t eager_log = logN * gasnett_getenv_int_withdefault("GASNET_COLL_P2P_EAGER_SCALE_LOG", 32, 0);
+    size_t eager_limit = MAX(eager_min, MAX(eager_lin, eager_log)) / logN;
     reduce_limit = MIN(gex_AM_LUBRequestMedium(), eager_limit) / sizeof(int);
   }
   

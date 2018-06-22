@@ -117,6 +117,8 @@ typedef struct gasnete_coll_implementation_t_ *gasnete_coll_implementation_t;
 
 extern size_t gasnete_coll_p2p_eager_min;
 extern size_t gasnete_coll_p2p_eager_scale;
+extern size_t gasnete_coll_p2p_eager_scale_log;
+// TODO-EX: the buffersz should be per-team (varying with size)
 extern size_t gasnete_coll_p2p_eager_buffersz;
 
 
@@ -441,7 +443,11 @@ struct gasnete_coll_seg_interval_t_ {
 /* Type for point-to-point synchronization */
 
 #ifndef GASNETE_COLL_P2P_EAGER_SCALE_DEFAULT
-/* Number of bytes per-image to allocate for eager data */
+/* Number of bytes per-log_2(ranks) to allocate for eager data */
+#define GASNETE_COLL_P2P_EAGER_SCALE_LOG_DEFAULT 32
+#endif
+#ifndef GASNETE_COLL_P2P_EAGER_SCALE_DEFAULT
+/* Number of bytes per-rank to allocate for eager data */
 #define GASNETE_COLL_P2P_EAGER_SCALE_DEFAULT	16
 #endif
 #ifndef GASNETE_COLL_P2P_EAGER_MIN_DEFAULT

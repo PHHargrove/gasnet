@@ -30,6 +30,7 @@
 
 size_t gasnete_coll_p2p_eager_min = 0;
 size_t gasnete_coll_p2p_eager_scale = 0;
+size_t gasnete_coll_p2p_eager_scale_log = 0;
 size_t gasnete_coll_p2p_eager_buffersz = 0;
 /*set a std segment size of 1024 bytes*/
 
@@ -893,12 +894,23 @@ extern void gasnete_coll_init_subsystem(void)
 {
     GASNETE_THREAD_LOOKUP
 
+    // Read env vars sizing of the per-operation buffer space for "eager" data:
+
+    // Minimum total size
     gasnete_coll_p2p_eager_min = gasneti_getenv_int_withdefault("GASNET_COLL_P2P_EAGER_MIN",
                                                                 GASNETE_COLL_P2P_EAGER_MIN_DEFAULT, 0);
+    // Minimum per-rank size
+    // TODO-EX: remove non-scalable algorithms needing linear temporary space
     gasnete_coll_p2p_eager_scale = gasneti_getenv_int_withdefault("GASNET_COLL_P2P_EAGER_SCALE",
                                                                   GASNETE_COLL_P2P_EAGER_SCALE_DEFAULT, 0);
-    gasnete_coll_p2p_eager_buffersz = MAX(gasnete_coll_p2p_eager_min,
-                                          gasneti_nodes * gasnete_coll_p2p_eager_scale);
+    size_t eager_lin = gasneti_nodes * gasnete_coll_p2p_eager_scale;
+    // Minimum per-log_2(ranks) size
+    gasnete_coll_p2p_eager_scale_log = gasneti_getenv_int_withdefault("GASNET_COLL_P2P_EAGER_SCALE_LOG",
+                                                                      GASNETE_COLL_P2P_EAGER_SCALE_LOG_DEFAULT, 0);
+    size_t eager_log = gasnete_coll_log2(gasneti_nodes) * gasnete_coll_p2p_eager_scale_log;
+
+    // TODO-EX: gasnete_coll_p2p_eager_buffersz should be a per-team value, not a global one:
+    gasnete_coll_p2p_eager_buffersz = MAX(gasnete_coll_p2p_eager_min, MAX(eager_lin, eager_log));
 
     gasnete_coll_active_init();
 
@@ -3184,8 +3196,19 @@ gasnete_tm_reduce_nb_default(
     // TODO-EX: this is the implementation available currently
     alg = &gasnete_tm_reduce_BinomialEager;
   } else {
-    gasneti_fatalerror("gex_Coll_ReduceToOneNB: (dt_sz*dt_cnt == %"PRIuSZ") is TOO LARGE for this implementation",
-                       dt_sz*dt_cnt);
+    // TODO-EX: this may need revision if there is a point at which only
+    // user-defined data types are subject to this limitation.
+    const char *work_around = NULL;
+    if (nbytes > gex_AM_LUBRequestMedium()) {
+      work_around = "Since this value is larger than gex_AM_LUBRequestMedium() "
+                    "there is no work-around available in this release.";
+    } else {
+      work_around = "IN THIS RELEASE ONLY you may set environment variable "
+                    "GASNET_COLL_P2P_EAGER_SCALE_LOG to the value above, or larger, "
+                    "to work-around this limit (at the expense of greater memory use).";
+    }
+    gasneti_fatalerror("gex_Coll_ReduceToOneNB: (dt_sz*dt_cnt == %"PRIuSZ") is TOO LARGE "
+                       "for this implementation.  %s", nbytes, work_around);
   }
   
   return (*alg)(e_tm, root, dst, src,
