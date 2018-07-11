@@ -260,6 +260,21 @@ static int gasnete_coll_pf_tm_reduce_TreePut(gasnete_coll_op_t *op GASNETI_THREA
       // Compute reduction (if any)
       if (child_cnt) {
         void *myscratch = (void*)(op->myscratchpos + (uintptr_t)team->scratch_segs[myrank].addr);
+if (geom->children_reversed) {
+// Sufficient only for root==0 case.
+// Others require "rotation" that is sometimes possible, but often not
+// So, likely will likely reduce to rank 0, follwed by point-to-point send to true root
+// Sounds like a case for a subordinate reduce, and a "send"
+  gex_Coll_ReduceFn_t const op_fnptr = args->op_fnptr;
+  void * const op_cdata = args->op_cdata;
+  const void *x = args->src;
+  for (int c = 1; c <= child_cnt; ++c) {
+    void * y = gasnete_coll_scale_ptr(myscratch, child_cnt-c, nbytes);
+    (*op_fnptr)(x, y, args->dt_cnt, op_cdata);
+    x = y;
+  }
+  payload = (/*non-const*/void*)x;
+} else
         payload = local_reduce_helper(args, args->dt_cnt, nbytes, child_cnt, args->src, myscratch);
       } else {
         payload = (/*non-const*/ void*) args->src;
