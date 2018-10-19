@@ -1663,11 +1663,23 @@ void gasneti_segmentInit(uintptr_t localSegmentLimit,
 
 /* ------------------------------------------------------------------------------------ */
 
+#ifdef GASNETC_ATTACHLOCAL_HOOK
+// Allow conduit to reduce segment, for instance if unable to pin/register it.
+// The hook is called near the end of AttachLocal, and returns a requested size.
+// If the value is equal to segsize, then the segment is accepted.
+// If it is less, then AttachLocal restarts with the reduced size.
+// This may be repeated multiple times if necessary.
+extern uintptr_t GASNETC_ATTACHLOCAL_HOOK(const gasnet_seginfo_t *segment_p);
+#endif
+
 static // TODO-EX: static for now, at least
 void gasneti_segmentAttachLocal(gasnet_seginfo_t *segment_p, uintptr_t segsize,
                                 gasneti_bootstrapExchangefn_t exchangefn)
 {
   void *segbase = NULL;
+#ifdef GASNETC_ATTACHLOCAL_HOOK
+retry:
+#endif
 
   #ifdef GASNETI_MMAP_OR_PSHM
   {
@@ -1722,11 +1734,23 @@ void gasneti_segmentAttachLocal(gasnet_seginfo_t *segment_p, uintptr_t segsize,
   #endif /* GASNETI_MMAP_OR_PSHM */
   gasneti_assert_uint(((uintptr_t)segbase) % GASNET_PAGESIZE ,==, 0);
   gasneti_assert_uint(segsize % GASNET_PAGESIZE ,==, 0);
-  GASNETI_TRACE_PRINTF(C, ("Final segment: segbase="GASNETI_LADDRFMT"  segsize=%"PRIuPTR,
-    GASNETI_LADDRSTR(segbase), segsize));
 
   segment_p->addr = segbase;
   segment_p->size = segsize;
+
+#ifdef GASNETC_ATTACHLOCAL_HOOK
+  uintptr_t alt_size = GASNETC_ATTACHLOCAL_HOOK(segment_p);
+  gasneti_assert(alt_size <= segsize);
+  if (alt_size < segsize) {
+    GASNETI_TRACE_PRINTF(C, ("Conduit rejects segsize=%"PRIuPTR", requests %"PRIuPTR,
+                             segsize, alt_size));
+    segsize = alt_size;
+    goto retry;  
+  }
+#endif
+
+  GASNETI_TRACE_PRINTF(C, ("Final segment: segbase="GASNETI_LADDRFMT"  segsize=%"PRIuPTR,
+    GASNETI_LADDRSTR(segbase), segsize));
 }
 
 #if GASNET_PSHM

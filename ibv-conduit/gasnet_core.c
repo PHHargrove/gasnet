@@ -2162,6 +2162,87 @@ static int gasnetc_attach_primary(void) {
   return GASNET_OK;
 }
 /* ------------------------------------------------------------------------------------ */
+uintptr_t gasnetc_try_attach(const gasnet_seginfo_t *segment_p) {
+#if GASNETC_PIN_SEGMENT
+  uintptr_t segsize = segment_p->size;
+  uintptr_t regsize;
+  int count;
+
+  gasneti_assert(segsize != 0);
+
+  // Match number/size of registrations used to gasnetc_attach_segment()
+  // TODO: factor common logic
+  if (gasnetc_pin_maxsz >= segsize) {
+    // Single registration
+    regsize = segsize;
+    count = 1;
+  } else {
+    // Multiple registration
+    size_t size = MIN(gasnetc_pin_maxsz, gasnetc_max_msg_sz);
+    gasneti_assert(size != 0);
+    // Round down to power-of-two
+    size >>= 1;
+    unsigned int shift;
+    for (shift=0; size != 0; ++shift) { size >>= 1; }
+    regsize = ((uint64_t)1) << shift;
+    count = (segsize + regsize - 1) >> shift;
+  }
+
+  const enum ibv_access_flags acl = (IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ);
+  const int total_reg = count * gasnetc_num_hcas;
+  struct ibv_mr **mr = gasneti_calloc(total_reg, sizeof(struct ibv_mr *));
+  gasnetc_hca_t *hca;
+  GASNETC_FOR_ALL_HCA(hca) {
+    uintptr_t addr = (uintptr_t)segment_p->addr;
+    uintptr_t remain = segsize;
+    int base = count * hca->hca_index;
+    int done = 0;
+    for (int idx = base; !done && (idx < base + count); ++idx) {
+      uintptr_t len = MIN(remain, regsize);
+      if (! (mr[idx] = ibv_reg_mr(hca->pd, (void*)addr, len, acl))) {
+        // Binary search
+        uintptr_t hi = len;
+        uintptr_t lo = 0;
+        while (hi > lo + GASNET_PAGESIZE) {
+          uintptr_t mid = GASNETI_PAGE_ALIGNDOWN((hi + lo) / 2);
+          if (! (mr[idx] = ibv_reg_mr(hca->pd, (void*)addr, mid, acl))) {
+            hi = mid;
+          } else {
+            lo = mid;
+            int rc = ibv_dereg_mr(mr[idx]);
+            GASNETC_IBV_CHECK(rc, "from ibv_dereg_mr() when pre-registering the segment");
+          }
+        }
+        len = lo;
+        done = 1;
+        if (! (mr[idx] = ibv_reg_mr(hca->pd, (void*)addr, len, acl))) {
+          gasneti_fatalerror("Unexpected error %s (errno=%d) when pre-registering the segment",
+                             strerror(errno), errno);
+        }
+      }
+      addr += len;
+      remain -= len;
+    }
+    // Next HCA (if any) will start with a lowered goal
+    segsize -= remain;
+  }
+
+  GASNETC_FOR_ALL_HCA(hca) {
+    int base = count * hca->hca_index;
+    for (int idx = base; idx < base + count; ++idx) {
+      if (!mr[idx]) break;
+      int rc = ibv_dereg_mr(mr[idx]);
+      GASNETC_IBV_CHECK(rc, "from ibv_dereg_mr() when pre-registering the segment");
+    }
+  }
+  gasneti_free(mr);
+
+  return segsize;
+#else
+  gasneti_fatalerror("Unexpected call to gasnetc_try_attach()");
+#endif
+}
+/* ------------------------------------------------------------------------------------ */
 static int gasnetc_attach_segment(gex_Segment_t                 *segment_p,
                                   gex_TM_t                      tm,
                                   uintptr_t                     segsize,

@@ -166,4 +166,7 @@ extern void gasnetc_amrdma_balance(void);
 #define gasnetc_get_hentry(_ep,_index) (&gasnetc_ep0->_amtbl[(_index)])
 #define gasnetc_get_handler(_ep,_index,_field) (gasnetc_get_hentry((_ep),(_index))->gex_##_field)
 
+// Callback to test registration of segment
+#define GASNETC_ATTACHLOCAL_HOOK gasnetc_try_attach
+
 #endif
