@@ -6,8 +6,9 @@
  */
 
 #include <gasnet_internal.h>
-#include <gasnet_ofi.h>
 #include <gasnet_extended_internal.h>
+#include <gasnet_core_internal.h>
+#include <gasnet_ofi.h>
 
 /* ------------------------------------------------------------------------------------ */
 /*
@@ -128,18 +129,18 @@ void gasneti_iop_markdone(gasneti_iop_t *iop, unsigned int noperations, int isge
      gasnete_memset_nb
 */
 
-extern gasnet_handle_t gasnete_get_nb_bulk (void *dest, gasnet_node_t node, void *src, size_t nbytes GASNETI_THREAD_FARG) 
+extern gex_Event_t gasnete_get_nb_bulk (void *dest, gex_Rank_t node, void *src, size_t nbytes GASNETI_THREAD_FARG) 
 {
 	GASNETI_CHECKPSHM_GET(UNALIGNED,H,dest,node,src,nbytes);
 	{
 		gasnete_eop_t *op = _gasnete_eop_new(GASNETI_MYTHREAD);
 		op->ofi.type = OFI_TYPE_EGET;
 		gasnetc_rdma_get(dest, node, src, nbytes, &op->ofi);
-		return (gasnet_handle_t)op;
+		return (gex_Event_t)op;
 	}
 }
 
-extern gasnet_handle_t gasnete_put_nb      (gasnet_node_t node, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG) 
+extern gex_Event_t gasnete_put_nb      (gex_Rank_t node, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG) 
 {
 	GASNETI_CHECKPSHM_PUT(UNALIGNED,H,node,dest,src,nbytes);
 	{
@@ -148,22 +149,22 @@ extern gasnet_handle_t gasnete_put_nb      (gasnet_node_t node, void *dest, void
         /* Try to submit this in a non-blocking way. If we can't, block for 
          * it for correctness */
 		if (gasnetc_rdma_put_non_bulk(node, dest, src, nbytes, &op->ofi)) {
-		    gasnetc_rdma_put_wait((gasnet_handle_t) op);
+		    gasnetc_rdma_put_wait((gex_Event_t) op);
             gasnete_eop_free (op);
-            return GASNET_INVALID_HANDLE;
+            return GEX_EVENT_INVALID;
         }
-        return (gasnet_handle_t)op;
+        return (gex_Event_t)op;
 	}
 }
 
-extern gasnet_handle_t gasnete_put_nb_bulk (gasnet_node_t node, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG) 
+extern gex_Event_t gasnete_put_nb_bulk (gex_Rank_t node, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG) 
 {
 	GASNETI_CHECKPSHM_PUT(UNALIGNED,H,node,dest,src,nbytes);
 	{
 		gasnete_eop_t *op = _gasnete_eop_new(GASNETI_MYTHREAD);
 		op->ofi.type = OFI_TYPE_EPUT;
 		gasnetc_rdma_put(node, dest, src, nbytes, &op->ofi);
-		return (gasnet_handle_t)op;
+		return (gex_Event_t)op;
 	}
 }
 
@@ -177,7 +178,7 @@ extern gasnet_handle_t gasnete_put_nb_bulk (gasnet_node_t node, void *dest, void
  *  free it if complete
  *  returns 0 or 1 */
 GASNETI_INLINE(gasnete_op_try_free)
-int gasnete_op_try_free(gasnet_handle_t handle) {
+int gasnete_op_try_free(gex_Event_t handle) {
   gasnete_op_t *op = (gasnete_op_t *)handle;
 
   gasneti_assert(op->threadidx == _gasneti_mythread_slow()->threadidx);
@@ -205,15 +206,15 @@ int gasnete_op_try_free(gasnet_handle_t handle) {
  *  free it and clear the handle if complete
  *  returns 0 or 1 */
 GASNETI_INLINE(gasnete_op_try_free_clear)
-int gasnete_op_try_free_clear(gasnet_handle_t *handle_p) {
+int gasnete_op_try_free_clear(gex_Event_t *handle_p) {
   if (gasnete_op_try_free(*handle_p)) {
-    *handle_p = GASNET_INVALID_HANDLE;
+    *handle_p = GEX_EVENT_INVALID;
     return 1;
   }
   return 0;
 }
 
-extern int  gasnete_try_syncnb(gasnet_handle_t handle) {
+extern int  gasnete_try_syncnb(gex_Event_t handle) {
 #if 0
   /* polling now takes place in callers which needed and NOT in those which don't */
   GASNETI_SAFE(gasneti_AMPoll());
@@ -222,7 +223,7 @@ extern int  gasnete_try_syncnb(gasnet_handle_t handle) {
   return gasnete_op_try_free(handle) ? GASNET_OK : GASNET_ERR_NOT_READY;
 }
 
-extern int  gasnete_try_syncnb_some (gasnet_handle_t *phandle, size_t numhandles) {
+extern int  gasnete_try_syncnb_some (gex_Event_t *phandle, size_t numhandles) {
   int success = 0;
   int empty = 1;
 #if 0
@@ -234,7 +235,7 @@ extern int  gasnete_try_syncnb_some (gasnet_handle_t *phandle, size_t numhandles
 
   { int i;
     for (i = 0; i < numhandles; i++) {
-      if (phandle[i] != GASNET_INVALID_HANDLE) {
+      if (phandle[i] != GEX_EVENT_INVALID) {
         empty = 0;
         success |= gasnete_op_try_free_clear(&phandle[i]);
       }
@@ -244,7 +245,7 @@ extern int  gasnete_try_syncnb_some (gasnet_handle_t *phandle, size_t numhandles
   return (success || empty) ? GASNET_OK : GASNET_ERR_NOT_READY;
 }
 
-extern int  gasnete_try_syncnb_all (gasnet_handle_t *phandle, size_t numhandles) {
+extern int  gasnete_try_syncnb_all (gex_Event_t *phandle, size_t numhandles) {
   int success = 1;
 #if 0
   /* polling for syncnb now happens in header file to avoid duplication */
@@ -255,7 +256,7 @@ extern int  gasnete_try_syncnb_all (gasnet_handle_t *phandle, size_t numhandles)
 
   { int i;
     for (i = 0; i < numhandles; i++) {
-      if (phandle[i] != GASNET_INVALID_HANDLE) {
+      if (phandle[i] != GEX_EVENT_INVALID) {
         success &= gasnete_op_try_free_clear(&phandle[i]);
       }
     }
@@ -271,7 +272,7 @@ extern int  gasnete_try_syncnb_all (gasnet_handle_t *phandle, size_t numhandles)
 */
 /* ------------------------------------------------------------------------------------ */
 
-extern void gasnete_get_nbi_bulk (void *dest, gasnet_node_t node, void *src, size_t nbytes GASNETI_THREAD_FARG) 
+extern void gasnete_get_nbi_bulk (void *dest, gex_Rank_t node, void *src, size_t nbytes GASNETI_THREAD_FARG) 
 {
 	GASNETI_CHECKPSHM_GET(UNALIGNED,V,dest,node,src,nbytes);
 	{
@@ -283,7 +284,7 @@ extern void gasnete_get_nbi_bulk (void *dest, gasnet_node_t node, void *src, siz
 	}
 }
 
-extern void gasnete_put_nbi      (gasnet_node_t node, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG) 
+extern void gasnete_put_nbi      (gex_Rank_t node, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG) 
 {
 	GASNETI_CHECKPSHM_PUT(ALIGNED,V,node,dest,src,nbytes);
 	{
@@ -306,11 +307,11 @@ extern void gasnete_put_nbi      (gasnet_node_t node, void *dest, void *src, siz
          * if there are not enough available boucne buffers. In that case,
          * we may oversynchronize by finishing all iops prior to this one. */
 		if_pf (gasnetc_rdma_put_non_bulk(node, dest, src, nbytes, &op->put_ofi))
-		    gasnetc_rdma_put_wait((gasnet_handle_t) op);
+		    gasnetc_rdma_put_wait((gex_Event_t) op);
 	}
 }
 
-extern void gasnete_put_nbi_bulk (gasnet_node_t node, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG) 
+extern void gasnete_put_nbi_bulk (gex_Rank_t node, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG) 
 {
 	GASNETI_CHECKPSHM_PUT(UNALIGNED,V,node,dest,src,nbytes);
 	{
@@ -393,7 +394,7 @@ extern void            gasnete_begin_nbi_accessregion(int allowrecursion GASNETI
   mythread->current_iop = iop;
 }
 
-extern gasnet_handle_t gasnete_end_nbi_accessregion(GASNETI_THREAD_FARG_ALONE) {
+extern gex_Event_t gasnete_end_nbi_accessregion(GASNETI_THREAD_FARG_ALONE) {
   gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
   gasnete_iop_t *iop = mythread->current_iop; /*  pop an iop */
   GASNETI_TRACE_EVENT_VAL(S,END_NBI_ACCESSREGION,iop->initiated_get_cnt + iop->initiated_put_cnt);
@@ -403,7 +404,7 @@ extern gasnet_handle_t gasnete_end_nbi_accessregion(GASNETI_THREAD_FARG_ALONE) {
   #endif
   mythread->current_iop = iop->next;
   iop->next = NULL;
-  return (gasnet_handle_t)iop;
+  return (gex_Event_t)iop;
 }
 
 /* ------------------------------------------------------------------------------------ */
