@@ -261,7 +261,7 @@ extern void gasnete_put_nbi_bulk (gex_Rank_t node, void *dest, void *src, size_t
   Handlers:
   =========
 */
-static gasnet_handlerentry_t const gasnete_handlers[] = {
+static gex_AM_Entry_t const gasnete_handlers[] = {
   #ifdef GASNETE_REFBARRIER_HANDLERS
     GASNETE_REFBARRIER_HANDLERS(),
   #endif
@@ -271,31 +271,21 @@ static gasnet_handlerentry_t const gasnete_handlers[] = {
   #ifdef GASNETE_REFCOLL_HANDLERS
     GASNETE_REFCOLL_HANDLERS()
   #endif
+  #ifdef GASNETE_AMREF_HANDLERS
+    GASNETE_AMREF_HANDLERS()
+  #endif
+  #ifdef GASNETE_AMRATOMIC_HANDLERS
+    GASNETE_AMRATOMIC_HANDLERS()
+  #endif
 
   /* ptr-width independent handlers */
 
   /* ptr-width dependent handlers */
-#if GASNETE_BUILD_AMREF_GET_HANDLERS
-  gasneti_handler_tableentry_with_bits(gasnete_amref_get_reqh),
-  gasneti_handler_tableentry_with_bits(gasnete_amref_get_reph),
-  gasneti_handler_tableentry_with_bits(gasnete_amref_getlong_reqh),
-  gasneti_handler_tableentry_with_bits(gasnete_amref_getlong_reph),
-#endif
-#if GASNETE_BUILD_AMREF_PUT_HANDLERS
-  gasneti_handler_tableentry_with_bits(gasnete_amref_put_reqh),
-  gasneti_handler_tableentry_with_bits(gasnete_amref_putlong_reqh),
-#endif
-#if GASNETE_BUILD_AMREF_MEMSET_HANDLERS
-  gasneti_handler_tableentry_with_bits(gasnete_amref_memset_reqh),
-#endif
-#if GASNETE_BUILD_AMREF_PUT_HANDLERS || GASNETE_BUILD_AMREF_MEMSET_HANDLERS
-  gasneti_handler_tableentry_with_bits(gasnete_amref_markdone_reph),
-#endif
 
-  { 0, NULL }
+  GASNETI_HANDLER_EOT
 };
 
-extern gasnet_handlerentry_t const *gasnete_get_handlertable(void) {
+extern gex_AM_Entry_t const *gasnete_get_handlertable(void) {
   return gasnete_handlers;
 }
 /* ------------------------------------------------------------------------------------ */
