@@ -128,15 +128,21 @@ void gasneti_iop_markdone(gasneti_iop_t *iop, unsigned int noperations, int isge
      gasnete_put_nb
 */
 
-extern gex_Event_t gasnete_get_nb_bulk (void *dest, gex_Rank_t rank, void *src, size_t nbytes GASNETI_THREAD_FARG)
+extern
+gex_Event_t gasnete_get_nb(
+                     gex_TM_t tm,
+                     void *dest,
+                     gex_Rank_t rank, void *src,
+                     size_t nbytes,
+                     gex_Flags_t flags GASNETI_THREAD_FARG)
 {
   GASNETI_CHECKPSHM_GET(tm,dest,rank,src,nbytes);
-  {
-    gasnete_eop_t *op = _gasnete_eop_new(GASNETI_MYTHREAD);
-    op->ofi.type = OFI_TYPE_EGET;
-    gasnetc_rdma_get(dest, rank, src, nbytes, &op->ofi);
-    return (gex_Event_t)op;
-  }
+
+  gasnete_eop_t *op = _gasnete_eop_new(GASNETI_MYTHREAD);
+  op->ofi.type = OFI_TYPE_EGET;
+  gex_Rank_t jobrank = gasneti_e_tm_rank_to_jobrank(tm, rank);
+  gasnetc_rdma_get(dest, jobrank, src, nbytes, &op->ofi);
+  return (gex_Event_t)op;
 }
 
 extern gex_Event_t gasnete_put_nb (gex_Rank_t rank, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG)
@@ -174,16 +180,21 @@ extern gex_Event_t gasnete_put_nb_bulk (gex_Rank_t rank, void *dest, void *src, 
 */
 /* ------------------------------------------------------------------------------------ */
 
-extern int gasnete_get_nbi_bulk (void *dest, gex_Rank_t rank, void *src, size_t nbytes GASNETI_THREAD_FARG)
+extern
+int gasnete_get_nbi (gex_TM_t tm,
+                     void *dest,
+                     gex_Rank_t rank, void *src,
+                     size_t nbytes,
+                     gex_Flags_t flags GASNETI_THREAD_FARG)
 {
   GASNETI_CHECKPSHM_GET(tm,dest,rank,src,nbytes);
-  {
-    gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
-    gasnete_iop_t *op = mythread->current_iop;
-    op->initiated_get_cnt++;
-    op->get_ofi.type = OFI_TYPE_IGET;
-    gasnetc_rdma_get(dest, rank, src, nbytes, (void *) &op->get_ofi);
-  }
+
+  gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
+  gasnete_iop_t *op = mythread->current_iop;
+  op->initiated_get_cnt++;
+  op->get_ofi.type = OFI_TYPE_IGET;
+  gex_Rank_t jobrank = gasneti_e_tm_rank_to_jobrank(tm, rank);
+  gasnetc_rdma_get(dest, jobrank, src, nbytes, (void *) &op->get_ofi);
   return 0;
 }
 
