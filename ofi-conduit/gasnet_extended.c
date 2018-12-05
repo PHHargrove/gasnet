@@ -124,49 +124,47 @@ void gasneti_iop_markdone(gasneti_iop_t *iop, unsigned int noperations, int isge
 /* ------------------------------------------------------------------------------------ */
 
 /* Conduits not using the gasnete_amref_ versions should implement at least the following:
-     gasnete_get_nb_bulk
+     gasnete_get_nb
      gasnete_put_nb
-     gasnete_put_nb_bulk
-     gasnete_memset_nb
 */
 
-extern gex_Event_t gasnete_get_nb_bulk (void *dest, gex_Rank_t node, void *src, size_t nbytes GASNETI_THREAD_FARG) 
+extern gex_Event_t gasnete_get_nb_bulk (void *dest, gex_Rank_t rank, void *src, size_t nbytes GASNETI_THREAD_FARG)
 {
-	GASNETI_CHECKPSHM_GET(UNALIGNED,H,dest,node,src,nbytes);
-	{
-		gasnete_eop_t *op = _gasnete_eop_new(GASNETI_MYTHREAD);
-		op->ofi.type = OFI_TYPE_EGET;
-		gasnetc_rdma_get(dest, node, src, nbytes, &op->ofi);
-		return (gex_Event_t)op;
-	}
+  GASNETI_CHECKPSHM_GET(tm,dest,rank,src,nbytes);
+  {
+    gasnete_eop_t *op = _gasnete_eop_new(GASNETI_MYTHREAD);
+    op->ofi.type = OFI_TYPE_EGET;
+    gasnetc_rdma_get(dest, rank, src, nbytes, &op->ofi);
+    return (gex_Event_t)op;
+  }
 }
 
-extern gex_Event_t gasnete_put_nb      (gex_Rank_t node, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG) 
+extern gex_Event_t gasnete_put_nb (gex_Rank_t rank, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG)
 {
-	GASNETI_CHECKPSHM_PUT(UNALIGNED,H,node,dest,src,nbytes);
-	{
-		gasnete_eop_t *op = _gasnete_eop_new(GASNETI_MYTHREAD);
-		op->ofi.type = OFI_TYPE_EPUT;
-        /* Try to submit this in a non-blocking way. If we can't, block for 
-         * it for correctness */
-		if (gasnetc_rdma_put_non_bulk(node, dest, src, nbytes, &op->ofi)) {
-		    gasnetc_rdma_put_wait((gex_Event_t) op);
-            gasnete_eop_free (op);
-            return GEX_EVENT_INVALID;
-        }
-        return (gex_Event_t)op;
-	}
+  GASNETI_CHECKPSHM_PUT(tm,rank,dest,src,nbytes);
+  {
+    gasnete_eop_t *op = _gasnete_eop_new(GASNETI_MYTHREAD);
+    op->ofi.type = OFI_TYPE_EPUT;
+    /* Try to submit this in a non-blocking way. If we can't, block for
+     * it for correctness */
+    if (gasnetc_rdma_put_non_bulk(rank, dest, src, nbytes, &op->ofi)) {
+        gasnetc_rdma_put_wait((gex_Event_t) op);
+      gasnete_eop_free (op);
+      return GEX_EVENT_INVALID;
+    }
+    return (gex_Event_t)op;
+  }
 }
 
-extern gex_Event_t gasnete_put_nb_bulk (gex_Rank_t node, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG) 
+extern gex_Event_t gasnete_put_nb_bulk (gex_Rank_t rank, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG)
 {
-	GASNETI_CHECKPSHM_PUT(UNALIGNED,H,node,dest,src,nbytes);
-	{
-		gasnete_eop_t *op = _gasnete_eop_new(GASNETI_MYTHREAD);
-		op->ofi.type = OFI_TYPE_EPUT;
-		gasnetc_rdma_put(node, dest, src, nbytes, &op->ofi);
-		return (gex_Event_t)op;
-	}
+  GASNETI_CHECKPSHM_PUT(tm,rank,dest,src,nbytes);
+  {
+    gasnete_eop_t *op = _gasnete_eop_new(GASNETI_MYTHREAD);
+    op->ofi.type = OFI_TYPE_EPUT;
+    gasnetc_rdma_put(rank, dest, src, nbytes, &op->ofi);
+    return (gex_Event_t)op;
+  }
 }
 
 /* ------------------------------------------------------------------------------------ */
@@ -176,55 +174,58 @@ extern gex_Event_t gasnete_put_nb_bulk (gex_Rank_t node, void *dest, void *src, 
 */
 /* ------------------------------------------------------------------------------------ */
 
-extern void gasnete_get_nbi_bulk (void *dest, gex_Rank_t node, void *src, size_t nbytes GASNETI_THREAD_FARG) 
+extern int gasnete_get_nbi_bulk (void *dest, gex_Rank_t rank, void *src, size_t nbytes GASNETI_THREAD_FARG)
 {
-	GASNETI_CHECKPSHM_GET(UNALIGNED,V,dest,node,src,nbytes);
-	{
-		gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
-		gasnete_iop_t *op = mythread->current_iop;
-		op->initiated_get_cnt++;
-		op->get_ofi.type = OFI_TYPE_IGET;
-		gasnetc_rdma_get(dest, node, src, nbytes, (void *) &op->get_ofi);
-	}
+  GASNETI_CHECKPSHM_GET(tm,dest,rank,src,nbytes);
+  {
+    gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
+    gasnete_iop_t *op = mythread->current_iop;
+    op->initiated_get_cnt++;
+    op->get_ofi.type = OFI_TYPE_IGET;
+    gasnetc_rdma_get(dest, rank, src, nbytes, (void *) &op->get_ofi);
+  }
+  return 0;
 }
 
-extern void gasnete_put_nbi      (gex_Rank_t node, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG) 
+extern int gasnete_put_nbi (gex_Rank_t rank, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG)
 {
-	GASNETI_CHECKPSHM_PUT(ALIGNED,V,node,dest,src,nbytes);
-	{
-        /* If we know we will definitely submit this non-blocking op as
-         * a blocking one, simply call the put function to avoid messing
-         * with eops and iops. Note that if this branch is not taken, that
-         * doesn't mean that gasnetc_rdma_put_non_bulk will not still block.
-         * See below. */
-        if (gasnetc_rdma_put_will_block(nbytes)) {
-            gasnete_put(node, dest, src, nbytes GASNETI_THREAD_PASS);
-            return;
-        }
+  GASNETI_CHECKPSHM_PUT(tm,rank,dest,src,nbytes);
+  {
+    /* If we know we will definitely submit this non-blocking op as
+     * a blocking one, simply call the put function to avoid messing
+     * with eops and iops. Note that if this branch is not taken, that
+     * doesn't mean that gasnetc_rdma_put_non_bulk will not still block.
+     * See below. */
+    if (gasnetc_rdma_put_will_block(nbytes)) {
+      gasnete_put(rank, dest, src, nbytes GASNETI_THREAD_PASS);
+      return 0;
+    }
 
-		gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
-		gasnete_iop_t *op = mythread->current_iop;
-		op->initiated_put_cnt++;
-		op->put_ofi.type = OFI_TYPE_IPUT;
-        /* Try to submit this in a non-blocking way. If we can't, block for 
-         * it for correctness. Note that the blocking case will only be hit
-         * if there are not enough available boucne buffers. In that case,
-         * we may oversynchronize by finishing all iops prior to this one. */
-		if_pf (gasnetc_rdma_put_non_bulk(node, dest, src, nbytes, &op->put_ofi))
-		    gasnetc_rdma_put_wait((gex_Event_t) op);
-	}
+    gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
+    gasnete_iop_t *op = mythread->current_iop;
+    op->initiated_put_cnt++;
+    op->put_ofi.type = OFI_TYPE_IPUT;
+    /* Try to submit this in a non-blocking way. If we can't, block for
+     * it for correctness. Note that the blocking case will only be hit
+     * if there are not enough available boucne buffers. In that case,
+     * we may oversynchronize by finishing all iops prior to this one. */
+    if_pf (gasnetc_rdma_put_non_bulk(rank, dest, src, nbytes, &op->put_ofi))
+      gasnetc_rdma_put_wait((gex_Event_t) op);
+  }
+  return 0;
 }
 
-extern void gasnete_put_nbi_bulk (gex_Rank_t node, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG) 
+extern int gasnete_put_nbi_bulk (gex_Rank_t rank, void *dest, void *src, size_t nbytes GASNETI_THREAD_FARG)
 {
-	GASNETI_CHECKPSHM_PUT(UNALIGNED,V,node,dest,src,nbytes);
-	{
-		gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
-		gasnete_iop_t *op = mythread->current_iop;
-		op->initiated_put_cnt++;
-		op->put_ofi.type = OFI_TYPE_IPUT;
-		gasnetc_rdma_put(node, dest, src, nbytes, &op->put_ofi);
-	}
+  GASNETI_CHECKPSHM_PUT(tm,rank,dest,src,nbytes);
+  {
+    gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
+    gasnete_iop_t *op = mythread->current_iop;
+    op->initiated_put_cnt++;
+    op->put_ofi.type = OFI_TYPE_IPUT;
+    gasnetc_rdma_put(rank, dest, src, nbytes, &op->put_ofi);
+  }
+  return 0;
 }
 
 /* ------------------------------------------------------------------------------------ */
