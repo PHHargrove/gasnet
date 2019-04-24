@@ -120,6 +120,18 @@ enum gc_notify_type {
 #define gc_notify_get_target_slot(n) ((uint8_t)((n) & 255)) /* actual range 0..63 */
 #define gc_notify_get_initiator_slot(n) ((uint16_t)(((n) >> 8) & 65535))
 
+// message type encoded in CQ data
+enum gc_cqdata_type {
+  gc_cqdata_msg     = 0x00000000,
+  gc_cqdata_ctrl    = 0x01000000
+};
+
+// CQData (generic)
+//   bits  0 - 23: source id (if present)
+//   bits 24 - 25: type code (a "tag")
+#define gc_cqdata_get_type(d)      (0x03000000 & (d))
+#define gc_cqdata_get_source(d)    (0x00ffffff & (d))
+
 typedef struct gasnetc_post_descriptor gasnetc_post_descriptor_t;
 
 typedef struct {

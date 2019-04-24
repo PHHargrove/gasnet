@@ -1614,7 +1614,7 @@ int send_ctrl(peer_struct_t * const peer, uint32_t value, gasneti_weakatomic_t *
   pd->remote_mem_hndl = peer->am_handle;
 
   pd->type = GNI_POST_CQWRITE;
-  pd->cqwrite_value = (uint64_t) value | GASNET_MAXNODES; // Distinct from any valid remote inst_id
+  pd->cqwrite_value = (uint64_t) value | gc_cqdata_ctrl; // Distinct from any valid remote inst_id
 
   int trial = 0;
   gni_return_t status;
@@ -2139,7 +2139,7 @@ void ampoll_ins(peer_struct_t *peer)
 static void gasnetc_handle_sys_shutdown_packet(uint16_t arg);
 
 GASNETI_INLINE(dispatch_ctrl)
-void dispatch_ctrl(uint32_t value)
+void dispatch_ctrl(uint64_t value)
 {
   const uint16_t arg = gc_ctrl_arg(value);
   const uint8_t op = gc_ctrl_op(value);
@@ -2308,22 +2308,26 @@ void gasnetc_poll_am_queue(GASNETI_THREAD_FARG_ALONE)
     gasneti_mutex_lock(&ampoll_lock);
 
     for (i = 0; i < count; ++i) {
-    #ifdef GNI_CQ_GET_REM_INST_ID
-      /* Mar 2013 (S-2446-5002) docs introduces this call for use on recv CQs ... */
-      uint32_t source = GNI_CQ_GET_REM_INST_ID(event_data[i]);
-    #else
-      /* ... while prior versions say this is used on both send and recv CQs */
-      uint32_t source = GNI_CQ_GET_INST_ID(event_data[i]);
-    #endif
-      if (source & 0xff000000) {
-        // Imposible source id marks a CqWrite of a control message
-        dispatch_ctrl(source);
-      } else {
-        gasneti_assert(source < gasneti_nodes);
-        peer_struct_t * const peer = &peer_data[source];
-        if (!poll_for_message(peer, 0 GASNETI_THREAD_PASS)) {
-          ampoll_ins(peer);
+      uint64_t data = GNI_CQ_GET_DATA(event_data[i]);
+      switch (gc_cqdata_get_type(data)) {
+        case gc_cqdata_ctrl:
+          // Control message
+          dispatch_ctrl(data);
+          break;
+
+        case gc_cqdata_msg: {
+          // AM arrival via FMA_PUT_W_SYNCFLAG
+          uint32_t source = gc_cqdata_get_source(data);
+          gasneti_assert(source < gasneti_nodes);
+          peer_struct_t * const peer = &peer_data[source];
+          if (!poll_for_message(peer, 0 GASNETI_THREAD_PASS)) {
+            ampoll_ins(peer);
+          }
+          break;
         }
+
+        default:
+          gasneti_unreachable();
       }
     }
   } else if ((NULL == ampoll_head) || (EBUSY == gasneti_mutex_trylock(&ampoll_lock))) {
