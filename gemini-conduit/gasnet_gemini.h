@@ -116,9 +116,12 @@ enum gc_notify_type {
 #define gc_build_notify(_type, _initiator, _target)\
   ((uint64_t)(_type) |  ((uint64_t)(_initiator) << 8) |  ((uint64_t)(_target)))
 
+#define GASNETC_AM_INITIATOR_SLOTS 1024 // 10 bits
+#define GASNETC_AM_TARGET_SLOTS      64 //  6 bits
+
 #define gc_notify_get_type(n) ((n) & 0xff000000)
-#define gc_notify_get_target_slot(n) ((uint8_t)((n) & 255)) /* actual range 0..63 */
-#define gc_notify_get_initiator_slot(n) ((uint16_t)(((n) >> 8) & 65535))
+#define gc_notify_get_target_slot(n) ((uint8_t)((n) & (GASNETC_AM_TARGET_SLOTS-1)))
+#define gc_notify_get_initiator_slot(n) ((uint16_t)(((n) >> 8) & (GASNETC_AM_INITIATOR_SLOTS-1)))
 
 // message type encoded in CQ data
 enum gc_cqdata_type {
