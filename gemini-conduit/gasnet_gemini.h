@@ -171,16 +171,19 @@ enum {
 
 /* This type is used by an AMShort request or reply */
 typedef struct {
+  gasnetc_notify_t header;
   gex_AM_Arg_t args[gex_AM_MaxArgs()];
 } gasnetc_am_short_packet_t;
 
 /* This type is used by an AMMedium request or reply */
 typedef struct {
+  gasnetc_notify_t header;
   gex_AM_Arg_t args[gex_AM_MaxArgs()];
 } gasnetc_am_medium_packet_t;
 
 /* This type is used by an AMLong request or reply */
 typedef struct {
+  gasnetc_notify_t header;
   void *data;
 #if GASNETC_LUB_LONG <= 0xFFFFFFFFU
   uint32_t data_length;
@@ -195,6 +198,7 @@ typedef struct {
  * in the header portion of the notify word
  */
 typedef union gasnetc_packet_u {
+  gasnetc_notify_t header;
   gasnetc_am_short_packet_t gasp;
   gasnetc_am_medium_packet_t gamp;
   gasnetc_am_long_packet_t galp;

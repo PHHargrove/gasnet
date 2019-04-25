@@ -3875,20 +3875,20 @@ if test ${gni_network}:${enabled_[]lowername} = lowername[]:yes; then
   fi
 
   GASNET_WITH(lowername-max-medium,
-     [specify gasnet_AMMaxMedium() (default 4032)],
+     [specify gasnet_AMMaxMedium() (default 4024)],
      [if expr "$withval" : '[[0-9]]*$' >/dev/null 2>&1 && \
-         expr \( "$withval" / 64 \) \* 64 = "$withval" >/dev/null 2>&1 &&
+         expr \( \( "$withval" + 8 \) / 64 \) \* 64 = \( "$withval" + 8 \) >/dev/null 2>&1 &&
          expr "$withval" '>=' 512  >/dev/null 2>&1 &&
          expr "$withval" '<' 65536  >/dev/null 2>&1 ; then
         gni_max_medium="$withval"
       else
         GASNET_ERR_SAVE()
-        AC_MSG_ERROR([--with-lowername-max-medium="$withval" is not legal.  Value must be a multiple of 64, between 512 and 65472, inclusive.])
+        AC_MSG_ERROR([--with-lowername-max-medium="$withval" is not legal.  Value must be 8 less than a multiple of 64, between 512 and 65536.])
       fi
      ],
      [GASNET_ERR_SAVE()
-      AC_MSG_ERROR([--with-lowername-max-medium must be a multiple of 64 and no smaller than 512])],
-     [gni_max_medium=4032])
+      AC_MSG_ERROR([--with-lowername-max-medium must be 8 less than a multiple of 64 and no smaller than 512])],
+     [gni_max_medium=4024])
   AC_DEFINE_UNQUOTED(GASNETC_GNI_MAX_MEDIUM, [$gni_max_medium])
 
   GASNET_IF_ENABLED(lowername-multi-domain, [Use experimental multi-domain support in PAR builds], [AC_DEFINE(GASNETC_GNI_MULTI_DOMAIN)])

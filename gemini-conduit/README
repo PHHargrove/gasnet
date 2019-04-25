@@ -33,13 +33,14 @@ NOTE: In the descriptions which follow, the token [CONDUIT] should be replaced
 by "aries" or "gemini" (without the quotes), as appropriate.
 
 --with-[CONDUIT]-max-medium=[value]
-   By default gasnet_AMMaxMedium() is 4032: a 4096 byte buffer minus
-   64 bytes reserved for up to 16 handler arguments.  This configure
+   By default gasnet_AMMaxMedium() is 4024: a 4096 byte buffer minus
+   72 bytes reserved for use by an internal header.  This configure
    option allows control over the value of gasnet_AMMaxMedium().
-   The value must be a multiple of 64, and cannot be less than 512.
-   It is recommended to use values that are 64-bytes less than a
+   The value must be 8 less than a multiple of 64, and cannot be
+   less than 568.
+   It is recommended to use values that are 72-bytes less than a
    power-of-two, to preserve efficient memory use.
-   The default value is 4032.
+   The default value is 4024.
 
 --enable-[CONDUIT]-multi-domain
    This configure option enables EXPERIMENTAL support for improved
