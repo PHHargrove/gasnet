@@ -1527,6 +1527,10 @@ int gasnetc_send_am_common(peer_struct_t *peer, gni_post_descriptor_t *pd)
   gni_return_t status;
 
   for (;;) {
+    // Set 32 bits of data delivered in CQ entry at target
+    status = GNI_EpSetEventData(peer->ep_handle, 0, pd->second_operand);
+    gasneti_assert(status == GNI_RC_SUCCESS);
+
     status = GNI_PostFma(peer->ep_handle, pd);
     GASNETC_UNLOCK_GNI();
 
@@ -1661,6 +1665,7 @@ void gasnetc_format_am_gpd(gasnetc_post_descriptor_t *gpd,
 
   gpd->gpd_flags = gpd_flags;
   gpd->gpd_am_peer = (uint64_t) peer; 
+  pd->second_operand = gasneti_mynode;
   pd->length = length;
   pd->local_addr = (uint64_t)p;
   pd->remote_mem_hndl = peer->am_handle;
