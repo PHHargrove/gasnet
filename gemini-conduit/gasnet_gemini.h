@@ -335,7 +335,6 @@ struct gasnetc_post_descriptor {
   union { /* must be first for alignment */
     uint8_t immediate[GASNETC_GNI_IMMEDIATE_BOUNCE_SIZE];
     gasneti_weakatomic_t counter;
-    gasnetc_notify_t notify;
     gex_RMA_Value_t put_val;
     uint64_t u64;
     uint64_t u32;
@@ -349,7 +348,6 @@ struct gasnetc_post_descriptor {
   #define gpd_get_src    pd.first_operand
   #define gpd_get_dst    pd.second_operand
   #define gpd_amo_result pd.sync_flag_value
-  #define gpd_am_header  pd.sync_flag_value
   #define gpd_am_packet  pd.local_addr
   #define gpd_am_length  pd.length
   #define gpd_am_peer    pd.first_operand

@@ -1276,7 +1276,7 @@ void gasnetc_format_short(gasnetc_post_descriptor_t *gpd,
   gasnetc_packet_t *m = (gasnetc_packet_t *)gpd->gpd_am_packet;
   int i;
 
-  gpd->gpd_am_header |= gasnetc_build_am_header(GC_CMD_AM_SHORT, numargs, handler, 0);
+  m->header |= gasnetc_build_am_header(GC_CMD_AM_SHORT, numargs, handler, 0);
   for (i = 0; i < numargs; i++) {
     m->gasp.args[i] = va_arg(argptr, gex_AM_Arg_t);
   }
@@ -1295,7 +1295,7 @@ void gasnetc_format_medium(gasnetc_post_descriptor_t *gpd,
   gasnetc_packet_t *m = (gasnetc_packet_t *)gpd->gpd_am_packet;
   int i;
 
-  gpd->gpd_am_header |= gasnetc_build_am_header(GC_CMD_AM_MEDIUM, numargs, handler, nbytes);
+  m->header |= gasnetc_build_am_header(GC_CMD_AM_MEDIUM, numargs, handler, nbytes);
   for (i = 0; i < numargs; i++) {
     m->gamp.args[i] = va_arg(argptr, gex_AM_Arg_t);
   }
@@ -1319,10 +1319,10 @@ void gasnetc_format_long(gasnetc_post_descriptor_t *gpd,
   int i;
   
   if (is_packed) {
-    gpd->gpd_am_header |= gasnetc_build_am_header(GC_CMD_AM_LONG_PACKED, numargs, handler, nbytes);
-    gasneti_assert(gasnetc_am_nbytes(gpd->gpd_am_header) == nbytes); // truncation check
+    m->header |= gasnetc_build_am_header(GC_CMD_AM_LONG_PACKED, numargs, handler, nbytes);
+    gasneti_assert(gasnetc_am_nbytes(m->header) == nbytes); // truncation check
   } else {
-    gpd->gpd_am_header |= gasnetc_build_am_header(GC_CMD_AM_LONG, numargs, handler, 0);
+    m->header |= gasnetc_build_am_header(GC_CMD_AM_LONG, numargs, handler, 0);
   }
 
   m->galp.data_length = nbytes;

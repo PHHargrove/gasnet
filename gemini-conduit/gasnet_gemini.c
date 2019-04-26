@@ -1561,8 +1561,9 @@ gasnetc_send_am(gasnetc_post_descriptor_t *gpd)
 {
   GASNETC_DIDX_POST(GASNETC_DEFAULT_DOMAIN);
   gni_post_descriptor_t *pd = &gpd->pd;
+  gasnetc_packet_t * const packet = (gasnetc_packet_t *) pd->local_addr;
   peer_struct_t * const peer = (peer_struct_t *)gpd->gpd_am_peer;
-  gasnetc_notify_t notify = pd->sync_flag_value;
+  gasnetc_notify_t notify = packet->header;
   unsigned int slot;
 
   GASNETI_TRACE_PRINTF(D, ("msg to %d type %s/%s\n", peer->pe,
@@ -1574,13 +1575,13 @@ gasnetc_send_am(gasnetc_post_descriptor_t *gpd)
   slot = fetch_inc_notify_pointer(peer->remote_notify_write);
   gasnetc_notify_t *notify_addr = peer->remote_notify_base + slot;
   if (am_rvous_enabled && (gc_notify_get_type(notify) == gc_notify_request)) {
-    gpd->u.notify = notify ^ (gc_notify_request ^ gc_notify_rvous);
+    packet->header = notify ^ (gc_notify_request ^ gc_notify_rvous);
     pd->type = GNI_POST_FMA_PUT;
-    pd->length = sizeof(gasnetc_notify_t);
-    pd->local_addr = (uint64_t) &gpd->u.notify;
+    pd->length = sizeof(packet->header);
     pd->remote_addr = (uint64_t) notify_addr;
   } else {
     gasneti_assert(pd->type == GNI_POST_FMA_PUT_W_SYNCFLAG);
+    pd->sync_flag_value = notify;
     pd->sync_flag_addr = (uint64_t) notify_addr;
   }
   return(gasnetc_send_am_common(peer, pd));
@@ -1745,7 +1746,7 @@ gasnetc_post_descriptor_t *gasnetc_alloc_reply_post_descriptor(gex_Token_t t,
  { // Start of scope: 'pd'
   gni_post_descriptor_t *pd = &gpd->pd;
   gasneti_assert(gc_notify_get_type(notify) == gc_notify_request);
-  pd->sync_flag_value = (notify & 0xffffffffUL) + gc_build_notify((gc_notify_reply - gc_notify_request),0,0);
+  packet->header = (notify & 0xffffffffUL) + gc_build_notify((gc_notify_reply - gc_notify_request),0,0);
   
   pd->remote_addr = (uint64_t) (peer->remote_reply_base +
                                 am_replysz * gc_notify_get_initiator_slot(notify));
@@ -1939,7 +1940,7 @@ gasnetc_post_descriptor_t *request_post_descriptor_inner(gex_Rank_t dest,
 
   gni_post_descriptor_t *pd = &gpd->pd;
   pd->remote_addr = (uint64_t) peer->remote_request_base + (remote_slot << am_slot_bits);
-  pd->sync_flag_value = gc_build_notify(gc_notify_request, r - reply_pool, remote_slot);
+  r->packet->header = gc_build_notify(gc_notify_request, r - reply_pool, remote_slot);
 
   r->u.credit.value = mask;
   r->u.credit.pointer = &peer->remote_request_map;
