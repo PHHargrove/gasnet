@@ -122,7 +122,8 @@ enum gc_notify_type {
 enum gc_cqdata_type {
   gc_cqdata_msg     = 0x00000000,
   gc_cqdata_ctrl    = 0x01000000,
-  gc_cqdata_reply   = 0x02000000
+  gc_cqdata_reply   = 0x02000000,
+  gc_cqdata_rvous   = 0x03000000
 };
 
 // CQData (generic)
@@ -138,6 +139,24 @@ enum gc_cqdata_type {
 //   bits 26 - 31: UNUSED
 #define gc_cqdata_build_reply(n)        (gc_cqdata_reply | gc_notify_get_initiator_slot(n))
 #define gc_cqdata_get_initiator_slot(d) ((d) & (GASNETC_AM_INITIATOR_SLOTS-1))
+
+// AM RVous carries length encoded in units of 64 bytes (in a 10-bit field)
+#define GASNETC_AMRV_LEN_BITS      10
+#define GASNETC_AMRV_LEN_SHIFT     6  // log_2(64)
+#define GASNETC_AMRV_LEN_ENCODE(l) (((l)+(1<<GASNETC_AMRV_LEN_SHIFT)-1) >> GASNETC_AMRV_LEN_SHIFT)
+#define GASNETC_AMRV_LEN_DECODE(x) ((x) << GASNETC_AMRV_LEN_SHIFT)
+
+// CQData for AM Rvous (Request to be fetched by Get)
+// Sent using CQWRITE (48 bits available)
+//   bits  0 - 23: source id
+//   bits 24 - 25: type == "gc_cqdata_rvous"
+//   bits 25 - 26: UNUSED (can be used expand either of the following)
+//   bits 28 - 37: length, encoded by macros above
+//   bits 38 - 47: initiator slot
+#define gc_cqdata_build_amrv(slot,len) \
+  (((uint64_t)(slot)<<28) | ((uint64_t)GASNETC_AMRV_LEN_ENCODE(len)<<38) | gc_cqdata_rvous | gasneti_mynode)
+#define gc_cqdata_get_amrv_slot(d) (((d) >> 28) & (GASNETC_AM_INITIATOR_SLOTS-1))
+#define gc_cqdata_get_amrv_len(d)  GASNETC_AMRV_LEN_DECODE(((d) >> 38) & ((1<<GASNETC_AMRV_LEN_BITS)-1))
 
 typedef struct gasnetc_post_descriptor gasnetc_post_descriptor_t;
 
@@ -334,7 +353,6 @@ typedef struct peer_struct_t_ peer_struct_t;
 typedef struct am_rvous_t_ {
   struct am_rvous_t_   *next;
   peer_struct_t        *peer;
-  gasnetc_notify_t      notify;
   volatile int          ready;
 } am_rvous_t;
 
