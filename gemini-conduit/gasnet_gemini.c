@@ -52,8 +52,6 @@ struct peer_struct_t_ {
   gni_mem_handle_t aux_handle;
   gni_mem_handle_t am_handle;
 
-  gasnetc_notify_t *remote_notify_base;
-  gasnetc_notify_t *local_notify_base;
   uint8_t *remote_reply_base;
   uint8_t *local_request_base;
   uint8_t *remote_request_base;
@@ -62,10 +60,6 @@ struct peer_struct_t_ {
   volatile int remote_request_lock;
 #endif
   uint64_t remote_request_map;  /* allocation bitmap (eager) or credit counter (rvous) */
-  uint32_t remote_notify_write; /* covered by the gni lock, unbounded */
-  uint32_t local_notify_read;   /* covered by the ampoll lock, bounded [0..notify_ring_size) */
-  peer_struct_t *next;          /* covered by the ampoll lock */
-  unsigned int event_count;     /* covered by the ampoll lock */
 #if GASNETC_USE_MULTI_DOMAIN
   uint32_t nic_addr;
 #endif
@@ -101,7 +95,6 @@ static gasnet_seginfo_t gasnetc_pd_buffers;
 unsigned int gasnetc_log2_remote;
 static unsigned int num_pd;
 static unsigned int num_cqe;
-static uint32_t notify_ring_mask; /* ring size minus 1 */
 static unsigned int am_slotsz;
 static unsigned int am_slot_bits;
 static unsigned int am_maxcredit;
@@ -944,7 +937,6 @@ uintptr_t gasnetc_init_messaging(void)
   uint64_t request_map;
   size_t request_region_length = 0;
   size_t peer_stride;
-  int notify_ring_size;
   int reply_count;
   int rvous_count = 0;
 
@@ -1080,7 +1072,7 @@ uintptr_t gasnetc_init_messaging(void)
     gasneti_assert(am_maxcredit <= 64);
     request_map = (am_maxcredit == 64) ? ~(uint64_t)0 : (((uint64_t)1 << am_maxcredit) - 1);
 
-    // Clip credits to NETWORKDEPTH_TOTAL for use in computing size of Cq and notify ring
+    // Clip credits to NETWORKDEPTH_TOTAL for use in computing size of Cq
     am_maxcredit = MIN(am_maxcredit, reply_count);
     /* reply destination is also request source.  So, must fit largest *outgoing* message */
     am_replysz = GASNETI_ALIGNUP(GASNETC_MSG_MAXSIZE, am_slotsz);
@@ -1096,11 +1088,6 @@ uintptr_t gasnetc_init_messaging(void)
     status = GNI_CqCreate(nic_handle, num_cqe, 0, GNI_CQ_NOBLOCK, NULL, NULL, &bound_cq_handle);
     gasneti_assert_always (status == GNI_RC_SUCCESS);
   }
-
-  // Size per-peer notify ring: Requests rounded up to a power-of-two
-  notify_ring_size = GASNETI_ALIGNUP(gasnetc_next_power_of_2(am_maxcredit),
-                                     (GASNETC_CACHELINE_SIZE / sizeof(gasnetc_notify_t)));
-  notify_ring_mask = notify_ring_size - 1;
 
   /* Initialize the active message resources */
 
@@ -1131,7 +1118,7 @@ uintptr_t gasnetc_init_messaging(void)
   const size_t rvous_region_length = rvous_count * am_replysz;
   const size_t reply_region_length = reply_count * am_replysz;
   const size_t peer_region_offset = reply_region_length + rvous_region_length;
-  peer_stride = request_region_length + notify_ring_size * sizeof(gasnetc_notify_t);
+  peer_stride = request_region_length;
 
   am_mmap_bytes = peer_region_offset + remote_nodes * peer_stride;
   gasneti_assert(am_mmap_ptr != (char *)MAP_FAILED);
@@ -1154,9 +1141,6 @@ am_memory_report:
     gasnett_format_number(request_region_length, valstr1, sizeof(valstr1), 1);
     gasnett_format_number(request_region_length*remote_nodes, valstr2, sizeof(valstr2), 1);
     DO_PRINT("  Eager buffers:       %s\t(%s)\n", valstr1, valstr2);
-    gasnett_format_number(sizeof(gasnetc_notify_t)*notify_ring_size, valstr1, sizeof(valstr1), 1);
-    gasnett_format_number(sizeof(gasnetc_notify_t)*notify_ring_size*remote_nodes, valstr2, sizeof(valstr2), 1);
-    DO_PRINT("  Notify ring:         %s\t(%s)\n", valstr1, valstr2);
     gasnett_format_number(am_mmap_bytes, valstr1, sizeof(valstr1), 1);
     DO_PRINT("TOTAL AM Memory used by this process: %s\n", valstr1);
     #undef DO_PRINT
@@ -1284,23 +1268,10 @@ am_memory_report:
         peer_struct_t * const peer = &peer_data[i];
         uint8_t *remote_peer_base = all_am_exchg[i].addr + peer_stride * my_mb_index(i) + peer_region_offset;
 
-        peer->event_count = 0;
-
         peer->am_handle = all_am_exchg[i].handle;
         peer->remote_reply_base = all_am_exchg[i].addr;
         peer->local_request_base = local_peer_base;
         peer->remote_request_base = remote_peer_base;
-        peer->remote_notify_base = (gasnetc_notify_t *)(remote_peer_base + request_region_length);
-        peer->local_notify_base = (gasnetc_notify_t *)(local_peer_base + request_region_length);
-        peer->local_notify_read = 0;
-        peer->remote_notify_write = 0;
-
-      #if PLATFORM_COMPILER_CRAY
-        /* Sigh.  Work around an apparent bug in cce-8.4.0.x.
-         * This reference appears to prevent the compiler from discarding the initialization.
-         */
-        gasneti_assert_always (peer->local_notify_base);
-      #endif
 
       #if GASNET_PAR
         peer->remote_request_lock = 0;
@@ -1510,14 +1481,6 @@ void gasnetc_free_bounce_buffer(gasnetc_post_descriptor_t *gpd)
   GASNETC_DIDX_POST(gpd->domain_idx);
   gasneti_lifo_push(&DOMAIN_SPECIFIC_VAL(bounce_buffer_pool), gcb);
 }
-
-static gasneti_mutex_t ampoll_lock = GASNETI_MUTEX_INITIALIZER;
-
-/* for local_notify_read which is kept in range [0..notify_ring_size) */
-#define advance_notify_pointer(__x) (__x) = ((__x + 1) & notify_ring_mask)
-
-/* for remote_notify_write which is not bounded */
-#define fetch_inc_notify_pointer(__x) ((__x)++ & notify_ring_mask)
 
 GASNETI_INLINE(myPostCqWrite)
 int myPostCqWrite(peer_struct_t * const peer, gasnetc_post_descriptor_t *gpd)
@@ -2024,11 +1987,10 @@ gasnetc_alloc_request_post_descriptor_np(
 }
 
 /* Choice to inline or not is left to the compiler */
-void gasnetc_recv_am_unlocked(peer_struct_t * const peer, gasnetc_packet_t * const packet,
-                     gasnetc_notify_t notify GASNETI_THREAD_FARG)
+void gasnetc_recv_am(peer_struct_t * const peer, gasnetc_packet_t * const packet
+                     GASNETI_THREAD_FARG)
 {
-  gasneti_mutex_assertunlocked(&ampoll_lock);
-
+  const gasnetc_notify_t notify = packet->header;
   int is_req = (gc_notify_get_type(notify) == gc_notify_request);
   const int numargs = gasnetc_am_numargs(notify);
   const int handlerindex = gasnetc_am_handler(notify);
@@ -2090,15 +2052,6 @@ void gasnetc_recv_am_unlocked(peer_struct_t * const peer, gasnetc_packet_t * con
   } else if (the_token.deferred_reply) {
       gasnetc_send_am(the_token.deferred_reply);
   }
-}
-
-GASNETI_INLINE(gasnetc_recv_am)
-void gasnetc_recv_am(peer_struct_t * const peer, gasnetc_packet_t * const packet
-                     GASNETI_THREAD_FARG)
-{
-  gasneti_mutex_unlock(&ampoll_lock);
-  gasnetc_recv_am_unlocked(peer, packet, packet->header GASNETI_THREAD_PASS);
-  gasneti_mutex_lock(&ampoll_lock);
 }
 
 static void gasnetc_handle_sys_shutdown_packet(uint16_t arg);
@@ -2188,7 +2141,7 @@ void am_rvous_run(GASNETI_THREAD_FARG_ALONE)
       gasnetc_post_descriptor_t *gpd = gasneti_container_of(curr, gasnetc_post_descriptor_t, u.am_rvous);
       gasnetc_packet_t * const packet = (gasnetc_packet_t *) gpd->pd.local_addr;
       gasneti_assert(gpd->gpd_flags == (GC_POST_COMPLETION_AMRV | GC_POST_KEEP_GPD));
-      gasnetc_recv_am_unlocked(curr->peer, packet, packet->header GASNETI_THREAD_PASS);
+      gasnetc_recv_am(curr->peer, packet GASNETI_THREAD_PASS);
       curr = curr->next;
       gasneti_lifo_push(&am_rvous_pool, gpd);
     } while (curr);
@@ -2231,9 +2184,6 @@ void gasnetc_poll_am_queue(GASNETI_THREAD_FARG_ALONE)
   }
 
   if (count) {
-    /* Must take the lock to process new events */
-    gasneti_mutex_lock(&ampoll_lock);
-
     for (i = 0; i < count; ++i) {
       uint64_t data = GNI_CQ_GET_DATA(event_data[i]);
       switch (gc_cqdata_get_type(data)) {
@@ -2287,8 +2237,6 @@ void gasnetc_poll_am_queue(GASNETI_THREAD_FARG_ALONE)
           gasneti_unreachable();
       }
     }
-
-    gasneti_mutex_unlock(&ampoll_lock);
   }
 }
 
@@ -2980,8 +2928,6 @@ void am_rvous_get(uint64_t cqdata GASNETI_THREAD_FARG)
   GASNETC_DIDX_POST(GASNETC_DEFAULT_DOMAIN);
   DOMAIN_SPECIFIC_VAR(peer_struct_t * const, peer_data);
 
-  gasneti_mutex_unlock(&ampoll_lock);
-
     peer_struct_t * const peer = &peer_data[ gc_cqdata_get_source(cqdata) ];
     const uint16_t slot   = gc_cqdata_get_amrv_slot(cqdata);
     const size_t   length = gc_cqdata_get_amrv_len(cqdata);
@@ -3032,8 +2978,6 @@ first:
     // TODO: profitable to run "ready" entry here instead of enqueueing?
     if_pf (rvous->ready) am_rvous_ready = 1;  // completed by another racing thread
     gasneti_mutex_unlock(&am_rvous_lock);
-
-  gasneti_mutex_lock(&ampoll_lock);
 }
 
 
