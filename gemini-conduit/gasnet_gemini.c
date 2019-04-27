@@ -2079,11 +2079,11 @@ void gasnetc_recv_am_unlocked(peer_struct_t * const peer, gasnetc_packet_t * con
 }
 
 GASNETI_INLINE(gasnetc_recv_am)
-void gasnetc_recv_am(peer_struct_t * const peer, gasnetc_packet_t * const packet,
-                     gasnetc_notify_t notify GASNETI_THREAD_FARG)
+void gasnetc_recv_am(peer_struct_t * const peer, gasnetc_packet_t * const packet
+                     GASNETI_THREAD_FARG)
 {
   gasneti_mutex_unlock(&ampoll_lock);
-  gasnetc_recv_am_unlocked(peer, packet, notify GASNETI_THREAD_PASS);
+  gasnetc_recv_am_unlocked(peer, packet, packet->header GASNETI_THREAD_PASS);
   gasneti_mutex_lock(&ampoll_lock);
 }
 
@@ -2211,8 +2211,11 @@ void am_rvous_run(GASNETI_THREAD_FARG_ALONE)
     curr = ready_list;
     do {
       gasnetc_post_descriptor_t *gpd = gasneti_container_of(curr, gasnetc_post_descriptor_t, u.am_rvous);
+      gasnetc_packet_t * const packet = (gasnetc_packet_t *) gpd->pd.local_addr;
       gasneti_assert(gpd->gpd_flags == (GC_POST_COMPLETION_AMRV | GC_POST_KEEP_GPD));
-      gasnetc_recv_am_unlocked(curr->peer, (void*) gpd->pd.local_addr, curr->notify GASNETI_THREAD_PASS);
+      packet->header ^= (gc_notify_request ^ gc_notify_rvous); // WIP - should not be needed
+      gasneti_assert(curr->notify == packet->header);
+      gasnetc_recv_am_unlocked(curr->peer, packet, packet->header GASNETI_THREAD_PASS);
       curr = curr->next;
       gasneti_lifo_push(&am_rvous_pool, gpd);
     } while (curr);
@@ -2241,14 +2244,16 @@ int poll_for_message(peer_struct_t * const peer, int is_slow GASNETI_THREAD_FARG
     
     if (type == gc_notify_request) {
       gasnetc_packet_t *packet = (gasnetc_packet_t *) (peer->local_request_base + (target_slot << am_slot_bits));
-      gasnetc_recv_am(peer, packet, n GASNETI_THREAD_PASS);
+      gasneti_assert(n == packet->header);
+      gasnetc_recv_am(peer, packet GASNETI_THREAD_PASS);
     } else if (type == gc_notify_rvous) {
       am_rvous_get(peer, n GASNETI_THREAD_PASS);
     } else {
       gasneti_assert(type == gc_notify_reply);
       reply_pool_t *reply = reply_pool + initiator_slot;
 
-      gasnetc_recv_am(peer, reply->packet, n GASNETI_THREAD_PASS);
+      gasneti_assert(n == reply->packet->header);
+      gasnetc_recv_am(peer, reply->packet GASNETI_THREAD_PASS);
 
       GASNETC_LOCK_AM_BUFFER();
       peer->remote_request_map += reply->u.credit.value;
@@ -3048,7 +3053,10 @@ void am_rvous_get(peer_struct_t * const peer, gasnetc_notify_t notify GASNETI_TH
   }
 
   if (! length) {
+    // WIP - Either remove (since 8-byte notify always xferred)
+    //       Or find an encoding to restore this special case
     // Short or Medium w/ 0 args and 0 payload.  Nothing to Get
+    gasneti_unreachable(); // WIP - remove
     gasnetc_recv_am_unlocked(peer, NULL, notify GASNETI_THREAD_PASS);
   } else {
     // Allocate gpd with embeded rendezvous metadata
