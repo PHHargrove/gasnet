@@ -121,7 +121,8 @@ enum gc_notify_type {
 // message type encoded in CQ data
 enum gc_cqdata_type {
   gc_cqdata_msg     = 0x00000000,
-  gc_cqdata_ctrl    = 0x01000000
+  gc_cqdata_ctrl    = 0x01000000,
+  gc_cqdata_reply   = 0x02000000
 };
 
 // CQData (generic)
@@ -129,6 +130,14 @@ enum gc_cqdata_type {
 //   bits 24 - 25: type code (a "tag")
 #define gc_cqdata_get_type(d)      (0x03000000 & (d))
 #define gc_cqdata_get_source(d)    (0x00ffffff & (d))
+
+// CQData for Reply
+// Sent as remote instance id (32 bits available)
+//   bits  0 - 10: initiator slot
+//   bits 24 - 25: type == "gc_cqdata_reply"
+//   bits 26 - 31: UNUSED
+#define gc_cqdata_build_reply(n)        (gc_cqdata_reply | gc_notify_get_initiator_slot(n))
+#define gc_cqdata_get_initiator_slot(d) ((d) & (GASNETC_AM_INITIATOR_SLOTS-1))
 
 typedef struct gasnetc_post_descriptor gasnetc_post_descriptor_t;
 

@@ -81,6 +81,7 @@ typedef struct reply_pool {
   union {
     struct reply_pool *next;         /* Next when on reply_freelist */
     struct {                         /* Upon Reply this is slots or credits to release */
+      peer_struct_t *peer;
       uint64_t value;
       uint64_t *pointer;
     } credit;
@@ -1096,9 +1097,8 @@ uintptr_t gasnetc_init_messaging(void)
     gasneti_assert_always (status == GNI_RC_SUCCESS);
   }
 
-  // Size per-peer notify ring: (Requests + Replies) rounded up to a power-of-two
-  notify_ring_size = am_maxcredit + MIN(am_maxcredit, reply_count);
-  notify_ring_size = GASNETI_ALIGNUP(gasnetc_next_power_of_2(notify_ring_size),
+  // Size per-peer notify ring: Requests rounded up to a power-of-two
+  notify_ring_size = GASNETI_ALIGNUP(gasnetc_next_power_of_2(am_maxcredit),
                                      (GASNETC_CACHELINE_SIZE / sizeof(gasnetc_notify_t)));
   notify_ring_mask = notify_ring_size - 1;
 
@@ -1564,7 +1564,7 @@ gasnetc_send_am(gasnetc_post_descriptor_t *gpd)
   gasnetc_packet_t * const packet = (gasnetc_packet_t *) pd->local_addr;
   peer_struct_t * const peer = (peer_struct_t *)gpd->gpd_am_peer;
   gasnetc_notify_t notify = packet->header;
-  unsigned int slot;
+  uint32_t cqdata;
 
   GASNETI_TRACE_PRINTF(D, ("msg to %d type %s/%s\n", peer->pe,
                            gasnetc_type_string(gasnetc_am_command(notify)),
@@ -1572,18 +1572,32 @@ gasnetc_send_am(gasnetc_post_descriptor_t *gpd)
 
   GASNETC_LOCK_GNI();
   
-  slot = fetch_inc_notify_pointer(peer->remote_notify_write);
-  gasnetc_notify_t *notify_addr = peer->remote_notify_base + slot;
-  if (am_rvous_enabled && (gc_notify_get_type(notify) == gc_notify_request)) {
+  if (gc_notify_get_type(notify) == gc_notify_reply) {
+    pd->type = GNI_POST_FMA_PUT;
+    cqdata = gc_cqdata_build_reply(notify);
+  } else if (am_rvous_enabled) {
+    unsigned int slot = fetch_inc_notify_pointer(peer->remote_notify_write);
+    gasnetc_notify_t *notify_addr = peer->remote_notify_base + slot;
+    gasneti_assert(gc_notify_get_type(notify) == gc_notify_request);
     packet->header = notify ^ (gc_notify_request ^ gc_notify_rvous);
     pd->type = GNI_POST_FMA_PUT;
     pd->length = sizeof(packet->header);
     pd->remote_addr = (uint64_t) notify_addr;
+    cqdata = gasneti_mynode;
   } else {
+    unsigned int slot = fetch_inc_notify_pointer(peer->remote_notify_write);
+    gasnetc_notify_t *notify_addr = peer->remote_notify_base + slot;
+    gasneti_assert(gc_notify_get_type(notify) == gc_notify_request);
     gasneti_assert(pd->type == GNI_POST_FMA_PUT_W_SYNCFLAG);
     pd->sync_flag_value = notify;
     pd->sync_flag_addr = (uint64_t) notify_addr;
+    cqdata = gasneti_mynode;
   }
+
+  // Set 32 bits of data delivered in CQ entry at target
+  gni_return_t status = GNI_EpSetEventData(peer->ep_handle, 0, cqdata);
+  gasneti_assert(status == GNI_RC_SUCCESS);
+
   return(gasnetc_send_am_common(peer, pd));
 }
 
@@ -1666,7 +1680,6 @@ void gasnetc_format_am_gpd(gasnetc_post_descriptor_t *gpd,
 
   gpd->gpd_flags = gpd_flags;
   gpd->gpd_am_peer = (uint64_t) peer; 
-  pd->second_operand = gasneti_mynode;
   pd->length = length;
   pd->local_addr = (uint64_t)p;
   pd->remote_mem_hndl = peer->am_handle;
@@ -1942,6 +1955,7 @@ gasnetc_post_descriptor_t *request_post_descriptor_inner(gex_Rank_t dest,
   pd->remote_addr = (uint64_t) peer->remote_request_base + (remote_slot << am_slot_bits);
   r->packet->header = gc_build_notify(gc_notify_request, r - reply_pool, remote_slot);
 
+  r->u.credit.peer = peer;
   r->u.credit.value = mask;
   r->u.credit.pointer = &peer->remote_request_map;
   
@@ -2249,17 +2263,7 @@ int poll_for_message(peer_struct_t * const peer, int is_slow GASNETI_THREAD_FARG
     } else if (type == gc_notify_rvous) {
       am_rvous_get(peer, n GASNETI_THREAD_PASS);
     } else {
-      gasneti_assert(type == gc_notify_reply);
-      reply_pool_t *reply = reply_pool + initiator_slot;
-
-      gasneti_assert(n == reply->packet->header);
-      gasnetc_recv_am(peer, reply->packet GASNETI_THREAD_PASS);
-
-      GASNETC_LOCK_AM_BUFFER();
-      peer->remote_request_map += reply->u.credit.value;
-      reply->u.next = reply_freelist;
-      reply_freelist = reply;
-      GASNETC_UNLOCK_AM_BUFFER();
+      gasneti_unreachable();
     }
     return 1;
   }
@@ -2318,6 +2322,25 @@ void gasnetc_poll_am_queue(GASNETI_THREAD_FARG_ALONE)
           if (!poll_for_message(peer, 0 GASNETI_THREAD_PASS)) {
             ampoll_ins(peer);
           }
+          break;
+        }
+
+        case gc_cqdata_reply: {
+          // Reply
+          uint32_t initiator_slot = gc_cqdata_get_initiator_slot(data);
+          reply_pool_t *reply = reply_pool + initiator_slot;
+          peer_struct_t * const peer = reply->u.credit.peer;
+          gasnetc_packet_t * const packet = reply->packet;
+
+          gasneti_assert(initiator_slot == gc_notify_get_initiator_slot(packet->header));
+
+          gasnetc_recv_am(peer, packet GASNETI_THREAD_PASS);
+
+          GASNETC_LOCK_AM_BUFFER();
+          peer->remote_request_map += reply->u.credit.value;
+          reply->u.next = reply_freelist;
+          reply_freelist = reply;
+          GASNETC_UNLOCK_AM_BUFFER();
           break;
         }
 
