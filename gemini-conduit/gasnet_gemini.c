@@ -1069,6 +1069,9 @@ uintptr_t gasnetc_init_messaging(void)
     request_map = am_maxcredit; // credit counter not a bitmap 
 
     am_replysz = GASNETI_ALIGNUP(GASNETC_MSG_MAXSIZE, GASNETC_CACHELINE_SIZE); // No-op??
+
+    // Notify ring holds only reply entries, since requests use CQWRITE
+    notify_ring_size = /* Replies:  */ MIN(am_maxcredit, reply_count);
   } else {
     /* Eager: GASNET_NETWORKDEPTH_SPACE */
     GASNETI_TRACE_PRINTF(I, ("Using Eager protocol for AM Requests"));
@@ -1090,6 +1093,10 @@ uintptr_t gasnetc_init_messaging(void)
     am_maxcredit = MIN(am_maxcredit, reply_count);
     /* reply destination is also request source.  So, must fit largest *outgoing* message */
     am_replysz = GASNETI_ALIGNUP(GASNETC_MSG_MAXSIZE, am_slotsz);
+
+    // Notify ring holds incoming request and reply entries
+    notify_ring_size = /* Requests: */ am_maxcredit +
+                       /* Replies:  */ MIN(am_maxcredit, reply_count);
   }
 
   { /* Determine Cq size: GASNET_GNI_NUM_PD */
@@ -1103,8 +1110,7 @@ uintptr_t gasnetc_init_messaging(void)
     gasneti_assert_always (status == GNI_RC_SUCCESS);
   }
 
-  // Size per-peer notify ring: (Requests + Replies) rounded up to a power-of-two
-  notify_ring_size = am_maxcredit + MIN(am_maxcredit, reply_count);
+  // Size per-peer notify ring: rounded up to a power-of-two and full cacheline occupancy
   notify_ring_size = GASNETI_ALIGNUP(gasnetc_next_power_of_2(notify_ring_size),
                                      (GASNETC_CACHELINE_SIZE / sizeof(gasnetc_notify_t)));
   notify_ring_mask = notify_ring_size - 1;
@@ -1618,20 +1624,16 @@ gasnetc_send_am(gasnetc_post_descriptor_t *gpd)
                            gasnetc_type_string(gasnetc_am_command(notify)),
                            (gc_notify_get_type(notify) == gc_notify_request) ? "REQ" : "REP"));
 
+  if (am_rvous_enabled && (gc_notify_get_type(notify) == gc_notify_request)) {
+    pd->cqwrite_value = gc_cqdata_build_amrv(gc_notify_get_initiator_slot(notify), pd->length);
+    pd->type = GNI_POST_CQWRITE;
+    return myPostCqWrite(peer, gpd);
+  }
+
   GASNETC_LOCK_GNI();
   
   slot = fetch_inc_notify_pointer(peer->remote_notify_write);
-  gasnetc_notify_t *notify_addr = peer->remote_notify_base + slot;
-  if (am_rvous_enabled && (gc_notify_get_type(notify) == gc_notify_request)) {
-    gpd->u.notify = notify ^ (gc_notify_request ^ gc_notify_rvous);
-    pd->type = GNI_POST_FMA_PUT;
-    pd->length = sizeof(gasnetc_notify_t);
-    pd->local_addr = (uint64_t) &gpd->u.notify;
-    pd->remote_addr = (uint64_t) notify_addr;
-  } else {
-    gasneti_assert(pd->type == GNI_POST_FMA_PUT_W_SYNCFLAG);
-    pd->sync_flag_addr = (uint64_t) notify_addr;
-  }
+  pd->sync_flag_addr = (uint64_t)(peer->remote_notify_base + slot);
   return(gasnetc_send_am_common(peer, pd));
 }
 
@@ -2242,7 +2244,7 @@ void am_rvous_run(GASNETI_THREAD_FARG_ALONE)
 }
 
 // Process an incoming AM rendezvous
-static void am_rvous_get(peer_struct_t * const peer, gasnetc_notify_t notify GASNETI_THREAD_FARG);
+static void am_rvous_get(uint64_t cqdata GASNETI_THREAD_FARG);
 
 GASNETI_INLINE(poll_for_message)
 int poll_for_message(peer_struct_t * const peer, int is_slow GASNETI_THREAD_FARG)
@@ -2264,8 +2266,6 @@ int poll_for_message(peer_struct_t * const peer, int is_slow GASNETI_THREAD_FARG
     if (type == gc_notify_request) {
       gasnetc_packet_t *packet = (gasnetc_packet_t *) (peer->local_request_base + (target_slot << am_slot_bits));
       gasnetc_recv_am(peer, packet, n GASNETI_THREAD_PASS);
-    } else if (type == gc_notify_rvous) {
-      am_rvous_get(peer, n GASNETI_THREAD_PASS);
     } else {
       gasneti_assert(type == gc_notify_reply);
       reply_pool_t *reply = reply_pool + initiator_slot;
@@ -2325,6 +2325,12 @@ void gasnetc_poll_am_queue(GASNETI_THREAD_FARG_ALONE)
         case gc_cqdata_ctrl:
           // Control message
           dispatch_ctrl(data);
+          break;
+
+        case gc_cqdata_rvous:
+          // RVous-based Request
+          gasneti_assert(am_rvous_enabled);
+          am_rvous_get(data GASNETI_THREAD_PASS);
           break;
 
         case gc_cqdata_msg: {
@@ -3042,37 +3048,19 @@ int gasnetc_rdma_get_buff(gex_Rank_t node,
 }
 
 static
-void am_rvous_get(peer_struct_t * const peer, gasnetc_notify_t notify GASNETI_THREAD_FARG)
+void am_rvous_get(uint64_t cqdata GASNETI_THREAD_FARG)
 {
+  GASNETC_DIDX_POST(GASNETC_DEFAULT_DOMAIN);
+  DOMAIN_SPECIFIC_VAR(peer_struct_t * const, peer_data);
+
   gasneti_mutex_unlock(&ampoll_lock);
 
-  // Replace  notify by its "effective" value:
-  notify ^= (gc_notify_request ^ gc_notify_rvous);
+    peer_struct_t * const peer = &peer_data[ gc_cqdata_get_source(cqdata) ];
+    const uint16_t slot   = gc_cqdata_get_amrv_slot(cqdata);
+    const size_t   length = gc_cqdata_get_amrv_len(cqdata);
 
-  // TODO-EX: if/when we use CQWrite we'll need a different encoding, which will
-  // carry the len (likely in units such as cacheline), instead of this code
-  size_t length;
-  const int numargs = gasnetc_am_numargs(notify);
-  switch (gasnetc_am_command(notify)) {
-    case GC_CMD_AM_SHORT:
-      length = GASNETC_HEADLEN(short, numargs);
-      break;
-    case GC_CMD_AM_MEDIUM:
-      length = GASNETC_HEADLEN(medium, numargs) + gasnetc_am_nbytes(notify);
-      break;
-    case GC_CMD_AM_LONG:
-      length = GASNETC_HEADLEN(long, numargs);
-      break;
-    case GC_CMD_AM_LONG_PACKED:
-      length = GASNETC_HEADLEN(long, numargs) + gasnetc_am_nbytes(notify);
-      break;
-    default: gasneti_unreachable();
-  }
+    gasneti_assert(length);
 
-  if (! length) {
-    // Short or Medium w/ 0 args and 0 payload.  Nothing to Get
-    gasnetc_recv_am_unlocked(peer, NULL, notify GASNETI_THREAD_PASS);
-  } else {
     // Allocate gpd with embeded rendezvous metadata
     gasnetc_post_descriptor_t *gpd = gasneti_lifo_pop(&am_rvous_pool);
     if_pf (!gpd) {
@@ -3100,13 +3088,12 @@ first:
     am_rvous_t *rvous = &gpd->u.am_rvous;
     rvous->ready  = 0;
     rvous->peer   = peer;
-    rvous->notify = notify;
+    rvous->notify = TODO: need to move the header bits "in band" to reconstruct this notify word
 
     gni_post_descriptor_t * const pd = &gpd->pd;
-    pd->remote_addr = (uint64_t) (peer->remote_reply_base +
-                                  am_replysz * gc_notify_get_initiator_slot(notify));
+    pd->remote_addr = (uint64_t) (peer->remote_reply_base + am_replysz * slot);
     pd->remote_mem_hndl = peer->am_handle;
-    pd->length = GASNETI_ALIGNUP(length, 8); // TODO: 4 is minimum, what is optimal?
+    pd->length = length;
 
     // Honors same fma/rma cutover as Get
     gasnetc_post_get(peer->ep_handle, gpd);
@@ -3119,7 +3106,6 @@ first:
     // TODO: profitable to run "ready" entry here instead of enqueueing?
     if_pf (rvous->ready) am_rvous_ready = 1;  // completed by another racing thread
     gasneti_mutex_unlock(&am_rvous_lock);
-  }
 
   gasneti_mutex_lock(&ampoll_lock);
 }
