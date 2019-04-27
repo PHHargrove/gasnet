@@ -2056,6 +2056,20 @@ void gasnetc_recv_am(peer_struct_t * const peer, gasnetc_packet_t * const packet
 
 static void gasnetc_handle_sys_shutdown_packet(uint16_t arg);
 
+GASNETI_INLINE(apply_credit)
+void apply_credit(reply_pool_t *reply)
+{
+  GASNETC_LOCK_AM_BUFFER();
+    (*reply->u.credit.pointer) += reply->u.credit.value;
+  #if GASNET_DEBUG
+    reply->u.credit.peer    = NULL;
+    reply->u.credit.pointer = NULL;
+  #endif
+    reply->u.next = reply_freelist;
+    reply_freelist = reply;
+  GASNETC_UNLOCK_AM_BUFFER();
+}
+
 GASNETI_INLINE(dispatch_ctrl)
 void dispatch_ctrl(uint64_t value)
 {
@@ -2063,17 +2077,10 @@ void dispatch_ctrl(uint64_t value)
   const uint8_t op = gc_ctrl_op(value);
       
   switch (op) {
-    case GC_CTRL_CREDIT: {
+    case GC_CTRL_CREDIT:
       GASNETI_TRACE_PRINTF(D, ("AM_CREDIT for slot %d\n", arg));
-      reply_pool_t *reply = reply_pool + arg;
-
-      GASNETC_LOCK_AM_BUFFER();
-      (*reply->u.credit.pointer) += reply->u.credit.value;
-      reply->u.next = reply_freelist;
-      reply_freelist = reply;
-      GASNETC_UNLOCK_AM_BUFFER();
+      apply_credit(reply_pool + arg);
       break;
-    }
 
     case GC_CTRL_SHUTDOWN:
       gasnetc_handle_sys_shutdown_packet(arg);
@@ -2218,12 +2225,7 @@ void gasnetc_poll_am_queue(GASNETI_THREAD_FARG_ALONE)
           gasneti_assert(initiator_slot == gc_header_get_initiator_slot(packet->header));
 
           gasnetc_recv_am(peer, packet GASNETI_THREAD_PASS);
-
-          GASNETC_LOCK_AM_BUFFER();
-          peer->remote_request_map += reply->u.credit.value;
-          reply->u.next = reply_freelist;
-          reply_freelist = reply;
-          GASNETC_UNLOCK_AM_BUFFER();
+          apply_credit(reply);
           break;
         }
 
