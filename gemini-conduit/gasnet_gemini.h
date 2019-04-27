@@ -105,7 +105,6 @@ typedef uint64_t gasnetc_notify_t;
 enum gc_notify_type {
   gc_notify_request = 0x01000000,
   gc_notify_reply   = 0x02000000,
-  gc_notify_rvous   = 0x03000000
 };
 
 #define gc_build_notify(_type, _initiator, _target)\
@@ -120,8 +119,8 @@ enum gc_notify_type {
 
 // message type encoded in CQ data
 enum gc_cqdata_type {
-  gc_cqdata_request = 0x00000000,
-  gc_cqdata_ctrl    = 0x01000000,
+  gc_cqdata_ctrl    = 0x00000000,
+  gc_cqdata_request = 0x01000000,
   gc_cqdata_reply   = 0x02000000,
   gc_cqdata_rvous   = 0x03000000
 };
