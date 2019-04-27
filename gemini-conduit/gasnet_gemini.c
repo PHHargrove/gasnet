@@ -1535,6 +1535,43 @@ static gasneti_mutex_t ampoll_lock = GASNETI_MUTEX_INITIALIZER;
 /* for remote_notify_write which is not bounded */
 #define fetch_inc_notify_pointer(__x) ((__x)++ & notify_ring_mask)
 
+GASNETI_INLINE(myPostCqWrite)
+int myPostCqWrite(peer_struct_t * const peer, gasnetc_post_descriptor_t *gpd)
+{
+  GASNETC_DIDX_POST(gpd->domain_idx);
+  gni_post_descriptor_t *pd = &gpd->pd;
+
+  gasneti_assert(pd->type == GNI_POST_CQWRITE);
+
+  int trial = 0;
+  gni_return_t status;
+
+  for (;;) {
+    GASNETC_LOCK_GNI();
+    status = GNI_PostCqWrite(peer->ep_handle, pd);
+    GASNETC_UNLOCK_GNI();
+
+    if_pt (status == GNI_RC_SUCCESS) {
+      break;
+    }
+
+    if_pf (status != GNI_RC_ERROR_RESOURCE) {
+      gasnetc_GNIT_Abort("PostCqWrite returned error %s", gasnetc_gni_rc_string(status));
+    }
+
+    if_pf (++trial == GASNETC_RESOURCE_RETRIES) {
+      gasnetc_GNIT_Log("PostCqWrite retry failed");
+      return GASNET_ERR_RESOURCE;
+    }
+
+    GASNETI_WAITHOOK();
+    gasnetc_poll_local_queue(GASNETC_DIDX_PASS_ALONE);
+  }
+
+  GASNETC_STAT_EVENT_VAL(CTRL_SEND_RETRY, trial);
+  return GASNET_OK;
+}
+
 GASNETI_INLINE(gasnetc_send_am_common)
 int gasnetc_send_am_common(peer_struct_t *peer, gni_post_descriptor_t *pd)
 {
@@ -1609,40 +1646,15 @@ int send_ctrl(peer_struct_t * const peer, uint32_t value, gasneti_weakatomic_t *
     gpd->gpd_completion = (uintptr_t)cntr;
     gpd->gpd_flags = GC_POST_COMPLETION_CNTR;
   }
+
+  pd->type = GNI_POST_CQWRITE;
   pd->cq_mode = GNI_CQMODE_GLOBAL_EVENT | GNI_CQMODE_REMOTE_EVENT;
   pd->dlvr_mode = GNI_DLVMODE_PERFORMANCE;
   pd->remote_mem_hndl = peer->am_handle;
 
-  pd->type = GNI_POST_CQWRITE;
-  pd->cqwrite_value = (uint64_t) value | gc_cqdata_ctrl; // Distinct from any valid remote inst_id
+  gpd->pd.cqwrite_value = (uint64_t) value | gc_cqdata_ctrl; // Distinct from any valid remote inst_id
 
-  int trial = 0;
-  gni_return_t status;
-
-  for (;;) {
-    GASNETC_LOCK_GNI();
-    status = GNI_PostCqWrite(peer->ep_handle, pd);
-    GASNETC_UNLOCK_GNI();
-
-    if_pt (status == GNI_RC_SUCCESS) {
-      break;
-    }
-
-    if_pf (status != GNI_RC_ERROR_RESOURCE) {
-      gasnetc_GNIT_Abort("PostCqWrite for Ctrl returned error %s", gasnetc_gni_rc_string(status));
-    }
-
-    if_pf (++trial == GASNETC_RESOURCE_RETRIES) {
-      gasnetc_GNIT_Log("PostCqWrite retry for Ctrl failed");
-      return GASNET_ERR_RESOURCE;
-    }
-
-    GASNETI_WAITHOOK();
-    gasnetc_poll_local_queue(GASNETC_DIDX_PASS_ALONE);
-  }
-
-  GASNETC_STAT_EVENT_VAL(CTRL_SEND_RETRY, trial);
-  return GASNET_OK;
+  return myPostCqWrite(peer, gpd);
 }
 
 // Credit is a specific control message
