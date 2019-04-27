@@ -1204,11 +1204,11 @@ extern gex_TI_t gasnetc_Token_Info(
   info->gex_entry = real_token->entry;
   result |= GEX_TI_ENTRY;
 
-  info->gex_is_req = (gc_notify_request == gc_notify_get_type(real_token->notify));
+  info->gex_is_req = (gc_header_request == gc_header_get_type(real_token->header));
   result |= GEX_TI_IS_REQ;
 
-  info->gex_is_long = (GC_CMD_AM_LONG == gasnetc_am_command(real_token->notify)) ||
-                      (GC_CMD_AM_LONG_PACKED == gasnetc_am_command(real_token->notify));
+  info->gex_is_long = (GC_CMD_AM_LONG == gasnetc_am_command(real_token->header)) ||
+                      (GC_CMD_AM_LONG_PACKED == gasnetc_am_command(real_token->header));
   result |= GEX_TI_IS_LONG;
 
   return GASNETI_TOKEN_INFO_RETURN(result, info, mask);

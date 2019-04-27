@@ -99,23 +99,23 @@ extern gasnetc_gni_lock_t gasnetc_gni_lock;
 
 extern gasnetc_gni_lock_t gasnetc_am_buffer_lock;
 
-typedef uint64_t gasnetc_notify_t;
+typedef uint64_t gasnetc_header_t;
 
-/* NOTE: notify_type is "pre shifted" by 24 bits */
-enum gc_notify_type {
-  gc_notify_request = 0x01000000,
-  gc_notify_reply   = 0x02000000,
+/* NOTE: header_type is "pre shifted" by 24 bits */
+enum gc_header_type {
+  gc_header_request = 0x01000000,
+  gc_header_reply   = 0x02000000,
 };
 
-#define gc_build_notify(_type, _initiator, _target)\
+#define gc_build_header(_type, _initiator, _target)\
   ((uint64_t)(_type) |  ((uint64_t)(_initiator) << 8) |  ((uint64_t)(_target)))
 
 #define GASNETC_AM_INITIATOR_SLOTS 1024 // 10 bits
 #define GASNETC_AM_TARGET_SLOTS      64 //  6 bits
 
-#define gc_notify_get_type(n) ((n) & 0xff000000)
-#define gc_notify_get_target_slot(n) ((uint8_t)((n) & (GASNETC_AM_TARGET_SLOTS-1)))
-#define gc_notify_get_initiator_slot(n) ((uint16_t)(((n) >> 8) & (GASNETC_AM_INITIATOR_SLOTS-1)))
+#define gc_header_get_type(h) ((h) & 0xff000000)
+#define gc_header_get_target_slot(h) ((uint8_t)((h) & (GASNETC_AM_TARGET_SLOTS-1)))
+#define gc_header_get_initiator_slot(h) ((uint16_t)(((h) >> 8) & (GASNETC_AM_INITIATOR_SLOTS-1)))
 
 // message type encoded in CQ data
 enum gc_cqdata_type {
@@ -136,7 +136,7 @@ enum gc_cqdata_type {
 //   bits  0 - 10: initiator slot
 //   bits 24 - 25: type == "gc_cqdata_reply"
 //   bits 26 - 31: UNUSED
-#define gc_cqdata_build_reply(n)        (gc_cqdata_reply | gc_notify_get_initiator_slot(n))
+#define gc_cqdata_build_reply(h)        (gc_cqdata_reply | gc_header_get_initiator_slot(h))
 #define gc_cqdata_get_initiator_slot(d) ((d) & (GASNETC_AM_INITIATOR_SLOTS-1))
 
 // CQData for Request (Eager protocol)
@@ -144,8 +144,8 @@ enum gc_cqdata_type {
 //   bits  0 - 23: source id
 //   bits 24 - 25: type == "gc_cqdata_request"
 //   bits 26 - 31: target slot
-#define gc_cqdata_build_request(n)      (gc_cqdata_request | gasneti_mynode | \
-                                         ((uint64_t)gc_notify_get_target_slot(n) << 26))
+#define gc_cqdata_build_request(h)      (gc_cqdata_request | gasneti_mynode | \
+                                         ((uint64_t)gc_header_get_target_slot(h) << 26))
 #define gc_cqdata_get_target_slot(d)    (((d) >> 26) & (GASNETC_AM_TARGET_SLOTS-1))
 
 // AM RVous carries length encoded in units of 64 bytes (in a 10-bit field)
@@ -172,7 +172,7 @@ typedef struct {
   gex_Rank_t source;
   const gex_AM_Entry_t *entry;
   int need_reply;
-  gasnetc_notify_t notify;  
+  gasnetc_header_t header;
   gasnetc_post_descriptor_t *deferred_reply;
 #if GASNETI_THREADINFO_OPT
   gasnet_threadinfo_t threadinfo;
@@ -207,19 +207,19 @@ enum {
 
 /* This type is used by an AMShort request or reply */
 typedef struct {
-  gasnetc_notify_t header;
+  gasnetc_header_t header;
   gex_AM_Arg_t args[gex_AM_MaxArgs()];
 } gasnetc_am_short_packet_t;
 
 /* This type is used by an AMMedium request or reply */
 typedef struct {
-  gasnetc_notify_t header;
+  gasnetc_header_t header;
   gex_AM_Arg_t args[gex_AM_MaxArgs()];
 } gasnetc_am_medium_packet_t;
 
 /* This type is used by an AMLong request or reply */
 typedef struct {
-  gasnetc_notify_t header;
+  gasnetc_header_t header;
   void *data;
 #if GASNETC_LUB_LONG <= 0xFFFFFFFFU
   uint32_t data_length;
@@ -230,11 +230,10 @@ typedef struct {
 } gasnetc_am_long_packet_t;
 
 /* The various ways to interpret an arriving message
- * You can tell what it is by looking at the command field
- * in the header portion of the notify word
+ * You can tell what it is by looking at the header's command field
  */
 typedef union gasnetc_packet_u {
-  gasnetc_notify_t header;
+  gasnetc_header_t header;
   gasnetc_am_short_packet_t gasp;
   gasnetc_am_medium_packet_t gamp;
   gasnetc_am_long_packet_t galp;

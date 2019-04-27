@@ -1565,25 +1565,25 @@ gasnetc_send_am(gasnetc_post_descriptor_t *gpd)
   gni_post_descriptor_t *pd = &gpd->pd;
   gasnetc_packet_t * const packet = (gasnetc_packet_t *) pd->local_addr;
   peer_struct_t * const peer = (peer_struct_t *)gpd->gpd_am_peer;
-  gasnetc_notify_t notify = packet->header;
+  gasnetc_header_t header = packet->header;
 
   GASNETI_TRACE_PRINTF(D, ("msg to %d type %s/%s\n", peer->pe,
-                           gasnetc_type_string(gasnetc_am_command(notify)),
-                           (gc_notify_get_type(notify) == gc_notify_request) ? "REQ" : "REP"));
+                           gasnetc_type_string(gasnetc_am_command(header)),
+                           (gc_header_get_type(header) == gc_header_request) ? "REQ" : "REP"));
 
-  if (am_rvous_enabled && (gc_notify_get_type(notify) == gc_notify_request)) {
-    pd->cqwrite_value = gc_cqdata_build_amrv(gc_notify_get_initiator_slot(notify), pd->length);
+  if (am_rvous_enabled && (gc_header_get_type(header) == gc_header_request)) {
+    pd->cqwrite_value = gc_cqdata_build_amrv(gc_header_get_initiator_slot(header), pd->length);
     pd->type = GNI_POST_CQWRITE;
     return myPostCqWrite(peer, gpd);
   }
   
   // Set 32 bits of data delivered in CQ entry at target
   uint32_t cqdata;
-  if (gc_notify_get_type(notify) == gc_notify_reply) {
-    cqdata = gc_cqdata_build_reply(notify);
+  if (gc_header_get_type(header) == gc_header_reply) {
+    cqdata = gc_cqdata_build_reply(header);
   } else {
-    gasneti_assert(gc_notify_get_type(notify) == gc_notify_request);
-    cqdata = gc_cqdata_build_request(notify);
+    gasneti_assert(gc_header_get_type(header) == gc_header_request);
+    cqdata = gc_cqdata_build_request(header);
   }
 
   return(gasnetc_send_am_common(peer, cqdata, pd));
@@ -1613,11 +1613,11 @@ int send_ctrl(peer_struct_t * const peer, uint32_t value, gasneti_weakatomic_t *
 
 // Credit is a specific control message
 GASNETI_INLINE(gasnetc_send_credit)
-int gasnetc_send_credit(peer_struct_t * const peer, gasnetc_notify_t notify)
+int gasnetc_send_credit(peer_struct_t * const peer, gasnetc_header_t header)
 {
   GASNETI_TRACE_PRINTF(D, ("msg to %d type AM_CREDIT\n", peer->pe));
-  gasneti_assert(gc_notify_get_type(notify) == gc_notify_request);
-  uint32_t ctrl = gc_build_ctrl(GC_CTRL_CREDIT, gc_notify_get_initiator_slot(notify));
+  gasneti_assert(gc_header_get_type(header) == gc_header_request);
+  uint32_t ctrl = gc_build_ctrl(GC_CTRL_CREDIT, gc_header_get_initiator_slot(header));
   return send_ctrl(peer, ctrl, NULL);
 }
 
@@ -1659,7 +1659,7 @@ gasnetc_post_descriptor_t *gasnetc_alloc_reply_post_descriptor(gex_Token_t t,
   DOMAIN_SPECIFIC_VAR(peer_struct_t * const, peer_data);
   gasnetc_token_t *token = (gasnetc_token_t *)t;
   peer_struct_t * const peer = &peer_data[token->source];
-  gasnetc_notify_t notify = token->notify;
+  gasnetc_header_t header = token->header;
   gasnetc_packet_t *packet;
   uint32_t gpd_flags = 0;
 
@@ -1683,17 +1683,17 @@ gasnetc_post_descriptor_t *gasnetc_alloc_reply_post_descriptor(gex_Token_t t,
   } else {
     unsigned int req_len = 0;
     /* Try to reuse the Request buffer for the Reply */
-    const int numargs = gasnetc_am_numargs(notify);
-    uint32_t target_slot = gc_notify_get_target_slot(notify);
+    const int numargs = gasnetc_am_numargs(header);
+    uint32_t target_slot = gc_header_get_target_slot(header);
     packet = (gasnetc_packet_t *) (peer->local_request_base + (target_slot << am_slot_bits));
 
-    switch (gasnetc_am_command(notify)) {
+    switch (gasnetc_am_command(header)) {
       case GC_CMD_AM_SHORT:
         req_len = GASNETC_HEADLEN(short, numargs);
         req_len = req_len ? req_len : 1; /* request never allocates zero */
         break;
       case GC_CMD_AM_MEDIUM: {
-        if_pt (0 == gasnetc_am_nbytes(notify)) {
+        if_pt (0 == gasnetc_am_nbytes(header)) {
           /* We can reuse the Request buffer, since the Medium had no payload */
           /* TODO: also safe for "TAIL_REPLY" when implemented */
           req_len = GASNETC_HEADLEN(medium, numargs);
@@ -1718,19 +1718,19 @@ gasnetc_post_descriptor_t *gasnetc_alloc_reply_post_descriptor(gex_Token_t t,
     }
   }
 
-  /* modify the notify type and clear its AM header bits */
+  /* modify the header type and clear its AM header bits */
  { // Start of scope: 'pd'
   gni_post_descriptor_t *pd = &gpd->pd;
-  gasneti_assert(gc_notify_get_type(notify) == gc_notify_request);
-  packet->header = (notify & 0xffffffffUL) + gc_build_notify((gc_notify_reply - gc_notify_request),0,0);
+  gasneti_assert(gc_header_get_type(header) == gc_header_request);
+  packet->header = (header & 0xffffffffUL) + gc_build_header((gc_header_reply - gc_header_request),0,0);
   
   pd->remote_addr = (uint64_t) (peer->remote_reply_base +
-                                am_replysz * gc_notify_get_initiator_slot(notify));
+                                am_replysz * gc_header_get_initiator_slot(header));
   gasnetc_format_am_gpd(gpd, packet, peer, length, gpd_flags);
   gasneti_assert(token->need_reply);
   token->need_reply = 0;
   /* If Medium payload is in-use, then defer sending Reply until Request returns (avoids overwrite race) */
-  if (gasnetc_am_nbytes(notify) && (GC_CMD_AM_MEDIUM == gasnetc_am_command(notify))) {
+  if (gasnetc_am_nbytes(header) && (GC_CMD_AM_MEDIUM == gasnetc_am_command(header))) {
     token->deferred_reply = gpd;
   }
   return gpd;
@@ -1916,7 +1916,7 @@ gasnetc_post_descriptor_t *request_post_descriptor_inner(gex_Rank_t dest,
 
   gni_post_descriptor_t *pd = &gpd->pd;
   pd->remote_addr = (uint64_t) peer->remote_request_base + (remote_slot << am_slot_bits);
-  r->packet->header = gc_build_notify(gc_notify_request, r - reply_pool, remote_slot);
+  r->packet->header = gc_build_header(gc_header_request, r - reply_pool, remote_slot);
 
   r->u.credit.peer = peer;
   r->u.credit.value = mask;
@@ -1990,13 +1990,13 @@ gasnetc_alloc_request_post_descriptor_np(
 void gasnetc_recv_am(peer_struct_t * const peer, gasnetc_packet_t * const packet
                      GASNETI_THREAD_FARG)
 {
-  const gasnetc_notify_t notify = packet->header;
-  int is_req = (gc_notify_get_type(notify) == gc_notify_request);
-  const int numargs = gasnetc_am_numargs(notify);
-  const int handlerindex = gasnetc_am_handler(notify);
+  const gasnetc_header_t header = packet->header;
+  int is_req = (gc_header_get_type(header) == gc_header_request);
+  const int numargs = gasnetc_am_numargs(header);
+  const int handlerindex = gasnetc_am_handler(header);
   const gex_AM_Entry_t * const handler_entry = &gasnetc_handler[handlerindex];
   gex_AM_Fn_t handler = handler_entry->gex_fnptr;
-  gasnetc_token_t the_token = { peer->pe, handler_entry, is_req, notify, NULL };
+  gasnetc_token_t the_token = { peer->pe, handler_entry, is_req, header, NULL };
 #if GASNETI_THREADINFO_OPT
   the_token.threadinfo = GASNETI_MYTHREAD;
 #endif
@@ -2004,10 +2004,10 @@ void gasnetc_recv_am(peer_struct_t * const peer, gasnetc_packet_t * const packet
 
   gasneti_assert(numargs <= gex_AM_MaxArgs());
   GASNETI_TRACE_PRINTF(D, ("msg from %d type %s/%s\n", peer->pe,
-                           gasnetc_type_string(gasnetc_am_command(notify)),
+                           gasnetc_type_string(gasnetc_am_command(header)),
                            is_req ? "REQ" : "REP"));
 
-  switch (gasnetc_am_command(notify)) {
+  switch (gasnetc_am_command(header)) {
   case GC_CMD_AM_SHORT:
       gasneti_amtbl_check(handler_entry, numargs, gasneti_Short, is_req);
       GASNETI_RUN_HANDLER_SHORT(is_req, handlerindex, handler,
@@ -2021,7 +2021,7 @@ void gasnetc_recv_am(peer_struct_t * const peer, gasnetc_packet_t * const packet
       gasneti_assert(0 == (((uintptr_t) data) % GASNETI_MEDBUF_ALIGNMENT));
       GASNETI_RUN_HANDLER_MEDIUM(is_req, handlerindex, handler,
                                  token, packet->gamp.args, numargs,
-                                 data, gasnetc_am_nbytes(notify));
+                                 data, gasnetc_am_nbytes(header));
       break;
   }
       
@@ -2048,7 +2048,7 @@ void gasnetc_recv_am(peer_struct_t * const peer, gasnetc_packet_t * const packet
 
   /* TODO: gasneti_suspend_spinpollers()? */
   if (the_token.need_reply) {
-      gasnetc_send_credit(peer, notify);
+      gasnetc_send_credit(peer, header);
   } else if (the_token.deferred_reply) {
       gasnetc_send_am(the_token.deferred_reply);
   }
@@ -2202,7 +2202,7 @@ void gasnetc_poll_am_queue(GASNETI_THREAD_FARG_ALONE)
           gasnetc_packet_t *packet = (gasnetc_packet_t *) (peer->local_request_base +
                                                            (target_slot << am_slot_bits));
 
-          gasneti_assert(target_slot == gc_notify_get_target_slot(packet->header));
+          gasneti_assert(target_slot == gc_header_get_target_slot(packet->header));
 
           gasnetc_recv_am(peer, packet GASNETI_THREAD_PASS);
           break;
@@ -2215,7 +2215,7 @@ void gasnetc_poll_am_queue(GASNETI_THREAD_FARG_ALONE)
           peer_struct_t * const peer = reply->u.credit.peer;
           gasnetc_packet_t * const packet = reply->packet;
 
-          gasneti_assert(initiator_slot == gc_notify_get_initiator_slot(packet->header));
+          gasneti_assert(initiator_slot == gc_header_get_initiator_slot(packet->header));
 
           gasnetc_recv_am(peer, packet GASNETI_THREAD_PASS);
 
