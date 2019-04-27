@@ -120,7 +120,7 @@ enum gc_notify_type {
 
 // message type encoded in CQ data
 enum gc_cqdata_type {
-  gc_cqdata_msg     = 0x00000000,
+  gc_cqdata_request = 0x00000000,
   gc_cqdata_ctrl    = 0x01000000,
   gc_cqdata_reply   = 0x02000000,
   gc_cqdata_rvous   = 0x03000000
@@ -139,6 +139,15 @@ enum gc_cqdata_type {
 //   bits 26 - 31: UNUSED
 #define gc_cqdata_build_reply(n)        (gc_cqdata_reply | gc_notify_get_initiator_slot(n))
 #define gc_cqdata_get_initiator_slot(d) ((d) & (GASNETC_AM_INITIATOR_SLOTS-1))
+
+// CQData for Request (Eager protocol)
+// Sent as remote instance id (32 bits available)
+//   bits  0 - 23: source id
+//   bits 24 - 25: type == "gc_cqdata_request"
+//   bits 26 - 31: target slot
+#define gc_cqdata_build_request(n)      (gc_cqdata_request | gasneti_mynode | \
+                                         ((uint64_t)gc_notify_get_target_slot(n) << 26))
+#define gc_cqdata_get_target_slot(d)    (((d) >> 26) & (GASNETC_AM_TARGET_SLOTS-1))
 
 // AM RVous carries length encoded in units of 64 bytes (in a 10-bit field)
 #define GASNETC_AMRV_LEN_BITS      10

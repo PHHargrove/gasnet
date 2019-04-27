@@ -1557,15 +1557,17 @@ int myPostCqWrite(peer_struct_t * const peer, gasnetc_post_descriptor_t *gpd)
 }
 
 GASNETI_INLINE(gasnetc_send_am_common)
-int gasnetc_send_am_common(peer_struct_t *peer, gni_post_descriptor_t *pd)
+int gasnetc_send_am_common(peer_struct_t *peer, uint64_t cqdata, gni_post_descriptor_t *pd)
 {
   GASNETC_DIDX_POST(GASNETC_DEFAULT_DOMAIN);
   int trial = 0;
   gni_return_t status;
 
+  GASNETC_LOCK_GNI();
+
   for (;;) {
     // Set 32 bits of data delivered in CQ entry at target
-    status = GNI_EpSetEventData(peer->ep_handle, 0, pd->second_operand);
+    status = GNI_EpSetEventData(peer->ep_handle, 0, cqdata);
     gasneti_assert(status == GNI_RC_SUCCESS);
 
     status = GNI_PostFma(peer->ep_handle, pd);
@@ -1601,7 +1603,6 @@ gasnetc_send_am(gasnetc_post_descriptor_t *gpd)
   gasnetc_packet_t * const packet = (gasnetc_packet_t *) pd->local_addr;
   peer_struct_t * const peer = (peer_struct_t *)gpd->gpd_am_peer;
   gasnetc_notify_t notify = packet->header;
-  uint32_t cqdata;
 
   GASNETI_TRACE_PRINTF(D, ("msg to %d type %s/%s\n", peer->pe,
                            gasnetc_type_string(gasnetc_am_command(notify)),
@@ -1612,27 +1613,17 @@ gasnetc_send_am(gasnetc_post_descriptor_t *gpd)
     pd->type = GNI_POST_CQWRITE;
     return myPostCqWrite(peer, gpd);
   }
-
-  GASNETC_LOCK_GNI();
   
+  // Set 32 bits of data delivered in CQ entry at target
+  uint32_t cqdata;
   if (gc_notify_get_type(notify) == gc_notify_reply) {
-    pd->type = GNI_POST_FMA_PUT;
     cqdata = gc_cqdata_build_reply(notify);
   } else {
-    unsigned int slot = fetch_inc_notify_pointer(peer->remote_notify_write);
-    gasnetc_notify_t *notify_addr = peer->remote_notify_base + slot;
     gasneti_assert(gc_notify_get_type(notify) == gc_notify_request);
-    gasneti_assert(pd->type == GNI_POST_FMA_PUT_W_SYNCFLAG);
-    pd->sync_flag_value = notify;
-    pd->sync_flag_addr = (uint64_t) notify_addr;
-    cqdata = gasneti_mynode;
+    cqdata = gc_cqdata_build_request(notify);
   }
 
-  // Set 32 bits of data delivered in CQ entry at target
-  gni_return_t status = GNI_EpSetEventData(peer->ep_handle, 0, cqdata);
-  gasneti_assert(status == GNI_RC_SUCCESS);
-
-  return(gasnetc_send_am_common(peer, pd));
+  return(gasnetc_send_am_common(peer, cqdata, pd));
 }
 
 GASNETI_INLINE(send_ctrl)
@@ -1694,7 +1685,7 @@ void gasnetc_format_am_gpd(gasnetc_post_descriptor_t *gpd,
   pd->remote_mem_hndl = peer->am_handle;
   pd->cq_mode = GNI_CQMODE_GLOBAL_EVENT | GNI_CQMODE_REMOTE_EVENT;
   pd->dlvr_mode = GNI_DLVMODE_PERFORMANCE;
-  pd->type = GNI_POST_FMA_PUT_W_SYNCFLAG;
+  pd->type = GNI_POST_FMA_PUT;
 }
 
 gasnetc_post_descriptor_t *gasnetc_alloc_reply_post_descriptor(gex_Token_t t,
@@ -2110,45 +2101,6 @@ void gasnetc_recv_am(peer_struct_t * const peer, gasnetc_packet_t * const packet
   gasneti_mutex_lock(&ampoll_lock);
 }
 
-static peer_struct_t *ampoll_head = NULL;
-static peer_struct_t *ampoll_tail = NULL;
-
-/* Move peer (which must be at head now), to be tail */
-GASNETI_INLINE(ampoll_last)
-void ampoll_last(peer_struct_t *peer)
-{
-  gasneti_assert(ampoll_head == peer);
-  gasneti_assert(0 != peer->event_count);
-  ampoll_head = peer->next;
-  ampoll_tail = peer;
-}
-
-/* Remove peer (which must be at head now) from polling set */
-GASNETI_INLINE(ampoll_del)
-void ampoll_del(peer_struct_t *peer)
-{
-  gasneti_assert(ampoll_head == peer);
-  if (0 == --peer->event_count) {
-    ampoll_head = ampoll_tail->next = (peer == ampoll_tail) ? NULL : peer->next;
-    /* NOTE: tail is now undefined if head became NULL */
-  }
-}
-
-/* Add peer to polling set */
-GASNETI_INLINE(ampoll_ins)
-void ampoll_ins(peer_struct_t *peer)
-{
-  if (0 == peer->event_count++) {
-    if (NULL == ampoll_head) {
-      ampoll_head = peer;
-    } else {
-      ampoll_tail->next = peer;
-    }
-    ampoll_tail = peer;
-    peer->next = ampoll_head;
-  }
-}
-
 static void gasnetc_handle_sys_shutdown_packet(uint16_t arg);
 
 GASNETI_INLINE(dispatch_ctrl)
@@ -2246,35 +2198,6 @@ void am_rvous_run(GASNETI_THREAD_FARG_ALONE)
 // Process an incoming AM rendezvous
 static void am_rvous_get(uint64_t cqdata GASNETI_THREAD_FARG);
 
-GASNETI_INLINE(poll_for_message)
-int poll_for_message(peer_struct_t * const peer, int is_slow GASNETI_THREAD_FARG)
-{
-  volatile gasnetc_notify_t * const notify = peer->local_notify_base + peer->local_notify_read;
-  const gasnetc_notify_t n = *notify;
-
-  if (n) { 
-    uint32_t target_slot = gc_notify_get_target_slot(n);
-    uint32_t initiator_slot = gc_notify_get_initiator_slot(n);
-    uint32_t type = gc_notify_get_type(n);
-
-    *notify = 0;
-    advance_notify_pointer(peer->local_notify_read);
-    if (is_slow) ampoll_del(peer);
-
-    gasneti_compiler_fence(); /* prevent compiler from prefetching over dependency on n!=0 */
-    
-    if (type == gc_notify_request) {
-      gasnetc_packet_t *packet = (gasnetc_packet_t *) (peer->local_request_base + (target_slot << am_slot_bits));
-      gasneti_assert(n == packet->header);
-      gasnetc_recv_am(peer, packet GASNETI_THREAD_PASS);
-    } else {
-      gasneti_unreachable();
-    }
-    return 1;
-  }
-  return 0;
-}
-
 /* Max number of times to poll the AM mailboxes per entry */
 /* TODO: control via env var */
 /* TODO: distinct value for CQ events reaped vs service limit on "slow" list? */
@@ -2319,14 +2242,19 @@ void gasnetc_poll_am_queue(GASNETI_THREAD_FARG_ALONE)
           dispatch_ctrl(data);
           break;
 
-        case gc_cqdata_msg: {
-          // AM arrival via FMA_PUT_W_SYNCFLAG (Eager or Reply)
+        case gc_cqdata_request: {
+          // Request
+          gasneti_assert(! am_rvous_enabled);
+          uint32_t target_slot = gc_cqdata_get_target_slot(data);
           uint32_t source = gc_cqdata_get_source(data);
           gasneti_assert(source < gasneti_nodes);
           peer_struct_t * const peer = &peer_data[source];
-          if (!poll_for_message(peer, 0 GASNETI_THREAD_PASS)) {
-            ampoll_ins(peer);
-          }
+          gasnetc_packet_t *packet = (gasnetc_packet_t *) (peer->local_request_base +
+                                                           (target_slot << am_slot_bits));
+
+          gasneti_assert(target_slot == gc_notify_get_target_slot(packet->header));
+
+          gasnetc_recv_am(peer, packet GASNETI_THREAD_PASS);
           break;
         }
 
@@ -2359,21 +2287,9 @@ void gasnetc_poll_am_queue(GASNETI_THREAD_FARG_ALONE)
           gasneti_unreachable();
       }
     }
-  } else if ((NULL == ampoll_head) || (EBUSY == gasneti_mutex_trylock(&ampoll_lock))) {
-    /* Either there is no work to be done, or another thread is already doing it */
-    return;
-  }
 
-  /* Poll "slow" sources, starting with the oldest */
-  for (i = 0; ampoll_head && (i < AM_BURST); ++i) {
-    peer_struct_t * const peer = ampoll_head;
-    if (!poll_for_message(peer, 1 GASNETI_THREAD_PASS)) {
-      if (peer == ampoll_tail) break; /* don't spin on singleton peer */
-      ampoll_last(peer);
-    }
+    gasneti_mutex_unlock(&ampoll_lock);
   }
-
-  gasneti_mutex_unlock(&ampoll_lock);
 }
 
 /* Poll the bound_ep completion queue */
