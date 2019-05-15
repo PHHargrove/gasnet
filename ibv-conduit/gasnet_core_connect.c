@@ -36,6 +36,9 @@ int gasnetc_ud_rcvs = 0;
 int gasnetc_ud_snds = 0;
 #endif
 
+#define GASNETC_SRQ_HELP_MSG " - please try running with GASNET_USE_SRQ=0 in your environment (or configure using '--disable-ibv-srq' to entirely disable SRQ support)"
+#define GASNETC_XRC_HELP_MSG " - please try running with GASNET_USE_XRC=0 in your environment (or configure using '--disable-ibv-xrc' to entirely disable XRC support)"
+
 /* ------------------------------------------------------------------------------------ */
 
 /* Common types */
@@ -208,7 +211,7 @@ gasnetc_xrc_create_qp(gasnetc_cep_t *cep, gex_Rank_t node, int qpi) {
     init_attr.comp_mask = IBV_QP_INIT_ATTR_XRCD;
     init_attr.xrcd = xrc_domain;
     xrc_recv_qp = ibv_create_qp_ex(hca->handle, &init_attr);
-    GASNETC_IBV_CHECK_PTR(xrc_recv_qp, "from ibv_create_qp_ex(xrc_rcv)");
+    GASNETC_IBV_CHECK_PTR(xrc_recv_qp, "from ibv_create_qp_ex(xrc_rcv)" GASNETC_XRC_HELP_MSG);
     gasneti_atomic32_set(rcv_qpn_p, xrc_recv_qp->qp_num, GASNETI_ATOMIC_REL);
   } else {
     struct ibv_qp_open_attr attr;
@@ -220,7 +223,7 @@ gasnetc_xrc_create_qp(gasnetc_cep_t *cep, gex_Rank_t node, int qpi) {
     attr.qp_type = IBV_QPT_XRC_RECV;
     attr.xrcd = xrc_domain;
     xrc_recv_qp = ibv_open_qp(hca->handle, &attr);
-    GASNETC_IBV_CHECK_PTR(xrc_recv_qp, "from ibv_open_qp()");
+    GASNETC_IBV_CHECK_PTR(xrc_recv_qp, "from ibv_open_qp()" GASNETC_XRC_HELP_MSG);
   }
   cep->rcv_qp = xrc_recv_qp;
 #elif GASNETC_IBV_XRC_MLNX
@@ -228,13 +231,13 @@ gasnetc_xrc_create_qp(gasnetc_cep_t *cep, gex_Rank_t node, int qpi) {
     struct ibv_qp_init_attr init_attr;
     init_attr.xrc_domain = xrc_domain;
     ret = ibv_create_xrc_rcv_qp(&init_attr, &rcv_qpn);
-    GASNETC_IBV_CHECK(ret, "from ibv_create_xrc_rcv_qp()");
+    GASNETC_IBV_CHECK(ret, "from ibv_create_xrc_rcv_qp()" GASNETC_XRC_HELP_MSG);
     gasneti_atomic32_set(rcv_qpn_p, rcv_qpn, GASNETI_ATOMIC_REL);
   } else {
     gasneti_waituntil(1 != (rcv_qpn = gasneti_atomic32_read(rcv_qpn_p, 0))); /* includes rmb() */
     if_pf (rcv_qpn == 0) goto retry; /* Should not happen */
     ret = ibv_reg_xrc_rcv_qp(xrc_domain, rcv_qpn);
-    GASNETC_IBV_CHECK(ret, "from ibv_reg_xrc_rcv_qp()");
+    GASNETC_IBV_CHECK(ret, "from ibv_reg_xrc_rcv_qp()" GASNETC_XRC_HELP_MSG);
   }
 #endif
 
