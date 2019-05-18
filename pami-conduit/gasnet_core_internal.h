@@ -107,7 +107,6 @@ typedef struct {
 
 extern pami_client_t      gasnetc_pami_client;
 extern pami_context_t     gasnetc_context; /* XXX: More than one */
-extern pami_geometry_t    gasnetc_world_geom;
 extern pami_endpoint_t    *gasnetc_endpoint_tbl;
 extern size_t             gasnetc_num_contexts;
 extern pami_memregion_t   gasnetc_mymemreg;
@@ -182,9 +181,6 @@ pami_result_t gasnetc_wait_atomic(pami_context_t context,
 /* ------------------------------------------------------------------------------------ */
 /* Collectives (incl. bootstrap collective ops) */
 
-/* Get the default or user-specified algorithm for a given collective operation */
-extern void gasnetc_dflt_coll_alg(pami_geometry_t geom, pami_xfer_type_t op, pami_algorithm_t *alg_p);
-
 /* Used for ALLSYNC barrier in blocking collectives: */
 extern void gasnetc_fast_barrier(void);
 
@@ -193,7 +189,7 @@ extern void gasnetc_bootstrapBarrier(void);
 extern void gasnetc_bootstrapExchange(void *src, size_t len, void *dst);
 
 /* Hooks for conduit-specific collectives */
-#if !defined(GASNET_NO_PAMI_COLL)
+#if 0
   /* NOTE: Focus is on blocking collectives because they are simpler, and are all that UPCR uses */
   #define GASNET_PAMI_NATIVE_COLL 1
   #define gasnete_coll_init_conduit gasnete_coll_init_pami

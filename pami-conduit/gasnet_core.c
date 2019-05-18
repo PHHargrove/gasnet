@@ -28,7 +28,6 @@ gex_AM_Entry_t *gasnetc_handler; // TODO-EX: will be replaced with per-EP tables
 /* Global Data */
 pami_client_t      gasnetc_pami_client;
 pami_context_t     gasnetc_context; /* XXX: More than one */
-pami_geometry_t    gasnetc_world_geom;
 pami_endpoint_t    *gasnetc_endpoint_tbl;
 size_t             gasnetc_num_contexts;            
 pami_memregion_t   gasnetc_mymemreg;
@@ -122,9 +121,6 @@ static int gasnetc_init(int *argc, char ***argv, gex_Flags_t flags) {
     gasnetc_context = contexts[0];
     gasnetc_exit_context = contexts[1];
   }
-
-  rc = PAMI_Geometry_world(gasnetc_pami_client, &gasnetc_world_geom);
-  GASNETC_PAMI_CHECK(rc, "calling PAMI_Geometry_world()");
 
   gasneti_assert_zeroret(gasnetc_exit_init(use_exit_geom));
   gasneti_assert_zeroret(gasnetc_am_init());
@@ -540,9 +536,6 @@ static double gasnetc_exittimeout = GASNETC_DEFAULT_EXITTIMEOUT_MAX;
 
 /* Exit coordination vars */
 static uint8_t gasnetc_exitcode = 0;
-static pami_xfer_t gasnetc_exit_reduce_op;
-
-static pami_geometry_t gasnetc_exit_geom;
 
 static int gasnetc_exit_init(int use_exit_geom) {
   gasnetc_exittimeout = gasneti_get_exittimeout(GASNETC_DEFAULT_EXITTIMEOUT_MAX,
@@ -550,45 +543,13 @@ static int gasnetc_exit_init(int use_exit_geom) {
                                                 GASNETC_DEFAULT_EXITTIMEOUT_FACTOR,
                                                 GASNETC_DEFAULT_EXITTIMEOUT_MIN);
 
-  if (use_exit_geom) {
-    static pami_geometry_range_t slices[1]; /* static is required here! */
-    pami_configuration_t conf[1];
-    volatile unsigned int done;
-    pami_result_t rc;
-
-    /* Create a geometry from the contexts we've dedicated to the exit processing */
-    conf[0].name = PAMI_GEOMETRY_OPTIMIZE;
-    conf[0].value.intval = 0;
-    slices[0].lo = 0;
-    slices[0].hi = gasneti_nodes - 1;
-    done = 0;
-    rc = PAMI_Geometry_create_taskrange(gasnetc_pami_client, /* context_offset: */ 1,
-                                        conf, 1,
-                                        &gasnetc_exit_geom, gasnetc_world_geom,
-                                        /* id: */ 2, slices, 1,
-                                        gasnetc_context,
-                                        &gasnetc_cb_inc_uint, (void*)&done);
-    GASNETC_PAMI_CHECK(rc, "from PAMI_Geometry_create_taskrange()");
-    while (!done) {
-      GASNETC_PAMI_LOCK(gasnetc_context);
-      rc = PAMI_Context_advance(gasnetc_context, 1);
-      GASNETC_PAMI_CHECK_ADVANCE(rc, "advancing PAMI_Geometry_create_taskrange()");
-      GASNETC_PAMI_UNLOCK(gasnetc_context);
-    }
-  } else {
-     gasnetc_exit_context = gasnetc_context;
-     gasnetc_exit_geom    = gasnetc_world_geom;
-  }
-
-  memset(&gasnetc_exit_reduce_op, 0, sizeof(gasnetc_exit_reduce_op));
-  gasnetc_dflt_coll_alg(gasnetc_exit_geom, PAMI_XFER_ALLREDUCE, &gasnetc_exit_reduce_op.algorithm);
-
   // register process exit-time hook
   gasneti_registerExitHandler(gasnetc_exit);
 
   return GASNET_OK;
 }
 
+#if 0
 static int gasnetc_exit_reduce(void) {
   gasneti_tick_t start_time = gasneti_ticks_now();
   int64_t timeout_ns = gasnetc_exittimeout * 1.0e9;
@@ -631,6 +592,7 @@ static int gasnetc_exit_reduce(void) {
 
   return 0;
 }
+#endif
 
 extern void gasnetc_exit(int exitcode) {
   /* once we start a shutdown, ignore all future SIGQUIT signals or we risk reentrancy */
@@ -655,11 +617,13 @@ extern void gasnetc_exit(int exitcode) {
   /* Detect collective exit while performing reduce(MAX(exitcode))
    * The reduction has a timeout to distinguish non-collective exits */
   gasnetc_exitcode = exitcode;
+#if 0
   if (0 != gasnetc_exit_reduce()) {
     /* Failed to coordinate shutdown */
     /* XXX: can we raise SIGQUIT remotely, etc. (see bug 2785) */
     gasnetc_exitcode = 1; /* on both BG/Q and IBM PE this forces global termination */
   }
+#endif
   gasneti_killmyprocess(gasnetc_exitcode);
 
   gasneti_fatalerror("gasnetc_exit failed!");
@@ -965,12 +929,10 @@ static void am_Med_dispatch(
     recv->cookie = token;
     recv->local_fn = &am_Med_event;
     recv->addr = data;
-#if 0 /* the hints recv_contiguous and recv_copy ensure we can ignore these */
     recv->type = PAMI_TYPE_BYTE;
     recv->offset = 0;
     recv->data_fn = PAMI_DATA_COPY;
     recv->data_cookie = NULL;
-#endif
   }
 }
 
@@ -1045,7 +1007,7 @@ static int gasnetc_am_init(void) {
 
   /* TODO: Others hints? */
   hints.multicontext = PAMI_HINT_DISABLE;
-  hints.recv_contiguous = PAMI_HINT_ENABLE;
+  //hints.recv_contiguous = PAMI_HINT_ENABLE;
   hints.recv_copy = PAMI_HINT_ENABLE;
 #if GASNET_PSHM
   hints.use_shmem = PAMI_HINT_DISABLE;

@@ -7,6 +7,7 @@
 #include <gasnet_coll_pami.h>
 #include <limits.h> /* For INT_MAX */
 
+#if 0
 /* ------------------------------------------------------------------------------------ */
 /* Bootstrap collectives and dependencies */
 
@@ -311,6 +312,7 @@ gasnetc_bootstrapExchange(void *src, size_t len, void *dst) {
 
   native_collective(&op, 0);
 }
+#endif //0
 
 /* ------------------------------------------------------------------------------------ */
 /* Native collectives */

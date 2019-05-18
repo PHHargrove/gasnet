@@ -572,6 +572,7 @@ int gasnete_put(     gex_TM_t tm,
   "pd" = PAMI Dissemination
 */
 
+#if 0
 #if 1
   /* Benchmarks upto 50% better than PAMIALLREDUCE on both BG/Q and PERCS */
   #define GASNETE_BARRIER_DEFAULT "PAMIDISSEM"
@@ -602,12 +603,14 @@ static void gasnete_pdbarrier_init(gasnete_coll_team_t team);
       gasnete_pdbarrier_init(TEAM);                              \
     }                                                            \
   } while (0)
+#endif //0
 
 /* use reference implementation of barrier */
 #define GASNETI_GASNET_EXTENDED_REFBARRIER_C 1
 #include "gasnet_extended_refbarrier.c"
 #undef GASNETI_GASNET_EXTENDED_REFBARRIER_C
 
+#if 0
 /* PAMI All Reduce ("par") Barrier:
  * Barrier via PAMI-level all-reduce of two 64-bit unsigned integers.
  */
@@ -1223,6 +1226,7 @@ static void gasnete_pdbarrier_init(gasnete_coll_team_t team) {
 
   gasneti_leak(barr);
 }
+#endif //0
 
 /* ------------------------------------------------------------------------------------ */
 /*
