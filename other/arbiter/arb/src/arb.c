@@ -18,6 +18,14 @@ int arbi_numclients = 0;
 int arbi_info_idx = 0;
 static pthread_mutex_t arbi_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+static void arbi_registration_notification(int handle)
+{
+    for (int i = 0; i < arbi_info_idx; i++) {
+        if ((i != handle) && arbi_info_list[i].valid && arbi_info_list[i].info.registration_notification)
+            arbi_info_list[i].info.registration_notification();
+    }
+}
+
 int arb_register(arb_info_s *info, int *handle)
 {
     pthread_mutex_lock(&arbi_mutex);
@@ -25,6 +33,8 @@ int arb_register(arb_info_s *info, int *handle)
     arbi_info_list[arbi_info_idx].info.myname = strdup(info->myname);
     arbi_info_list[arbi_info_idx].valid = 1;
     *handle = arbi_info_idx++;
+    arbi_numclients++;
+    arbi_registration_notification(*handle);
     pthread_mutex_unlock(&arbi_mutex);
 
     return ARB_SUCCESS;
@@ -33,6 +43,11 @@ int arb_register(arb_info_s *info, int *handle)
 int arb_deregister(int handle)
 {
     arbi_info_list[handle].valid = 0;
+
+    pthread_mutex_lock(&arbi_mutex);
+    arbi_numclients--;
+    arbi_registration_notification(handle);
+    pthread_mutex_unlock(&arbi_mutex);
 
     return ARB_SUCCESS;
 }
