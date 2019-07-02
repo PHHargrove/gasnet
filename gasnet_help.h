@@ -1000,6 +1000,31 @@ typedef void (*gasneti_progressfn_t)(void);
 #define GASNETC_IMMEDIATE_MAYBE_POLL(flag) \
     do { if (GASNETC_IMMEDIATE_WOULD_POLL(flag)) gasneti_AMPoll(); } while (0)
 
+// Shared (multi-runtime) progress arbiter
+#if GASNETI_HAVE_ARBITER
+  #include <arb.h>
+  extern int gasneti_use_arb;
+  #define GASNETI_USE_ARB() (gasneti_use_arb && arb_numclients() > 1)
+  //
+  // For use in public headers, where threadinfo is opaque
+  //
+  extern void _gasneti_arb_call(GASNETI_THREAD_FARG_ALONE);
+  #define gasneti_arb_call() do {                                  \
+      if (GASNETI_USE_ARB()) {                                     \
+        _gasneti_arb_call(GASNETI_THREAD_GET_ALONE);               \
+      }                                                            \
+    } while (0)
+  extern void _gasneti_arb_call_weak(GASNETI_THREAD_FARG_ALONE);
+  #define gasneti_arb_call_weak() do {                             \
+      if (GASNETI_USE_ARB()) {                                     \
+        _gasneti_arb_call_weak(GASNETI_THREAD_GET_ALONE);          \
+      }                                                            \
+    } while (0)
+#else
+  #define gasneti_arb_call()      ((void)0)
+  #define gasneti_arb_call_weak() ((void)0)
+#endif
+
 /* Blocking functions
  * Note the _rmb at the end loop of each is required to ensure that subsequent
  * reads will not observe values that were prefeteched or are otherwise out
@@ -1021,7 +1046,9 @@ extern int gasneti_wait_mode; /* current waitmode hint */
  */
 #ifndef gasneti_waitwhile
   #define gasneti_waitwhile(cnd) do { \
-    while (cnd) GASNETI_WAITHOOK();   \
+    while (cnd) { \
+       GASNETI_WAITHOOK();   \
+    } \
     gasneti_local_rmb();              \
   } while (0)
 #endif
@@ -1035,6 +1062,7 @@ extern int gasneti_wait_mode; /* current waitmode hint */
       gasneti_AMPoll();               \
       while (cnd) {                   \
         GASNETI_WAITHOOK();           \
+        gasneti_arb_call();           \
         gasneti_AMPoll();             \
       }                               \
     }                                 \
@@ -1060,6 +1088,7 @@ extern int gasneti_wait_mode; /* current waitmode hint */
   GASNETI_INLINE(_gasnet_AMPoll)
   int _gasnet_AMPoll(GASNETI_THREAD_FARG_ALONE) {
     GASNETI_TRACE_EVENT(I, AMPOLL);
+    gasneti_arb_call_weak();
     return _gasneti_AMPoll(GASNETI_THREAD_PASS_ALONE);
   }
   #define gasnet_AMPoll() _gasnet_AMPoll(GASNETI_THREAD_GET_ALONE)

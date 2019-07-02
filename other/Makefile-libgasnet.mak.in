@@ -17,6 +17,9 @@ SEPARATE_CC = @SEPARATE_CC@
 
 @USE_PSHM_TRUE@PSHM_SOURCES  = $(top_srcdir)/gasnet_pshm.c
 
+@BUILD_ARBITER_TRUE@GASNET_ARB_INCLUDES  = -I$(top_srcdir)/other/arbiter/arb/src
+@BUILD_ARBITER_FALSE@GASNET_ARB_INCLUDES = @GASNET_ARB_INCLUDES@
+
 @HAVE_PTHREAD_FALSE@PTHREADS_ERROR_CHECK = $(MAKE) do-pthreads-error
 @HAVE_PTHREAD_TRUE@PTHREADS_ERROR_CHECK = :
 
@@ -32,7 +35,8 @@ LIBINCLUDES = $(TOOLLIBINCLUDES) \
         -I$(top_srcdir)/extended-ref/coll \
         -I$(top_srcdir)/extended-ref/vis \
         -I$(top_srcdir)/extended-ref/ratomic \
-        -I$(top_srcdir)/extended-ref  
+        -I$(top_srcdir)/extended-ref \
+        $(GASNET_ARB_INCLUDES)
 
 
 TOOLLIBDEFINES =                    \

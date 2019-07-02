@@ -788,6 +788,14 @@ typedef struct _gasneti_threaddata_t {
   gasnete_eop_t *foreign_eops;
   gasnete_iop_t *foreign_iops;
 
+#if GASNETI_HAVE_ARBITER
+  // Multi-runtime progress arbiter
+  struct {
+    int active;
+    unsigned int cntr;
+  } arb;
+#endif
+
   //
   // Conduit-specific data
   // Owned by [CONDUIT]-conduie/gasnet_extended_fwd.h
@@ -796,6 +804,38 @@ typedef struct _gasneti_threaddata_t {
   GASNETE_CONDUIT_THREADDATA_FIELDS
   #endif
 } gasneti_threaddata_t;
+
+/* ------------------------------------------------------------------------------------ */
+// Shared (multi-runtime) progress arbiter
+
+#if GASNETI_HAVE_ARBITER
+  extern void gasneti_arb_init(void);
+  extern int gasneti_arb_handle;
+  extern unsigned int gasneti_arb_weak_mask;
+  //
+  // Macros for internal use
+  //
+  #define GASNETI_ARB_HOOK() do {                                   \
+      if (GASNETI_USE_ARB()) {                                      \
+        if (!GASNETI_MYTHREAD->arb.active) {                        \
+          gasneti_assert_zeroret(arb_progress(gasneti_arb_handle)); \
+        }                                                           \
+      }                                                             \
+    } while (0)
+  #define GASNETI_ARB_HOOK_WEAK() do {                              \
+      if (GASNETI_USE_ARB()) {                                      \
+        gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;   \
+        if (!mythread->arb.active &&                                \
+            !(gasneti_arb_weak_mask & mythread->arb.cntr++)) {      \
+          gasneti_assert_zeroret(arb_progress(gasneti_arb_handle)); \
+        }                                                           \
+      }                                                             \
+    } while (0)
+#else
+  #define gasneti_arb_init()      ((void)0)
+  #define GASNETI_ARB_HOOK()      ((void)0)
+  #define GASNETI_ARB_HOOK_WEAK() ((void)0)
+#endif
 
 /* ------------------------------------------------------------------------------------ */
 GASNETI_END_NOWARN

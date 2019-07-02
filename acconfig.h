@@ -283,6 +283,9 @@
 /* BLCR support, path and features */
 #undef GASNETI_BLCR_ENABLED
 
+/* support for multi-runtime progress arbiter */
+#undef GASNETI_HAVE_ARBITER
+
 /* support for backtracing */
 #undef HAVE_EXECINFO_H
 #undef HAVE_BACKTRACE

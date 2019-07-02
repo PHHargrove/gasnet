@@ -4336,6 +4336,50 @@ AC_SUBST(PMI_SPAWNER_CFLAGS)
 AC_SUBST(PMIRUN_CMD)
 AM_CONDITIONAL(HAVE_BOOTSTRAP_PMI, test "$have_pmi" = yes)
 
+########################################################################
+# Conduit-independent multi-runtime progress arbiter
+
+dnl WIP - need options for external build and to disable entirely
+AC_MSG_CHECKING(for multi-runtime progress arbiter)
+build_arbiter=yes
+have_arbiter=embedded
+GASNET_ARB_LIBS='-larb'
+GASNET_ARB_LDFLAGS=''
+GASNET_ARB_INCLUDES=''
+GASNET_WITH(arbiter,
+   [Path to multi-runtime progress arbiter (default is embedded)],
+   [if test "$withval" != yes; then
+      AC_MSG_RESULT($withval)
+      if test -e "$withval/include/arb.h"; then
+        AC_MSG_RESULT($withval)
+        ARB_HOME="$withval"
+        GASNET_PACKAGE_CFLAGS([ARB])
+        GASNET_PACKAGE_LDFLAGS([ARB],[arb])
+        ARB_LIBS='-larb'
+        GASNET_SPLIT_LINKER_OPTS(ARB_LDFLAGS,ARB_LIBS)
+        GASNET_ARB_LIBS="$ARB_LIBS"
+        GASNET_ARB_LDFLAGS="$ARB_LDFLAGS"
+        GASNET_ARB_INCLUDES="$ARB_CFLAGS"
+        build_arbiter=no
+        have_arbiter=external
+      else
+        AC_MSG_ERROR([Invalid --with-arbiter=$withval (does not contain include/arb.h)])
+      fi
+    else
+      AC_MSG_RESULT(embedded)
+    fi],
+   [AC_MSG_RESULT(disabled)
+    build_arbiter=no
+    have_arbiter=no],
+   [AC_MSG_RESULT(embedded)])
+if test $have_arbiter != no; then
+  AC_DEFINE(GASNETI_HAVE_ARBITER)
+fi
+AM_CONDITIONAL(BUILD_ARBITER, test "$build_arbiter" = yes)
+AC_SUBST(GASNET_ARB_LIBS)
+AC_SUBST(GASNET_ARB_LDFLAGS)
+AC_SUBST(GASNET_ARB_INCLUDES)
+
 dnl GASNET_TOOLSONLY_FALSE_END
 ########################################################################
 
@@ -5076,6 +5120,7 @@ cat >>$CONDUIT_LIST <<EOF
   Segment config:         $segconfig
   PSHM support:           $with_pshm
   BLCR support:           $have_blcr
+  Progress arbiter:       $have_arbiter
   Atomics support:        $atomics_config
 EOF
 else
@@ -5135,6 +5180,7 @@ other/firehose/Makefile
 other/firehose/firehose.mak
 other/blcr/Makefile
 other/blcr/blcr.mak
+other/arbiter/Makefile
 
  dnl Conduit Makefiles and scripts
 

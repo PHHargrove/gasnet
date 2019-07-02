@@ -126,6 +126,7 @@ int  _gex_Event_Test(gex_Event_t _event GASNETI_THREAD_FARG) {
   int _result = GASNET_OK;
   if_pt (_event != GEX_EVENT_INVALID)
     _result = gasnete_test(_event GASNETI_THREAD_PASS);
+  gasneti_arb_call_weak();
   GASNETI_TRACE_TRYSYNC(TEST_SYNCNB,_result);
   return _result;
 }
@@ -135,6 +136,7 @@ int  _gex_Event_Test(gex_Event_t _event GASNETI_THREAD_FARG) {
 GASNETI_INLINE(_gex_Event_TestSome)
 int _gex_Event_TestSome(gex_Event_t *_pevent, size_t _numevents, gex_Flags_t _flags GASNETI_THREAD_FARG) {
   int _result = gasnete_test_some(_pevent,_numevents GASNETI_THREAD_PASS);
+  gasneti_arb_call_weak();
   GASNETI_TRACE_TRYSYNC(TEST_SYNCNB_SOME,_result);
   return _result;
 }
@@ -144,6 +146,7 @@ int _gex_Event_TestSome(gex_Event_t *_pevent, size_t _numevents, gex_Flags_t _fl
 GASNETI_INLINE(_gex_Event_TestAll)
 int _gex_Event_TestAll(gex_Event_t *_pevent, size_t _numevents, gex_Flags_t _flags GASNETI_THREAD_FARG) {
   int _result = gasnete_test_all(_pevent,_numevents GASNETI_THREAD_PASS);
+  gasneti_arb_call_weak();
   GASNETI_TRACE_TRYSYNC(TEST_SYNCNB_ALL,_result);
   return _result;
 }

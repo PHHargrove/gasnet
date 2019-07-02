@@ -452,6 +452,11 @@ extern int gasnetc_Client_Init(
     gasnet_barrier(0, GASNET_BARRIERFLAG_UNNAMED);
   }
 
+#if 0 // (###) enable if your conduit supports the progress arbiter
+  // Initialize multi-runtime progress arbiter
+  gasneti_arb_init();
+#endif
+
   return GASNET_OK;
 }
 

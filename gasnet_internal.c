@@ -1795,6 +1795,59 @@ extern gasneti_spawnerfn_t const *gasneti_spawnerInit(int *argc_p, char ***argv_
 }
 
 /* ------------------------------------------------------------------------------------ */
+// Shared (multi-runtime) progress arbiter
+//
+// WIP: trace/stats?
+// WIP: env var to vary weak frequency (currently 1/1024)
+
+#if GASNETI_HAVE_ARBITER
+  int gasneti_use_arb = 0;
+  int gasneti_arb_handle = -1; // TODO: use the defined NULL handle
+  unsigned int gasneti_arb_weak_mask = 0;
+
+  static void gasneti_arb_fn(void) {
+     GASNET_BEGIN_FUNCTION();
+
+     gasneti_assert(0 == GASNETI_MYTHREAD->arb.active);
+     GASNETI_MYTHREAD->arb.active = 1;
+
+     gasneti_AMPoll();
+
+     gasneti_assert(1 == GASNETI_MYTHREAD->arb.active);
+     GASNETI_MYTHREAD->arb.active = 0;
+  }
+
+  void gasneti_arb_init(void) {
+    static int once = 0;
+    if_pf (once) return;
+    once = 1;
+
+    gasneti_use_arb = gasneti_getenv_yesno_withdefault("GASNET_USE_ARBITER", 1);
+
+    if (gasneti_use_arb) {
+      arb_info_s info = { 1, 0, &gasneti_arb_fn, NULL, "GASNet-EX" };
+      gasneti_assert_zeroret(arb_register(&info, &gasneti_arb_handle));
+      gasneti_arb_weak_mask = 1024;
+    }
+  }
+
+  // For use in public headers where threadinfo is opaque
+  void _gasneti_arb_call(GASNETI_THREAD_FARG_ALONE) {
+    gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
+    if (!mythread->arb.active) {
+      gasneti_assert_zeroret(arb_progress(gasneti_arb_handle));
+    }
+  }
+  void _gasneti_arb_call_weak(GASNETI_THREAD_FARG_ALONE) {
+    gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
+    if (!mythread->arb.active &&
+        !(gasneti_arb_weak_mask & mythread->arb.cntr++)) {
+      gasneti_assert_zeroret(arb_progress(gasneti_arb_handle));
+    }
+  }
+#endif
+
+/* ------------------------------------------------------------------------------------ */
 /* Buffer management
  */
 #if GASNET_DEBUGMALLOC || GASNET_DEBUG

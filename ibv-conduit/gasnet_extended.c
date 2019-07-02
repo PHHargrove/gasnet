@@ -660,6 +660,7 @@ static int gasnete_ibdbarrier_wait(gasnete_coll_team_t team, int id, int flags) 
       GASNETI_WAITHOOK();
       GASNETI_SAFE(gasneti_AMPoll());
       gasnete_ibdbarrier_kick(team);
+      GASNETI_ARB_HOOK();
     }
   }
   gasneti_sync_reads(); /* ensure correct barrier_flags will be read */

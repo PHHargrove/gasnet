@@ -2823,6 +2823,9 @@ extern int gasnetc_Client_Init(
     gasnet_barrier(0, GASNET_BARRIERFLAG_UNNAMED);
   }
 
+  // Initialize multi-runtime progress arbiter
+  gasneti_arb_init();
+
   return GASNET_OK;
 }
 
@@ -4431,6 +4434,7 @@ int gasnetc_ReqRepGeneric(gasnetc_EP_t ep,
           #endif
           } else {
             do {
+              GASNETI_ARB_HOOK();
 	      GASNETI_WAITHOOK();
               gasnetc_poll_rcv_all(ep, 1 GASNETI_THREAD_PASS);
             } while (!gasnetc_sema_trydown(sema));
@@ -4458,6 +4462,7 @@ int gasnetc_ReqRepGeneric(gasnetc_EP_t ep,
           #endif
           } else {
             do {
+              GASNETI_ARB_HOOK();
 	      GASNETI_WAITHOOK();
               gasnetc_poll_rcv_all(ep, 1 GASNETI_THREAD_PASS);
             } while (!gasnetc_sema_trydown(sema));
