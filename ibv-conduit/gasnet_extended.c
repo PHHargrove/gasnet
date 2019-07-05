@@ -656,11 +656,16 @@ static int gasnete_ibdbarrier_wait(gasnete_coll_team_t team, int id, int flags) 
     /* kick once, and if still necessary, wait for a response */
     gasnete_ibdbarrier_kick(team);
     /* cannot BLOCKUNTIL since progess may occur on non-AM events */
-    while (barrier_data->barrier_state < barrier_data->barrier_goal) {
-      GASNETI_WAITHOOK();
-      GASNETI_SAFE(gasneti_AMPoll());
-      gasnete_ibdbarrier_kick(team);
-      GASNETI_ARB_HOOK();
+    if (barrier_data->barrier_state < barrier_data->barrier_goal) {
+    #if GASNETI_HAVE_ARBITER
+      GASNET_BEGIN_FUNCTION();
+    #endif
+      do {
+        GASNETI_ARB_HOOK();
+        GASNETI_WAITHOOK();
+        GASNETI_SAFE(gasneti_AMPoll());
+        gasnete_ibdbarrier_kick(team);
+      } while (barrier_data->barrier_state < barrier_data->barrier_goal);
     }
   }
   gasneti_sync_reads(); /* ensure correct barrier_flags will be read */
