@@ -6,6 +6,7 @@
 AUTOMAKE_OPTIONS = foreign 1.4
 
 EXTRA_DIST = arb
+.PHONY: arb
 
 SUBDIRS = .
 
