@@ -25,7 +25,7 @@ typedef enum {
   GASNETC_UCX_FAILED
 } gasnetc_ucx_req_status_t;
 
-typedef struct __attribute__((packed)) {
+typedef struct {
   gex_Rank_t            dst;
   gex_Rank_t            src;
   gex_AM_Index_t        handler;
