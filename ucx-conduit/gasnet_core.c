@@ -209,6 +209,18 @@ static int gasnetc_init(int *argc, char ***argv, gex_Flags_t flags) {
      If the conduit can build gasneti_nodemap[] w/o assistance, it should
      call gasneti_nodemapParse() after constructing it (instead of nodemapInit()).
   */
+#if GASNET_PSHM
+  /* (###) If your conduit will support PSHM, you should initialize it here.
+   * The 1st argument is normally gasneti_spawner->SNodeBroadcast or equivalent
+   * The 2nd argument is the amount of shared memory space needed for any
+   * conduit-specific uses.
+   * The return value is a pointer to the space requested by the 2nd argument.
+   * It is advisable that the conduit ensure pages in this space are touched,
+   * possibly using gasneti_pshm_prefault(), prior to use of gasneti_segmentLimit()
+   * or similar memory probes.
+   */
+  //### = gasneti_pshm_init(gasneti_spawner->SNodeBroadcast, ###);
+#endif
   gasneti_nodemapInit(gasneti_spawner->Exchange, NULL, 0, 0);
 
   /* allocate and attach an aux segment */
@@ -530,6 +542,25 @@ extern void gasnetc_exit(int exitcode) {
   Misc. Active Message Functions
   ==============================
 */
+#if GASNET_PSHM
+/* (###) GASNETC_GET_HANDLER
+ *   If your conduit will support PSHM, then there needs to be a way
+ *   for PSHM to see your handler table.  If you use the recommended
+ *   implementation then you don't need to do anything special.
+ *   Othwerwise, #define GASNETC_GET_HANDLER in gasnet_core_fwd.h and
+ *   implement gasnetc_get_handler() as a macro in
+ *   gasnet_core_internal.h
+ *
+ * (###) Tokens and "nbrhd" (loopback and PSHM):
+ *   To permit conduit-specific tokens to co-exist with ones used by the
+ *   conduit-independent implementation of AMs within the neighborhood,
+ *   the nbrhd implementation produces tokens with the least-significant
+ *   bit set (assuming the conduit never will).  This restricts the
+ *   conduit's implemention of tokens, but allows the common choice in
+ *   which tokens are pointers to a type with alignment greater than 1.
+ */
+#endif
+
 extern gex_TI_t gasnetc_Token_Info(
                 gex_Token_t         token,
                 gex_Token_Info_t    *info,
@@ -578,8 +609,12 @@ extern gex_TI_t gasnetc_Token_Info(
 
 extern int gasnetc_AMPoll(void) {
   GASNETI_CHECKATTACH();
+#if GASNET_PSHM
+  /* (###) If your conduit will support PSHM, let it make progress here. */
+  gasneti_AMPSHMPoll(0);
+#endif
   /* protected progress of UCX */
-  gasnetc_req_poll(GASNETC_LOCK_REGULAR);
+  gasnetc_req_poll(GASNETC_LOCK_MODE_REGULAR);
   return GASNET_OK;
 }
 
@@ -596,10 +631,16 @@ int gasnetc_AMRequestShort( gex_TM_t tm, gex_Rank_t rank, gex_AM_Index_t handler
 {
   int retval;
   gex_Rank_t jobrank = gasneti_e_tm_rank_to_jobrank(tm, rank);
+  if (GASNETI_NBRHD_JOBRANK_IS_LOCAL(jobrank)) {
+    retval = gasnetc_nbrhd_RequestGeneric(gasneti_Short, jobrank, handler,
+                                          0, 0, 0, flags, numargs,
+                                          argptr GASNETI_THREAD_PASS);
+  } else {
+    retval = gasnetc_AM_ReqRepGeneric(GASNETC_UCX_AM_SHORT, jobrank, handler,
+                                      flags, 1, numargs,
+                                      argptr GASNETI_THREAD_FARG, NULL, 0, NULL);
+  }
 
-  retval = gasnetc_AM_ReqRepGeneric(GASNETC_UCX_AM_SHORT, jobrank, handler,
-                                    flags, 1, numargs,
-                                    argptr GASNETI_THREAD_FARG, NULL, 0, NULL);
   return retval;
 }
 
@@ -643,11 +684,19 @@ int gasnetc_AMRequestMedium(gex_TM_t tm, gex_Rank_t rank, gex_AM_Index_t handler
   int retval;
   gex_Rank_t jobrank = gasneti_e_tm_rank_to_jobrank(tm, rank);
 
-  gasneti_leaf_finish(lc_opt); // TODO-EX: should support async local completion
-  retval = gasnetc_AM_ReqRepGeneric(GASNETC_UCX_AM_MEDIUM, jobrank, handler,
-                                    flags, 1, numargs,
-                                    argptr GASNETI_THREAD_FARG, source_addr,
-                                    nbytes, NULL);
+  if (GASNETI_NBRHD_JOBRANK_IS_LOCAL(jobrank)) {
+    gasneti_leaf_finish(lc_opt); // synchronous LC
+    retval = gasnetc_nbrhd_RequestGeneric( gasneti_Medium, jobrank, handler,
+                                           source_addr, nbytes, 0, flags,
+                                           numargs, argptr GASNETI_THREAD_PASS);
+  } else {
+    gasneti_leaf_finish(lc_opt); // TODO-EX: should support async local completion
+    retval = gasnetc_AM_ReqRepGeneric(GASNETC_UCX_AM_MEDIUM, jobrank, handler,
+                                      flags, 1, numargs,
+                                      argptr GASNETI_THREAD_FARG, source_addr,
+                                      nbytes, NULL);
+  }
+
   return retval;
 }
 
@@ -855,13 +904,22 @@ int gasnetc_AMRequestLong(  gex_TM_t tm, gex_Rank_t rank, gex_AM_Index_t handler
 {
   int retval;
 
-  gasneti_leaf_finish(lc_opt); // TODO-EX: should support async local completion
 
   gex_Rank_t jobrank = gasneti_e_tm_rank_to_jobrank(tm, rank);
-  retval = gasnetc_AM_ReqRepGeneric(GASNETC_UCX_AM_LONG, jobrank, handler,
-                                    flags, 1, numargs,
-                                    argptr GASNETI_THREAD_FARG, source_addr,
-                                     nbytes, dest_addr);
+  if (GASNETI_NBRHD_JOBRANK_IS_LOCAL(jobrank)) {
+    gasneti_leaf_finish(lc_opt); // synchronous LC
+    retval = gasnetc_nbrhd_RequestGeneric( gasneti_Long, jobrank, handler,
+                                           source_addr, nbytes, dest_addr,
+                                           flags, numargs,
+                                           argptr GASNETI_THREAD_PASS);
+  } else {
+    gasneti_leaf_finish(lc_opt); // TODO-EX: should support async local completion
+    retval = gasnetc_AM_ReqRepGeneric(GASNETC_UCX_AM_LONG, jobrank, handler,
+                                      flags, 1, numargs,
+                                      argptr GASNETI_THREAD_FARG, source_addr,
+                                      nbytes, dest_addr);
+  }
+
   return retval;
 }
 
