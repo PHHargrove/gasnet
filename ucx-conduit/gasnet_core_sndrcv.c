@@ -362,7 +362,8 @@ GASNETI_INLINE(gasnetc_am_req_format)
 void gasnetc_am_req_format(gasnetc_am_req_t *am_req,
                            gasnetc_ucx_am_type_t am_type, gex_Rank_t rank,
                            gex_AM_Index_t handler, uint8_t is_req, int numargs,
-                           va_list argptr GASNETI_THREAD_FARG, uint32_t nbytes)
+                           va_list argptr GASNETI_THREAD_FARG, uint32_t nbytes,
+                           void *dst_addr)
 {
   int i;
   int args_size = sizeof(gex_AM_Arg_t) * numargs;
@@ -376,6 +377,7 @@ void gasnetc_am_req_format(gasnetc_am_req_t *am_req,
   am_req->am_hdr.src      = gasneti_mynode;
   am_req->am_hdr.numargs  = numargs;
   am_req->am_hdr.nbytes   = nbytes;
+  am_req->am_hdr.dst_addr = dst_addr;
   gasnetc_req_add_iov(am_req, &am_req->am_hdr, sizeof(am_req->am_hdr));
 
   gasneti_assert(args_size <= (sizeof(gex_AM_Arg_t) * GASNETC_MAX_ARGS));
@@ -610,7 +612,7 @@ int gasnetc_AM_ReqRepGeneric(gasnetc_ucx_am_type_t am_type,
 
   /* format common data */
   gasnetc_am_req_format(am_req, am_type, jobrank, handler, is_request,
-                        numargs, argptr, nbytes);
+                        numargs, argptr, nbytes, dst_addr);
   if (!nbytes) {
     goto send;
   }
@@ -638,8 +640,6 @@ int gasnetc_AM_ReqRepGeneric(gasnetc_ucx_am_type_t am_type,
       gasneti_assert(dst_addr);
       /* pack payload */
       gasnetc_req_add_iov(am_req, src_addr, nbytes);
-      /* pack dst_addr */
-      am_req->am_hdr.dst_addr = dst_addr;
       gasnetc_req_add_iov(am_req, &am_req->am_hdr.dst_addr, sizeof(dst_addr));
       is_sync = 1;
       break;
