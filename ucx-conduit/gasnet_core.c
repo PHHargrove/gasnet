@@ -82,13 +82,14 @@ static void gasnetc_fini(void)
 {
   gasneti_bootstrapFini();
   gasneti_nodemapFini();
-  gasnetc_req_list_free();
+  gasnetc_sreq_list_free();
   gasnetc_am_req_pool_free();
-  gasnetc_buffer_pool_free();
 
   /* cleanup UCX */
   gasnetc_connect_shutdown();
   ucp_worker_destroy(gasnet_ucx_module.ucp_worker);
+  gasnetc_rreq_list_free();
+  gasnetc_buffer_pool_free();
   ucp_cleanup(gasnet_ucx_module.ucp_context);
 
   gasneti_free(gasnet_ucx_module.remote_ep_tbl);

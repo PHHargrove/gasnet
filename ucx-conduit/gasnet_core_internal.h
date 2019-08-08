@@ -147,6 +147,7 @@ typedef struct _gasnet_ucx_module {
     gasneti_list_t              recv_pool;   /* recv buffer pool */
     gasneti_list_t              am_req_pool; /* AM requests pool */
     gasneti_list_t              recv_list;   /* list of completed but not handled requests */
+    gasneti_list_t              send_list;   /* list of pending send requests */
 } gasnet_ucx_module_t;
 
 typedef struct {
@@ -172,12 +173,12 @@ int gasnetc_AM_ReqRepGeneric(gasnetc_ucx_am_type_t am_type,
                              void *dst_addr);
 
 extern void gasnetc_req_list_init(void);
-extern void gasnetc_req_list_free(void);
+extern void gasnetc_sreq_list_free(void);
+extern void gasnetc_rreq_list_free(void);
 extern void gasnetc_am_req_pool_alloc(void);
 extern void gasnetc_am_req_pool_free(void);
 extern void gasnetc_buffer_pool_alloc(void);
 extern void gasnetc_buffer_pool_free(void);
-extern void gasnetc_req_list_free(void);
 extern void gasnetc_req_poll(GASNETC_LOCK_MODE_ARG_ALONE);
 extern void gasnetc_req_poll_rcv(GASNETC_LOCK_MODE_ARG_ALONE);
 extern void gasnetc_ProcessRecv(void *buf, size_t size);

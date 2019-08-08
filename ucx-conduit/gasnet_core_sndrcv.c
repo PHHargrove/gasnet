@@ -439,25 +439,38 @@ void gasnetc_req_free(void *req)
 
 void gasnetc_req_list_init(void)
 {
+  gasneti_list_init(&gasnet_ucx_module.send_list);
   gasneti_list_init(&gasnet_ucx_module.recv_list);
 }
 
-void gasnetc_req_list_free(void)
+void gasnetc_rreq_list_free(void)
 {
   gasnetc_ucx_request_t *request;
 
   while(NULL != (request = GASNETI_LIST_POP(
                    &gasnet_ucx_module.recv_list, gasnetc_ucx_request_t))){
+    gasnetc_req_free(request);
+  }
+  gasneti_list_fini(&gasnet_ucx_module.recv_list);
+}
+
+void gasnetc_sreq_list_free(void)
+{
+  gasnetc_ucx_request_t *request;
+
+  while(NULL != (request = GASNETI_LIST_POP(
+                   &gasnet_ucx_module.send_list, gasnetc_ucx_request_t))){
     if (GASNETC_UCX_ACTIVE == request->status) {
       ucp_request_cancel(gasnet_ucx_module.ucp_worker, request);
       while (GASNETC_UCX_ACTIVE == request->status) {
         gasnetc_ucx_progress();
         // TODO-next: interrupt if stuck here for a long time
       }
+      gasneti_list_rem(&gasnet_ucx_module.send_list, request);
+      gasnetc_req_free(request);
     }
-    gasnetc_req_free(request);
   }
-  gasneti_list_fini(&gasnet_ucx_module.recv_list);
+  gasneti_list_fini(&gasnet_ucx_module.send_list);
 }
 
 GASNETI_INLINE(gasneti_probe_recv_complete)
@@ -499,6 +512,7 @@ static void gasnetc_ucx_send_handler(void *request, ucs_status_t status)
     return;
   }
 exit:
+  gasneti_list_rem(&gasnet_ucx_module.send_list, req);
   gasnetc_req_free(req);
 }
 
@@ -539,13 +553,15 @@ void gasnetc_wait_req(gasnetc_ucx_request_t *req, uint8_t is_request)
     }
   }
   GASNETC_LOCK_ACQUIRE_REGULAR();
+  gasneti_list_rem(&gasnet_ucx_module.send_list, req);
   gasnetc_req_free(req);
   GASNETC_LOCK_RELEASE_REGULAR();
 }
 
 GASNETI_INLINE(gasnetc_send_req)
-gasnetc_ucx_request_t *gasnetc_send_req(gasnetc_am_req_t *am_req, gasnetc_buffer_t *buffer,
-                     uint8_t block)
+gasnetc_ucx_request_t *gasnetc_send_req(gasnetc_am_req_t *am_req,
+                                        gasnetc_buffer_t *buffer,
+                                        uint8_t block)
 {
   gasnetc_ucx_request_t *request = NULL;
   ucp_ep_h server_ep =
@@ -582,6 +598,7 @@ gasnetc_ucx_request_t *gasnetc_send_req(gasnetc_am_req_t *am_req, gasnetc_buffer
   request->buffer = buffer;
   request->is_sync = block;
   request->status = GASNETC_UCX_ACTIVE;
+  gasneti_list_enq(&gasnet_ucx_module.send_list, request);
 
   return request;
 }
