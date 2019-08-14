@@ -621,7 +621,6 @@ int gasnetc_AM_ReqRepGeneric(gasnetc_ucx_am_type_t am_type,
   gasnetc_am_req_t *am_req;
   gasnetc_buffer_t *buffer = NULL;
   gasnetc_ucx_request_t *req;
-  uint8_t is_sync = 0;
 
   GASNETC_LOCK_ACQUIRE_REGULAR();
   am_req = gasnetc_am_req_get();
@@ -656,17 +655,20 @@ int gasnetc_AM_ReqRepGeneric(gasnetc_ucx_am_type_t am_type,
       gasneti_assert(src_addr);
       gasneti_assert(dst_addr);
       /* pack payload */
-      gasnetc_req_add_iov(am_req, src_addr, nbytes);
-      gasnetc_req_add_iov(am_req, &am_req->am_hdr.dst_addr, sizeof(dst_addr));
-      is_sync = 1;
+      // TODO-next: use `ucp_put_nb` instead of this routine
+      buffer = gasnetc_buffer_get(GASNETC_BUF_SEND_POOL);
+      buffer->long_data_ptr = gasneti_mmap(nbytes);
+      buffer->bytes_used = nbytes;
+      GASNETI_MEMCPY(buffer->long_data_ptr, src_addr, nbytes);
+      gasnetc_req_add_iov(am_req, buffer->long_data_ptr, nbytes);
       break;
   }
 
 send:
-  req = gasnetc_send_req(am_req, buffer, is_sync);
+  req = gasnetc_send_req(am_req, buffer, is_request);
   GASNETC_LOCK_RELEASE_REGULAR();
 
-  if (req && is_sync) {
+  if (req && is_request) {
     gasnetc_wait_req(req, is_request);
   }
   return GASNET_OK;
