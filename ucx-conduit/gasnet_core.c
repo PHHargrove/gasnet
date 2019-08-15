@@ -78,8 +78,43 @@ static void gasnetc_connect_shutdown(void)
   }
 }
 
+void gasnetc_ucx_empty_complete_cb(void *req, ucs_status_t status)
+{
+}
+
+static int gasnetc_ucx_worker_flush(void)
+{
+  ucs_status_t status;
+  ucs_status_ptr_t request;
+
+  request = ucp_worker_flush_nb(gasnet_ucx_module.ucp_worker, 0,
+                                gasnetc_ucx_empty_complete_cb);
+  if_pt (NULL == request) {
+      return GASNET_OK;
+  } else if_pf(UCS_PTR_IS_ERR(request)) {
+    gasneti_fatalerror("UCX worker wait failed: %d, %s", UCS_PTR_STATUS(request),
+                       ucs_status_string(UCS_PTR_STATUS(request)));
+    return GASNET_ERR_RESOURCE;
+  }
+  do {
+    status = ucp_request_check_status(request);
+    ucp_worker_progress(gasnet_ucx_module.ucp_worker);
+  } while (status == UCS_INPROGRESS);
+
+  if (UCS_OK != status) {
+    gasneti_fatalerror("UCX worker wait failed: %d, %s",
+                       UCS_PTR_STATUS(request),
+                       ucs_status_string(UCS_PTR_STATUS(request)));
+    return GASNET_ERR_RESOURCE;
+  }
+  ucp_request_free(request);
+
+  return GASNET_OK;
+}
+
 static void gasnetc_fini(void)
 {
+  gasnetc_ucx_worker_flush();
   gasneti_bootstrapFini();
   gasneti_nodemapFini();
   gasnetc_sreq_list_free();
