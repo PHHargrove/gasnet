@@ -182,5 +182,6 @@ extern void gasnetc_buffer_pool_free(void);
 extern void gasnetc_req_poll(GASNETC_LOCK_MODE_ARG_ALONE);
 extern void gasnetc_req_poll_rcv(GASNETC_LOCK_MODE_ARG_ALONE);
 extern void gasnetc_ProcessRecv(void *buf, size_t size);
+extern void gasnetc_req_wait(GASNETC_LOCK_MODE_ARG_ALONE);
 
 #endif

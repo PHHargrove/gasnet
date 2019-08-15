@@ -825,4 +825,18 @@ exit:
   GASNETC_LOCK_RELEASE();
   return;
 }
+
+void gasnetc_req_wait(GASNETC_LOCK_MODE_ARG_ALONE)
+{
+  size_t send_size;
+  do {
+    GASNETI_WAITHOOK();
+    GASNETC_LOCK_ACQUIRE();
+    gasnetc_req_poll(GASNETC_LOCK_MODE_INLINE);
+    send_size = gasneti_list_size(&gasnet_ucx_module.send_list);
+    GASNETC_LOCK_RELEASE();
+  } while (send_size);
+
+  GASNETI_SAFE(gasnet_barrier(0, GASNET_BARRIERFLAG_UNNAMED));
+}
 /* ------------------------------------------------------------------------------------ */
