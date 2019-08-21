@@ -249,7 +249,7 @@ void gasnetc_buffer_pool_free(void)
   while(NULL != (buffer = GASNETI_LIST_POP(
                    &gasnet_ucx_module.recv_pool, gasnetc_buffer_t))){
     if (buffer->long_data_ptr) {
-      gasneti_munmap(buffer->long_data_ptr, buffer->bytes_used);
+      gasneti_free(buffer->long_data_ptr);
     }
     gasneti_assert(buffer->type == GASNETC_BUF_RECV_POOL);
     gasneti_free(buffer);
@@ -332,7 +332,7 @@ void gasnetc_buffer_release(gasnetc_buffer_t *buffer)
 
   /* shoud be removed when RDMA will be implemented for Long messages */
   if (NULL != buffer->long_data_ptr) {
-    gasneti_munmap(buffer->long_data_ptr, buffer->bytes_used);
+    gasneti_free(buffer->long_data_ptr);
   }
   gasnetc_buffer_reset(buffer);
   if (buffer->type == GASNETC_BUF_SEND_POOL) {
@@ -657,7 +657,9 @@ int gasnetc_AM_ReqRepGeneric(gasnetc_ucx_am_type_t am_type,
       /* pack payload */
       // TODO-next: use `ucp_put_nb` instead of this routine
       buffer = gasnetc_buffer_get(GASNETC_BUF_SEND_POOL);
-      buffer->long_data_ptr = gasneti_mmap(nbytes);
+      gasneti_assert(buffer);
+      buffer->long_data_ptr = gasneti_malloc(nbytes);
+      gasneti_assert(buffer->long_data_ptr);
       buffer->bytes_used = nbytes;
       GASNETI_MEMCPY(buffer->long_data_ptr, src_addr, nbytes);
       gasnetc_req_add_iov(am_req, buffer->long_data_ptr, nbytes);
@@ -756,9 +758,11 @@ void gasnetc_req_poll_rcv(GASNETC_LOCK_MODE_ARG_ALONE)
     }
     /* Message arrived */
     buffer = gasnetc_buffer_get(GASNETC_BUF_RECV_POOL);
+    gasneti_assert(buffer);
     buffer->bytes_used = info_tag.length;
     if (info_tag.length > GASNETC_MAX_MED) {
-      buffer->long_data_ptr = gasneti_mmap(info_tag.length);
+      buffer->long_data_ptr = gasneti_malloc(info_tag.length);
+      gasneti_assert(buffer->long_data_ptr);
       buf_ptr = buffer->long_data_ptr;
     } else {
       buf_ptr = buffer->data;
