@@ -146,6 +146,12 @@ void prep_payload(uint8_t *dst, size_t len) {
   }                                                                                         \
 } while (0)
 
+#define RequestChain(tm,rank,hidx,src_addr,nbytes,dst_addr,lc_opt,flags) do {               \
+    prep_payload(src_addr, nbytes);                                                         \
+    gex_RMA_PutBlocking(tm, rank, dst_addr, src_addr, nbytes, flags);                       \
+    gex_AM_RequestShort(tm, rank, hidx, flags, CHAIN_PACK(dst_addr), CHAIN_PACK(nbytes));   \
+} while (0)
+
 
 /* ------------------------------------------------------------------------------------ */
 gex_AM_Entry_t htable[];
@@ -161,8 +167,9 @@ gex_AM_Entry_t htable[];
 #define hidx_pong_medhandler_flood     htable[9].gex_index
 #define hidx_ping_longhandler_flood    htable[10].gex_index
 #define hidx_pong_longhandler_flood    htable[11].gex_index
-#define hidx_done_shorthandler   htable[12].gex_index
-
+#define hidx_ping_chainhandler         htable[12].gex_index
+#define hidx_ping_chainhandler_flood   htable[13].gex_index
+#define hidx_done_shorthandler   htable[14].gex_index
 
 volatile int flag = 0;
 
@@ -189,6 +196,8 @@ void ping_longhandler(gex_Token_t token, void *buf, size_t nbytes) {
 void pong_longhandler(gex_Token_t token, void *buf, size_t nbytes) {
   flag++;
 }
+
+
 /* ------------------------------------------------------------------------------------ */
 void ping_shorthandler_flood(gex_Token_t token) {
   gex_AM_ReplyShort0(token, hidx_pong_shorthandler_flood, 0);
@@ -212,6 +221,32 @@ void ping_longhandler_flood(gex_Token_t token, void *buf, size_t nbytes) {
 
 void pong_longhandler_flood(gex_Token_t token, void *buf, size_t nbytes) {
   INC(flag);
+}
+
+#if PLATFORM_ARCH_64
+  #define CHAIN_NARGS 4
+  #define CHAIN_ARGS uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3
+  #define CHAIN_ARG0 TEST_MAKEWORD(arg0, arg1)
+  #define CHAIN_ARG1 TEST_MAKEWORD(arg2, arg3)
+  #define CHAIN_PACK(arg) TEST_HIWORD(arg), TEST_LOWORD(arg)
+#else
+  #define CHAIN_NARGS 2
+  #define CHAIN_ARGS uint32_t arg0, uint32_t arg1
+  #define CHAIN_ARG0 arg0
+  #define CHAIN_ARG1 arg1
+  #define CHAIN_PACK(arg) arg
+#endif
+
+void ping_chainhandler(gex_Token_t token, CHAIN_ARGS) {
+  void *buf =     (void*)(uintptr_t)CHAIN_ARG0;
+  size_t nbytes = (size_t)CHAIN_ARG1;
+  ReplyLong0(token, hidx_pong_longhandler, buf, nbytes, reply_addr, GEX_EVENT_NOW, 0);
+}
+
+void ping_chainhandler_flood(gex_Token_t token, CHAIN_ARGS) {
+  void *buf =     (void*)(uintptr_t)CHAIN_ARG0;
+  size_t nbytes = (size_t)CHAIN_ARG1;
+  ReplyLong0(token, hidx_pong_longhandler_flood, buf, nbytes, reply_addr, GEX_EVENT_NOW, 0);
 }
 
 
@@ -238,6 +273,9 @@ gex_AM_Entry_t htable[] = {
 
     { 0, ping_longhandler_flood, GEX_FLAG_AM_REQUEST|GEX_FLAG_AM_LONG, 0, NULL, NULL   },
     { 0, pong_longhandler_flood, GEX_FLAG_AM_REQREP|GEX_FLAG_AM_LONG, 0, NULL, NULL   },
+
+    { 0, ping_chainhandler,       GEX_FLAG_AM_REQUEST|GEX_FLAG_AM_SHORT, CHAIN_NARGS, NULL, NULL  },
+    { 0, ping_chainhandler_flood, GEX_FLAG_AM_REQUEST|GEX_FLAG_AM_SHORT, CHAIN_NARGS, NULL, NULL  },
 
     { 0, done_shorthandler, GEX_FLAG_AM_REQUEST|GEX_FLAG_AM_SHORT, 0, NULL, NULL  }
 };
@@ -727,6 +765,10 @@ void doAMLong(void) {
   GASNET_BEGIN_FUNCTION();
   TESTAM_PERF("AMLong     ",      RequestLong0,             hidx_ping_longhandler, hidx_pong_longhandler, maxlongreq, maxlongrep, LONGDEST);
 }
+void doChain(void) {
+  GASNET_BEGIN_FUNCTION();
+  TESTAM_PERF("Chain      ",      RequestChain,             hidx_ping_chainhandler, hidx_pong_longhandler, maxlongreq, maxlongrep, LONGDEST);
+}
 /* ------------------------------------------------------------------------------------ */
 void *doAll(void *ptr) {
   if (ptr) {
@@ -735,6 +777,7 @@ void *doAll(void *ptr) {
     doAMShort();
     doAMMed();
     doAMLong();
+    doChain();
     if (recvr) gex_AM_RequestShort0(myteam, mynode, hidx_done_shorthandler, 0);
   }
   return NULL;
