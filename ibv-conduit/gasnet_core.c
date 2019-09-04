@@ -1894,12 +1894,18 @@ static void gasneti_odp_init(void) {
       struct ibv_exp_reg_mr_in in;
       memset(&in, 0, sizeof(in));
       in.pd = hca->pd;
+      in.length = IBV_EXP_IMPLICIT_MR_SIZE;
+
       in.exp_access = (enum ibv_exp_access_flags)( IBV_EXP_ACCESS_ON_DEMAND |
                                                    IBV_EXP_ACCESS_LOCAL_WRITE );
-      in.length = IBV_EXP_IMPLICIT_MR_SIZE;
-      hca->implicit_odp.handle = ibv_exp_reg_mr(&in);
-      GASNETC_IBV_CHECK_PTR(hca->implicit_odp.handle, "from ibv_exp_reg_mr(implicit)");
-      hca->implicit_odp.lkey = hca->implicit_odp.handle->lkey; // flatten for quick access
+      hca->implicit_odp_get.handle = ibv_exp_reg_mr(&in);
+      GASNETC_IBV_CHECK_PTR(hca->implicit_odp_get.handle, "from ibv_exp_reg_mr(implicit/get)");
+      hca->implicit_odp_get.lkey = hca->implicit_odp_get.handle->lkey; // flatten for quick access
+
+      in.exp_access = (enum ibv_exp_access_flags)( IBV_EXP_ACCESS_ON_DEMAND );
+      hca->implicit_odp_put.handle = ibv_exp_reg_mr(&in);
+      GASNETC_IBV_CHECK_PTR(hca->implicit_odp_put.handle, "from ibv_exp_reg_mr(implicit/put)");
+      hca->implicit_odp_put.lkey = hca->implicit_odp_put.handle->lkey; // flatten for quick access
     }
   }
   // Results by value of GASNET_ODP_VERBOSE:
@@ -1980,15 +1986,21 @@ static void gasneti_odp_init(void) {
 }
 
 static void gasnetc_odp_dereg(gasnetc_hca_t *hca) {
-  struct ibv_mr *handle;
 #if PLATFORM_ARCH_32
-  handle = (struct ibv_mr *) gasneti_atomic32_swap((gasneti_atomic32_t *) &hca->implicit_odp.handle, 0, 0);
+  #define GASNETC_ATOMIC_SWAP_PTR(p,op,flags) gasneti_atomic32_swap((gasneti_atomic32_t *)(p),(op),(flags))
 #else
-  handle = (struct ibv_mr *) gasneti_atomic64_swap((gasneti_atomic64_t *) &hca->implicit_odp.handle, 0, 0);
+  #define GASNETC_ATOMIC_SWAP_PTR(p,op,flags) gasneti_atomic64_swap((gasneti_atomic64_t *)(p),(op),(flags))
 #endif
-  if (handle) {
-    ibv_dereg_mr(handle);
-  }
+
+  struct ibv_mr *handle;
+
+  handle = (struct ibv_mr *) GASNETC_ATOMIC_SWAP_PTR(&hca->implicit_odp_get.handle, 0, 0);
+  if (handle) ibv_dereg_mr(handle);
+
+  handle = (struct ibv_mr *) GASNETC_ATOMIC_SWAP_PTR(&hca->implicit_odp_put.handle, 0, 0);
+  if (handle) ibv_dereg_mr(handle);
+
+#undef GASNETC_ATOMIC_SWAP_PTR
 }
 
 // Testing shows that exiting without releasing the implicit ODP registration

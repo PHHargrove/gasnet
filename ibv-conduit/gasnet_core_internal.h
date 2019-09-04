@@ -523,7 +523,11 @@ typedef struct {
   struct {
     struct ibv_mr *     handle;
     uint32_t            lkey;
-  } implicit_odp;
+  } implicit_odp_get;
+  struct {
+    struct ibv_mr *     handle;
+    uint32_t            lkey;
+  } implicit_odp_put;
 #endif
   uint32_t              *aux_rkeys;
 #if GASNETC_IBV_SRQ

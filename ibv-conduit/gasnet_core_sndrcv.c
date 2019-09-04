@@ -1964,7 +1964,9 @@ size_t gasnetc_zerocp_common(gasnetc_epid_t epid, int rkey_index, struct ibv_sen
   } else if (gasnetc_use_odp) {
     // TODO-EX: older implicit ODP emulation had 128MB limit.  May need to chunk here.
     cep = gasnetc_bind_cep(epid, sreq);
-    sr_desc->sg_list[0].lkey = cep->hca->implicit_odp.lkey;
+    sr_desc->sg_list[0].lkey = (op == IBV_WR_RDMA_READ)
+                             ? cep->hca->implicit_odp_get.lkey
+                             : cep->hca->implicit_odp_put.lkey;
     gasneti_assert_uint(sr_desc->sg_list[0].addr ,==, loc_addr);
     sr_desc->sg_list[0].length = len;
     sr_desc->num_sge = 1;
