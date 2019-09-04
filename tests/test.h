@@ -304,6 +304,7 @@ static int64_t _test_rand(int64_t low, int64_t high) {
 
 #define TEST_HIWORD(arg)     ((uint32_t)(((uint64_t)(arg)) >> 32))
 #define TEST_LOWORD(arg)     ((uint32_t)((uint64_t)(arg)))
+#define TEST_MAKEWORD(hi,lo) ((((uint64_t)(hi)) << 32) | (((uint64_t)(lo)) & 0xFFFFFFFF))
 
 #define check_zeroret(op) do {                                       \
   int _retval = (op);                                                \
