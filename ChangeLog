@@ -22,7 +22,7 @@ PENDING: GASNet-EX Work-In-Progress
 * IBM PAMI (pami-conduit)
   - This conduit, deprecated since 2019.9.0, has been removed.
 
-* GASNet tools (spec v1.14)
+* Platform support/portability
   - Support for IBM BlueGene/Q has been removed.
 
 ----------------------------------------------------------------------
