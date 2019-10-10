@@ -24,6 +24,8 @@ PENDING: GASNet-EX Work-In-Progress
 
 * Platform support/portability
   - Support for IBM BlueGene/Q has been removed.
+  - Support for IBM XL compilers for big-endian PPC has been removed.
+    IBM XL compilers for little-endian PPC is still supported.
 
 ----------------------------------------------------------------------
 09-14-2019: GASNet-EX 2019.9.0 Release
