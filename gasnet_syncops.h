@@ -505,6 +505,7 @@ gasneti_atomic_val_t gasneti_semaphore_trydown_partial_SEQ(gasneti_semaphore_t_S
  *	gasneti_atomic_ptr_set(ptr, val)
  *	gasneti_atomic_ptr_read(ptr)
  *	gasneti_atomic_ptr_cas(ptr, oldval, newval, flags)
+ *	gasneti_atomic_ptr_swap(ptr, newval, flags)
  *
  * If GASNETI_HAVE_ATOMIC_DBLPTR_CAS is defined:
  *	gasneti_atomic_dblptr_t
@@ -538,6 +539,7 @@ gasneti_atomic_val_t gasneti_semaphore_trydown_partial_SEQ(gasneti_semaphore_t_S
   #define gasneti_atomic_ptr_set(_p,_v)		gasneti_atomic32_set(_p,(uintptr_t)(_v),0)
   #define gasneti_atomic_ptr_read(_p)		((uintptr_t)gasneti_atomic32_read(_p,0))
   #define gasneti_atomic_ptr_cas(_p,_o,_n,_f)	gasneti_atomic32_compare_and_swap(_p,(uintptr_t)(_o),(uintptr_t)(_n),_f)
+  #define gasneti_atomic_ptr_swap(_p,_n,_f)	((uintptr_t)gasneti_atomic32_swap(_p,(uintptr_t)(_n),_f))
 #elif PLATFORM_ARCH_64 && !defined(GASNETI_USE_GENERIC_ATOMIC64)
   #define GASNETI_HAVE_ATOMIC_PTR_CAS 1
   typedef gasneti_atomic64_t                    gasneti_atomic_ptr_t;
@@ -545,6 +547,7 @@ gasneti_atomic_val_t gasneti_semaphore_trydown_partial_SEQ(gasneti_semaphore_t_S
   #define gasneti_atomic_ptr_set(_p,_v)		gasneti_atomic64_set(_p,(uintptr_t)(_v),0)
   #define gasneti_atomic_ptr_read(_p)		((uintptr_t)gasneti_atomic64_read(_p,0))
   #define gasneti_atomic_ptr_cas(_p,_o,_n,_f)	gasneti_atomic64_compare_and_swap(_p,(uintptr_t)(_o),(uintptr_t)(_n),_f)
+  #define gasneti_atomic_ptr_swap(_p,_n,_f)	((uintptr_t)gasneti_atomic64_swap(_p,(uintptr_t)(_n),_f))
 #endif
 
 #if defined(GASNETI_HAVE_ATOMIC_DBLPTR_CAS)
@@ -1129,6 +1132,97 @@ void *gasneti_lifo_next(void *elem) {
 #define gasneti_lifo_pop             gasneti_cons_lifo(_GASNETI_PARSEQ,pop)
 #define gasneti_lifo_push            gasneti_cons_lifo(_GASNETI_PARSEQ,push)
 #define gasneti_lifo_push_many       gasneti_cons_lifo(_GASNETI_PARSEQ,push_many)
+
+/* ------------------------------------------------------------------------------------ */
+
+/* MCS locks
+ *
+ * Described in section 2.4 of
+ *  John M. Mellor-Crummey and Michael L. Scott. "Algorithms for scalable
+ *  synchronization on shared-memory multiprocessors." ACM ToCS, 9(1):21 65, 1991.
+ *  doi:10.1145/103727.103729
+ *
+ * This is a fair queueing mutex.
+ *
+ * This implementation adds a "trylock", which fails if the lock is held OR
+ * there are any queued waiters.
+ *
+ *    gasneti_mcslock_t             The lock type
+ *    GASNETI_MCSLOCK_INITIALIZER() Static initializer macro
+ *    gasneti_mcslock_init(&lock)   Dynamic initializer
+ *
+ *    gasneti_mcslock_holder_t      State per lock holder/requester
+ *                                  No initialization required
+ *
+ *    gasneti_mcslock_lock(&lock,&holder)     Acquire lock
+ *    gasneti_mcslock_unlock(&lock,&holder)   Release held lock
+ *    gasneti_mcslock_trylock(&lock,&holder)  Acquire lock IFF unheld/uncontended
+ *                                            Returns 0 on success, else EBUSY
+ *
+ * NOTE: If !GASNETI_HAVE_ATOMIC_PTR_CAS then the implementation
+ *       is silently replaced with (UNFAIR) gasneti_mutex_t.
+ *
+ * TODO: atomic fencing might be over-synced?
+ * TODO: are additional debugging checks possible?
+ */
+
+#if GASNETI_USE_TRUE_MUTEXES && GASNETI_HAVE_ATOMIC_PTR_CAS
+  // Lock itself is an atomic queue head
+  typedef gasneti_atomic_ptr_t gasneti_mcslock_t;
+  #define GASNETI_MCSLOCK_INITIALIZER gasneti_atomic_ptr_init(0)
+  #define gasneti_mcslock_init(_lp) gasneti_atomic_ptr_set(_lp,0)
+
+  // Lock state (per holder/waiter):
+  typedef struct gasneti_mcslock_holder_ {
+      struct gasneti_mcslock_holder_ * volatile next;
+      volatile int locked;
+  } gasneti_mcslock_holder_t;
+
+  GASNETI_INLINE(gasneti_mcslock_lock)
+  void gasneti_mcslock_lock(gasneti_mcslock_t *lock_p, gasneti_mcslock_holder_t *holder_p) {
+    gasneti_assert(lock_p);
+    gasneti_assert(holder_p);
+    holder_p->next = NULL;
+    holder_p->locked = 1;
+    gasneti_mcslock_holder_t *tail = (gasneti_mcslock_holder_t *)
+                gasneti_atomic_ptr_swap(lock_p, holder_p, GASNETI_ATOMIC_REL|GASNETI_ATOMIC_ACQ);
+    if (tail) {
+      tail->next = holder_p;
+      gasneti_waitwhile(holder_p->locked);
+    }
+  }
+
+  GASNETI_INLINE(gasneti_mcslock_unlock)
+  void gasneti_mcslock_unlock(gasneti_mcslock_t *lock_p, gasneti_mcslock_holder_t *holder_p) {
+    gasneti_assert(lock_p);
+    gasneti_assert(holder_p);
+    if (!holder_p->next) {
+      if (gasneti_atomic_ptr_cas(lock_p, holder_p, 0, GASNETI_ATOMIC_REL|GASNETI_ATOMIC_ACQ)) return;
+      gasneti_waituntil(holder_p->next);
+    } else {
+      gasneti_local_mb();
+    }
+    holder_p->next->locked = 0;
+  }
+
+  GASNETI_INLINE(gasneti_mcslock_trylock)
+  int gasneti_mcslock_trylock(gasneti_mcslock_t *lock_p, gasneti_mcslock_holder_t *holder_p) {
+    gasneti_assert(lock_p);
+    gasneti_assert(holder_p);
+    holder_p->next = NULL;
+    return gasneti_atomic_ptr_cas(lock_p, 0, holder_p, GASNETI_ATOMIC_REL|GASNETI_ATOMIC_ACQ) ? 0 : EBUSY;
+  }
+#else
+  // Not using true mutexes or lack pointer-sized CAS.
+  // We "punt" to gasneti_mutex_t (w/ its debug checks)
+  typedef char gasneti_mcslock_holder_t;
+  typedef gasneti_mutex_t gasneti_mcslock_t;
+  #define GASNETI_MCSLOCK_INITIALIZER GASNETI_MUTEX_INITIALIZER
+  #define gasneti_mcslock_init(lp)         gasneti_mutex_init(lp)
+  #define gasneti_mcslock_lock(lp,hp)      gasneti_mutex_lock(lp)
+  #define gasneti_mcslock_unlock(lp,hp)    gasneti_mutex_unlock(lp)
+  #define gasneti_mcslock_trylock(lp,hp)   gasneti_mutex_trylock(lp)
+#endif
 
 /* ------------------------------------------------------------------------------------ */
 
