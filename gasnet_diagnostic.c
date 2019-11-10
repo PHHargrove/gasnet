@@ -91,6 +91,7 @@ static int id = 0;
 
 static void mutex_test(int id);
 static void rwlock_test(int id);
+static void mcslock_test(int id);
 static void spinlock_test(int id);
 static void cond_test(int id);
 static void semaphore_test(int id);
@@ -162,6 +163,9 @@ extern int gasneti_run_diagnostics(int iter_cnt, int threadcnt, const char *test
 
   BARRIER();
   TEST_HEADER("gasneti_rwlock_t test") rwlock_test(0);
+
+  BARRIER();
+  TEST_HEADER("gasneti_mcslock_t test") mcslock_test(0);
 
   BARRIER();
   spinlock_test(0);
@@ -563,6 +567,53 @@ static void rwlock_test(int id) {
       }  
       gasneti_free(numwrites);
     }
+
+  PTHREAD_BARRIER(num_threads);
+}
+/* ------------------------------------------------------------------------------------ */
+static void mcslock_test(int id) {
+  gasneti_mcslock_holder_t h1;
+  static gasneti_mcslock_t lock1 = GASNETI_MCSLOCK_INITIALIZER;
+  static gasneti_mcslock_t lock2;
+  static unsigned int counter;
+  unsigned int count = iters2 / num_threads;
+
+  PTHREAD_BARRIER(num_threads);
+
+    if (!id) {
+      gasneti_mcslock_lock(&lock1, &h1);
+      gasneti_mcslock_unlock(&lock1, &h1);
+
+      gasneti_assert_always_int(gasneti_mcslock_trylock(&lock1, &h1) ,==, GASNET_OK);
+      gasneti_mcslock_unlock(&lock1, &h1);
+
+      gasneti_mcslock_init(&lock2);
+      gasneti_mcslock_lock(&lock2, &h1);
+      gasneti_mcslock_unlock(&lock2, &h1);
+      gasneti_mcslock_init(&lock2);
+
+      counter = 0;
+    }
+
+  PTHREAD_BARRIER(num_threads);
+
+    for (int i=0;i<count;i++) {
+      if (i&1) {
+        gasneti_mcslock_lock(&lock1, &h1);
+      } else {
+        int retval;
+        while ((retval=gasneti_mcslock_trylock(&lock1, &h1))) {
+          gasneti_assert_always_int(retval ,==, EBUSY);
+        }
+      }
+      counter++;
+      gasneti_mcslock_unlock(&lock1, &h1);
+    }
+
+  PTHREAD_BARRIER(num_threads);
+
+    if (counter != (num_threads * count)) 
+      ERR("failed mcslock test: counter=%i expecting=%i", counter, (num_threads * count));
 
   PTHREAD_BARRIER(num_threads);
 }
@@ -1217,6 +1268,9 @@ static void * thread_fn(void *arg) {
 
   PTHREAD_BARRIER(num_threads);
   TEST_HEADER("gasneti_rwlock_t test") rwlock_test(id);
+
+  PTHREAD_BARRIER(num_threads);
+  TEST_HEADER("gasneti_mcslock_t test") mcslock_test(id);
 
   PTHREAD_BARRIER(num_threads);
   spinlock_test(id);
