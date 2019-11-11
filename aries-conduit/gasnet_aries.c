@@ -72,7 +72,7 @@ struct peer_struct_t_ {
   uint8_t *remote_request_base;
 
 #if GASNET_PAR
-  volatile int remote_request_lock;
+  gasneti_mcslock_t remote_request_lock;
 #endif
   uint64_t remote_request_map;  /* allocation bitmap */
   uint32_t remote_notify_write; /* covered by the gni lock, unbounded */
@@ -1313,7 +1313,7 @@ am_memory_report:
       #endif
 
       #if GASNET_PAR
-        peer->remote_request_lock = 0;
+        gasneti_mcslock_init(&peer->remote_request_lock);
       #endif
         peer->remote_request_map = request_map;
         peer->long_credits = am_long_depth;
@@ -1864,7 +1864,7 @@ gasnetc_post_descriptor_t *request_post_descriptor_inner(gex_Rank_t dest,
   reply_pool_t *r;
   gex_Flags_t imm_flag = flags & GEX_FLAG_IMMEDIATE;
 #if GASNET_PAR
-  int request_lock_held;
+  int request_lock_held = 1;
 #endif
 
 #if GASNETC_IMMEDIATE_AMPOLLS
@@ -1878,22 +1878,18 @@ gasnetc_post_descriptor_t *request_post_descriptor_inner(gex_Rank_t dest,
   #define ESCAPE2(label) gasneti_assert(!imm_flag)
 #endif
 
-  GASNETC_LOCK_AM_BUFFER();
-
 #if GASNET_PAR
   /* Prevent starvation of large allocations by small ones. */
-  /* Note that we spin here (*not* polling) IFF another thread *IS* spin polling */
-  if_pf (peer->remote_request_lock) {
-    if (imm_flag) goto out_immediate_1;
-    do {
-      GASNETC_UNLOCK_AM_BUFFER();
-      while (peer->remote_request_lock) GASNETI_WAITHOOK();
-      GASNETC_LOCK_AM_BUFFER();
-    } while (peer->remote_request_lock);
+  /* Note that we block here (*not* polling) IFF another thread *IS* spin polling */
+  gasneti_mcslock_holder_t h;
+  if (!imm_flag) {
+    gasneti_mcslock_lock(&peer->remote_request_lock,&h);
+  } else if (gasneti_mcslock_trylock(&peer->remote_request_lock,&h)) {
+    goto out_immediate_1;
   }
-  peer->remote_request_lock = 1;
-  request_lock_held = 1;
 #endif
+
+  GASNETC_LOCK_AM_BUFFER();
 
   if (isLong) { // Honor LONG_DEPTH
     gasneti_assert(isLong == 1); // must be 0 or 1 , since added later
@@ -1955,8 +1951,7 @@ gasnetc_post_descriptor_t *request_post_descriptor_inner(gex_Rank_t dest,
   peer->remote_request_map ^= mask; // Claim slot(s)
 
 #if GASNET_PAR
-  peer->remote_request_lock = 0;
-  request_lock_held = 0;
+  gasneti_mcslock_unlock(&peer->remote_request_lock,&h);
 #endif
 
   BUSYWAIT(((r = reply_freelist) == NULL), 
@@ -1992,16 +1987,19 @@ out_immediate_4:
 out_immediate_3:
     // Restore bits corresponding to remote buffer allocation
     peer->remote_request_map ^= mask;
+  #if GASNET_PAR
+    request_lock_held = 0;
+  #endif
 out_immediate_2:
     // LONG_DEPTH credit, if any
     peer->long_credits += isLong;
 out_immediate_1_5:
   #if GASNET_PAR
     // Possibly release our lock on the per-peer remote buffer allocator
-    if (request_lock_held) peer->remote_request_lock = 0;
+    if (request_lock_held) gasneti_mcslock_unlock(&peer->remote_request_lock,&h);
   #endif
-out_immediate_1:
   GASNETC_UNLOCK_AM_BUFFER();
+out_immediate_1:
 
   return NULL;
 }
