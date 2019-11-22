@@ -99,6 +99,9 @@ extern int gasnetc_pthread_create(gasnetc_pthread_create_fn_t *create_fn, pthrea
 #if !GASNETC_GNI_MULTI_DOMAIN
 /* support top-level poll throttling when not using multi-domain */
 #define GASNETC_USING_SUSPEND_RESUME 1
+// Do NOT serialize spinpollers
+#define gasneti_spinpoller_enter() 1
+#define gasneti_spinpoller_leave() ((void)0)
 #endif
 
   /* this can be used to add conduit-specific 

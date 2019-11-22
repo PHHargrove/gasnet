@@ -964,18 +964,31 @@ typedef void (*gasneti_progressfn_t)(void);
         gasneti_atomic_decrement(&gasneti_throttle_haveusefulwork,0); \
     } while (0)
 
+    // By default spinpollers are serialized w/ a trylock
+    // A conduit may override these, potentially as a means to provide
+    // deeper integration to enable concurrent handler execution or
+    // simply to omit the serialization of calls to gasnetc_AMPoll().
+    #ifndef gasneti_spinpoller_enter
+      // EXPRESSION that evaluates to non-zero if entry is permitted
+      #define gasneti_spinpoller_enter() (!gasneti_mutex_trylock(&gasneti_throttle_spinpoller))
+    #endif
+    #ifndef gasneti_spinpoller_leave
+      // STATEMENT that balances non-zero returns from gasneti_spinpoller_enter()
+      #define gasneti_spinpoller_leave() gasneti_mutex_unlock(&gasneti_throttle_spinpoller)
+    #endif
+
     /* and finally, the throttled poll implementation */
     GASNETI_INLINE(_gasneti_AMPoll)
     int _gasneti_AMPoll(GASNETI_THREAD_FARG_ALONE) {
        int retval = GASNET_OK;
        gasneti_AMPoll_spinpollers_check();
        gasneti_memcheck_one();
-       /* if another thread is spin-polling then skip both the poll and progress fns: */
-       if_pt (!gasneti_mutex_trylock(&gasneti_throttle_spinpoller)) {
+       // By default, if another thread is spin-polling then skip both the poll and progress fns:
+       if_pt (gasneti_spinpoller_enter()) {
           /* if another thread is sending then skip the poll: */
           if_pt (!gasneti_atomic_read(&gasneti_throttle_haveusefulwork,0))
              retval = gasnetc_AMPoll(GASNETI_THREAD_PASS_ALONE);
-          gasneti_mutex_unlock(&gasneti_throttle_spinpoller);
+          gasneti_spinpoller_leave();
           GASNETI_PROGRESSFNS_RUN();
        }
        return retval;
