@@ -273,49 +273,15 @@ static int gasneti_pshm_mkstemp(const char *prefix, const char *tmpdir) {
   }
 }
 
-#ifdef GASNETI_PSHM_SYSV
-static int gasneti_pshm_settemp(const char *unique, const char *prefix, const char *tmpdir) {
-  int tmpfd;
-  int len;
-
-  if (gasneti_pshm_tmpfile) return 0;
-
-  if (!tmpdir || !strlen(tmpdir)) {
-    errno = ENOTDIR;
-    return -1;
-  }
-  gasneti_pshm_tmpfile_ = gasneti_realloc(gasneti_pshm_tmpfile_, strlen(tmpdir) + GASNETI_PSHM_PREFIX_LEN + 1);
-  strcpy(gasneti_pshm_tmpfile_, tmpdir);
-  strcat(gasneti_pshm_tmpfile_, prefix);
-
-  /* Note: 'unique' might not be NUL terminated */
-  len = strlen(gasneti_pshm_tmpfile_);
-  memcpy(gasneti_pshm_tmpfile_ + len - GASNETI_PSHM_UNIQUE_LEN, unique, GASNETI_PSHM_UNIQUE_LEN);
-
-  /* Now try to verify the file exists */
-  tmpfd = open(gasneti_pshm_tmpfile_, O_RDWR);
-  if (tmpfd >= 0) {
-    gasneti_local_wmb();
-    gasneti_pshm_tmpfile = gasneti_pshm_tmpfile_;
-    close(tmpfd);
-    return 0;
-  } else {
-    return -1;
-  }
-}
-#endif
-
-#if defined(GASNETI_PSHM_FILE) || defined(GASNETI_PSHM_SYSV) || defined(GASNETI_PSHM_POSIX)
+#if defined(GASNETI_PSHM_FILE) || defined(GASNETI_PSHM_POSIX)
 static const char *gasneti_pshm_makeunique(const char *unique) {
   static char prefix[] = "/GASNTXXXXXX";
-#if defined(GASNETI_PSHM_FILE) || defined(GASNETI_PSHM_SYSV)
+#if defined(GASNETI_PSHM_FILE)
   const char *tmpdir = gasneti_tmpdir();
 #endif
   size_t tmpdir_len = 0;
-#if !defined(GASNETI_PSHM_SYSV)
   size_t base_len;
   char *allnames;
-#endif
   int i;
 
   gasneti_assert_uint(strlen(prefix) ,==, GASNETI_PSHM_PREFIX_LEN);
@@ -327,12 +293,12 @@ static const char *gasneti_pshm_makeunique(const char *unique) {
     }
   }
 #endif
-#if defined(GASNETI_PSHM_FILE) || defined(GASNETI_PSHM_SYSV)
+#if defined(GASNETI_PSHM_FILE)
   tmpdir_len = strlen(tmpdir);
 #endif
 
   if (!unique) { /* We get to pick the unique bits */
-#if defined(GASNETI_PSHM_FILE) || defined(GASNETI_PSHM_SYSV)
+#if defined(GASNETI_PSHM_FILE)
     if (gasneti_pshm_mkstemp(prefix, tmpdir)) {
       gasneti_fatalerror("mkstemp() failed to find a unique prefix: %s", strerror(errno));
     }
@@ -361,32 +327,6 @@ static const char *gasneti_pshm_makeunique(const char *unique) {
     unique += GASNETI_PSHM_PREFIX_LEN1;
   }
 
-#if defined(GASNETI_PSHM_SYSV)
-  gasneti_pshm_settemp(unique, prefix, tmpdir);
-  key_t *keys = (key_t *)gasneti_malloc((gasneti_pshm_nodes+1)*sizeof(key_t));;
-  for (i = 0; i <= gasneti_pshm_nodes; ++i) {
-    key_t key = ftok(gasneti_pshm_tmpfile, i + 1);
-    if (key == (key_t)-1){
-        gasneti_fatalerror("failed to produce a unique SYSV key value for %s and rank %d, from ftok: %s",
-                           gasneti_pshm_tmpfile, i, strerror(errno));
-    }
-  #if GASNETI_PSHM_MAX_NODES > 255
-    else { /* ftok() is documented (on many systems) as using only low 8 bits - so verify */
-      int j;
-      for (j = 0; j < i; ++j) {
-        if_pf (key == keys[j]) {
-          key = (key_t)-1;
-          gasneti_fatalerror("failed to produce a unique SYSV key value for %s and rank %d, dup of %d",
-                             gasneti_pshm_tmpfile, i, j);
-        }
-      }
-    }
-  #endif
-    keys[i] = key;
-  }
-  gasneti_local_wmb();
-  gasneti_pshm_sysvkeys = keys;
-#else
   /* Three base-36 "digits" provide 46,656 unique names, even if case-insensitive. */
  #if GASNETI_PSHM_MAX_NODES > 255
   gasneti_assert_always_uint(gasneti_pshm_nodes ,<, (36*36*36));
@@ -420,11 +360,68 @@ static const char *gasneti_pshm_makeunique(const char *unique) {
   }
   gasneti_local_wmb();
   gasneti_pshmname = names;
-#endif
 
   return unique;
 }
-#endif
+#endif // GASNETI_PSHM_{FILE,POSIX}
+
+#if GASNETI_PSHM_SYSV
+void gasneti_pshm_gen_sysvkeys(void)
+{
+  // TODO: fallbacks (such as /var/tmp or /usr/tmp) if /tmp does not exist?
+  const int count = gasneti_pshm_nodes + 1;
+
+  key_t *keys = (key_t *)gasneti_malloc(count * sizeof(key_t));
+  char **uniq_files = (char **)gasneti_malloc(count * sizeof(char*));
+  int *uniq_fds = (int *)gasneti_malloc(count * sizeof(int));
+
+  int keys_obtained = 0;
+  for (int i = 1; (keys_obtained < count) && i; ++i) {
+    char filename[128];
+
+    // Generate a key "at random"
+    snprintf(filename, sizeof(filename), "/tmp/gasnet-tok-%u", i);
+    int fd = open(filename, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+    if (fd < 0) continue;
+    close(fd);
+    int id = (i & 0xff) ? i : i + 1; // low 8-bits must be non-zero
+    key_t key = ftok(filename, id);
+    unlink(filename);
+    if (key == (key_t)-1) continue;
+
+    // Use filesystem to check uniqueness of keys
+    snprintf(filename, sizeof(filename), "/tmp/gasnet-uniq-%u", (unsigned int)key);
+    fd = open(filename, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+    if (fd < 0) continue; // probably collision
+
+    // Success
+    keys[keys_obtained]       = key;
+    uniq_fds[keys_obtained]   = fd;
+    uniq_files[keys_obtained] = gasneti_strdup(filename);
+    keys_obtained++;
+  }
+
+  // XXX - missing global barrier needed to keep things unique across multiple supernodes
+
+  // Free resources
+  for (int i = 0; i < keys_obtained; ++i) {
+    close(uniq_fds[i]);
+    unlink(uniq_files[i]);
+    gasneti_free(uniq_files[i]);
+  }
+  gasneti_free(uniq_fds);
+  gasneti_free(uniq_files);
+
+  if (keys_obtained != count) {
+    gasneti_fatalerror("was able to produce only %d unique SYSV key values of %d required",
+                       keys_obtained, count);
+  }
+
+  gasneti_local_wmb();
+  gasneti_pshm_sysvkeys = keys;
+}
+#endif // GASNETI_PSHM_SYSV
+
 #endif /* GASNET_PSHM */
 
 #if defined(GASNETI_USE_HUGETLBFS)
@@ -822,7 +819,7 @@ extern void *gasneti_mmap_vnet(uintptr_t size, gasneti_bootstrapBroadcastfn_t sn
   gasneti_sighandlerfn_t prev_handler = gasneti_reghandler(SIGSYS, SIG_IGN);
   #endif
 
-  #if defined(GASNETI_PSHM_FILE) || defined(GASNETI_PSHM_SYSV) || defined(GASNETI_PSHM_POSIX)
+  #if defined(GASNETI_PSHM_FILE) || defined(GASNETI_PSHM_POSIX)
   {
     char unique[GASNETI_PSHM_UNIQUE_LEN];
 
@@ -840,6 +837,27 @@ extern void *gasneti_mmap_vnet(uintptr_t size, gasneti_bootstrapBroadcastfn_t sn
     /* Non-first nodes attach */
     if (gasneti_pshm_mynode != 0) {
       (void)gasneti_pshm_makeunique(unique);
+      ptr = gasneti_mmap_shared_internal(gasneti_pshm_nodes, NULL, size, 1);
+      save_errno = errno;
+    }
+  }
+  #elif defined(GASNETI_PSHM_SYSV)
+  {
+    // First in each supernode creates the segment plus all keys
+    if (gasneti_pshm_mynode == 0) {
+      gasneti_pshm_gen_sysvkeys();
+      ptr = gasneti_mmap_shared_internal(gasneti_pshm_nodes, NULL, size, 1);
+      save_errno = errno;
+    } else {
+      gasneti_pshm_sysvkeys = (key_t *)gasneti_malloc((gasneti_pshm_nodes+1) * sizeof(key_t));
+    }
+
+    // Supernode-scoped bcast communicates the keys generated by the firsts
+    (*snodebcastfn)(gasneti_pshm_sysvkeys, (gasneti_pshm_nodes + 1) * sizeof(key_t),
+		    gasneti_pshm_sysvkeys, gasneti_pshm_firstnode);
+
+    // Non-first nodes attach
+    if (gasneti_pshm_mynode != 0) {
       ptr = gasneti_mmap_shared_internal(gasneti_pshm_nodes, NULL, size, 1);
       save_errno = errno;
     }
