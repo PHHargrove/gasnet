@@ -17,6 +17,7 @@
 #define TEAM_SEQ(team_id) ((team_id) & 0xfff) /* low 12 bits for team sequence */
 
 void gasnete_coll_team_init(gasnet_team_handle_t team, 
+                            gex_TM_t tm0,
                             uint32_t team_id, 
                             uint32_t total_ranks,
                             gex_Rank_t myrank,
@@ -27,7 +28,8 @@ void gasnete_coll_team_init(gasnet_team_handle_t team,
 
 void gasnete_coll_team_fini(gasnet_team_handle_t team);
 
-gasnet_team_handle_t gasnete_coll_team_create(uint32_t total_ranks,
+gasnet_team_handle_t gasnete_coll_team_create(gex_TM_t tm0,
+                                              uint32_t total_ranks,
                                               gex_Rank_t myrank,
                                               gex_Rank_t *rel2act_map, gasnet_seginfo_t* scratch_segs GASNETI_THREAD_FARG);
 

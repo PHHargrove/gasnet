@@ -769,7 +769,7 @@ static int gasnete_conduit_rdmabarrier(const char *barrier, gasneti_auxseg_reque
 typedef struct {
   GASNETE_GDBARRIER_LOCK(barrier_lock) /* no semicolon */
   struct {
-    gex_Rank_t node;
+    gex_Rank_t    jobrank;
     uint64_t      *addr;
   } *barrier_peers;           /*  precomputed list of peers to communicate with */
 #if GASNETI_PSHM_BARRIER_HIER
@@ -804,17 +804,18 @@ typedef struct {
             ((_addr) + 2U * GASNETE_GDBARRIER_INBOX_WORDS)
 
 GASNETI_INLINE(gasnete_gdbarrier_send)
-void gasnete_gdbarrier_send(gasnete_coll_gdbarrier_t *barrier_data,
+void gasnete_gdbarrier_send(gasnete_coll_team_t team,
                              int numsteps, unsigned int state,
                              gex_AM_Arg_t value, gex_AM_Arg_t flags) {
   unsigned int step = state >> 1;
+  gasnete_coll_gdbarrier_t *barrier_data = team->barrier_data;
   const uint64_t payload = GASNETE_GDBARRIER_BUILD(value, flags);
   int i;
 
   gasneti_assert(sizeof(payload) <= sizeof(gex_RMA_Value_t));
 
   for (i = 0; i < numsteps; ++i, state += 2, step += 1) {
-    const gex_Rank_t jobrank = barrier_data->barrier_peers[step].node;
+    const gex_Rank_t jobrank = barrier_data->barrier_peers[step].jobrank;
     uint64_t * const dst = GASNETE_GDBARRIER_INBOX_REMOTE(barrier_data, step, state);
 #if GASNET_PSHM
     if (gasneti_pshm_jobrank_in_supernode(jobrank)) {
@@ -828,7 +829,7 @@ void gasnete_gdbarrier_send(gasnete_coll_gdbarrier_t *barrier_data,
 
       gpd->gpd_flags = 0; /* fire and forget */
       *src = payload;
-      gasnetc_rdma_put_buff(gasneti_THUNK_TM, jobrank, dst, src, sizeof(*src), gpd);
+      gasnetc_rdma_put_buff(team->e_tm0, jobrank, dst, src, sizeof(*src), gpd);
     }
   }
 }
@@ -852,7 +853,7 @@ static int gasnete_gdbarrier_kick_pshm(gasnete_coll_team_t team) {
         barrier_data->barrier_state = state + 2;
         gasnete_gdbarrier_unlock(&barrier_data->barrier_lock); /* Cannot send while holding HSL */
         if ((barrier_data->barrier_goal > 2) && !barrier_data->barrier_passive) {
-          gasnete_gdbarrier_send(barrier_data, 1, state+2, value, flags);
+          gasnete_gdbarrier_send(team, 1, state+2, value, flags);
         } else {
           gasnete_barrier_pf_disable(team);
         }
@@ -965,7 +966,7 @@ void gasnete_gdbarrier_kick(gasnete_coll_team_t team) {
   gasnete_gdbarrier_unlock(&barrier_data->barrier_lock);
 
   if (numsteps) { /* need to issue one or more Puts */
-    gasnete_gdbarrier_send(barrier_data, numsteps, state+2, value, flags);
+    gasnete_gdbarrier_send(team, numsteps, state+2, value, flags);
   }
 }
 
@@ -997,7 +998,7 @@ static void gasnete_gdbarrier_notify(gasnete_coll_team_t team, int id, int flags
   gasneti_sync_writes();
   barrier_data->barrier_state = state;
 
-  if (do_send) gasnete_gdbarrier_send(barrier_data, 1, state, id, flags);
+  if (do_send) gasnete_gdbarrier_send(team, 1, state, id, flags);
   if (want_pf) gasnete_barrier_pf_enable(team);
 
   /*  update state */
@@ -1183,9 +1184,9 @@ static void gasnete_gdbarrier_init(gasnete_coll_team_t team) {
     gasneti_leak(barrier_data->barrier_peers);
   
     for (step = 0; step < steps; ++step) {
-      gex_Rank_t node = peers->fwd[step];
-      barrier_data->barrier_peers[1+step].node = node;
-      barrier_data->barrier_peers[1+step].addr = gasnete_rdmabarrier_auxseg[node].addr;
+      gex_Rank_t jobrank = peers->fwd[step]; // is always a jobrank
+      barrier_data->barrier_peers[1+step].jobrank = jobrank;
+      barrier_data->barrier_peers[1+step].addr = gasnete_rdmabarrier_auxseg[jobrank].addr;
     }
   } else {
     barrier_data->barrier_state = barrier_data->barrier_goal;

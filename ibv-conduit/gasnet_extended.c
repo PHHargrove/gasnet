@@ -351,7 +351,7 @@ static int gasnete_conduit_rdmabarrier(const char *barrier, gasneti_auxseg_reque
 typedef struct {
   GASNETE_RMDBARRIER_LOCK(barrier_lock) /* no semicolon */
   struct {
-    gex_Rank_t node;
+    gex_Rank_t    jobrank;
     uintptr_t     addr;
   } *barrier_peers;           /*  precomputed list of peers to communicate with */
 #if GASNETI_PSHM_BARRIER_HIER
@@ -368,12 +368,13 @@ typedef struct {
 
 
 GASNETI_INLINE(gasnete_ibdbarrier_send)
-void gasnete_ibdbarrier_send(gasnete_coll_ibdbarrier_t *barrier_data,
+void gasnete_ibdbarrier_send(gasnete_coll_team_t team,
                              int numsteps, unsigned int state,
                              gex_AM_Arg_t value, gex_AM_Arg_t flags) {
   GASNET_BEGIN_FUNCTION(); // TODO-EX: eliminate this?
   unsigned int step = state >> 1;
   gasnete_coll_rmdbarrier_inbox_t *payload;
+  gasnete_coll_ibdbarrier_t *barrier_data = team->barrier_data;
   int i;
 
   /* Use the upper half (padding) an "other phase" inbox as an in-segment temporary.
@@ -394,14 +395,14 @@ void gasnete_ibdbarrier_send(gasnete_coll_ibdbarrier_t *barrier_data,
   gasneti_assert(state < barrier_data->barrier_goal);
 
   for (i = 0; i < numsteps; ++i, state += 2, step += 1) {
-    const gex_Rank_t jobrank = barrier_data->barrier_peers[step].node;
+    const gex_Rank_t jobrank = barrier_data->barrier_peers[step].jobrank;
     void * const addr = GASNETE_RDMABARRIER_INBOX_REMOTE(barrier_data, step, state);
 #if GASNET_PSHM
     if (gasneti_pshm_jobrank_in_supernode(jobrank)) {
       *(volatile gasnete_coll_rmdbarrier_inbox_t *)addr = *payload;
     } else
 #endif
-    (void) gasnetc_rdma_put(gasneti_THUNK_TM, jobrank, 0, (void*)payload, addr, sizeof(*payload), 0,
+    (void) gasnetc_rdma_put(team->e_tm0, jobrank, 0, (void*)payload, addr, sizeof(*payload), 0,
                             NULL, NULL, NULL, NULL GASNETI_THREAD_PASS);
   }
 }
@@ -425,7 +426,7 @@ static int gasnete_ibdbarrier_kick_pshm(gasnete_coll_team_t team) {
         barrier_data->barrier_state = state + 2;
         gasnete_rmdbarrier_unlock(&barrier_data->barrier_lock); /* Cannot send while holding HSL */
         if (barrier_data->barrier_size && !barrier_data->barrier_passive) {
-          gasnete_ibdbarrier_send(barrier_data, 1, state+2, value, flags);
+          gasnete_ibdbarrier_send(team, 1, state+2, value, flags);
         } else {
           gasnete_barrier_pf_disable(team);
         }
@@ -547,7 +548,7 @@ void gasnete_ibdbarrier_kick(gasnete_coll_team_t team) {
   gasnete_rmdbarrier_unlock(&barrier_data->barrier_lock);
 
   if (numsteps) { /* need to issue one or more Puts */
-    gasnete_ibdbarrier_send(barrier_data, numsteps, state+2, value, flags);
+    gasnete_ibdbarrier_send(team, numsteps, state+2, value, flags);
   }
 }
 
@@ -579,7 +580,7 @@ static void gasnete_ibdbarrier_notify(gasnete_coll_team_t team, int id, int flag
   gasneti_sync_writes();
   barrier_data->barrier_state = state;
 
-  if (do_send) gasnete_ibdbarrier_send(barrier_data, 1, state, id, flags);
+  if (do_send) gasnete_ibdbarrier_send(team, 1, state, id, flags);
   if (want_pf) gasnete_barrier_pf_enable(team);
 
   /*  update state */
@@ -768,12 +769,12 @@ static void gasnete_ibdbarrier_init(gasnete_coll_team_t team) {
     gasneti_leak(barrier_data->barrier_peers);
   
     for (step = 0; step < steps; ++step) {
-      gex_Rank_t node = peers->fwd[step];
-      void *addr = gasnete_rdmabarrier_auxseg[node].addr;
-      barrier_data->barrier_peers[1+step].node = node;
+      gex_Rank_t jobrank = peers->fwd[step]; // is always a jobrank
+      void *addr = gasnete_rdmabarrier_auxseg[jobrank].addr;
+      barrier_data->barrier_peers[1+step].jobrank = jobrank;
     #if GASNET_PSHM
-      if (gasneti_pshm_jobrank_in_supernode(node)) {
-        barrier_data->barrier_peers[1+step].addr = (uintptr_t)gasneti_pshm_jobrank_addr2local(node, addr);
+      if (gasneti_pshm_jobrank_in_supernode(jobrank)) {
+        barrier_data->barrier_peers[1+step].addr = (uintptr_t)gasneti_pshm_jobrank_addr2local(jobrank, addr);
       } else
     #endif
       barrier_data->barrier_peers[1+step].addr = (uintptr_t)addr;

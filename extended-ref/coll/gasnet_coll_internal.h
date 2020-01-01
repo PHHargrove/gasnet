@@ -270,6 +270,7 @@ struct gasnete_coll_team_t_ {
   uint32_t			team_id;
   int					global_team;
   gex_TM_t                      e_tm;
+  gex_TM_t                      e_tm0;
   
   /* tree geometry cache, each team should have its own cache .... */
   gasnete_coll_tree_geom_t *tree_geom_cache_head;
