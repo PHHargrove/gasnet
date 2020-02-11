@@ -740,7 +740,7 @@ static void gasnete_amdbarrier_notify_reqh(gex_Token_t token,
 GASNETI_INLINE(gasnete_amdbarrier_send)
 void gasnete_amdbarrier_send(gasnete_coll_team_t team, int phase, int step, int value, int flags) {
   gasnete_coll_amdbarrier_t *barrier_data = team->barrier_data;
-  gex_AM_RequestShort5(    team->e_tm0, barrier_data->amdbarrier_peers[step],
+  gex_AM_RequestShort5(gasneti_THUNK_TM, barrier_data->amdbarrier_peers[step],
                            gasneti_handleridx(gasnete_amdbarrier_notify_reqh), 0,
                            team->team_id, phase, step, value, flags);
 }
@@ -1197,14 +1197,13 @@ typedef struct gasnete_coll_rmdbarrier_inbox_s {
              ((uintptr_t)(_addr) + 2U * GASNETE_RDMABARRIER_INBOX_SZ))
 
 GASNETI_INLINE(gasnete_rmdbarrier_send)
-void gasnete_rmdbarrier_send(gasnete_coll_team_t team,
+void gasnete_rmdbarrier_send(gasnete_coll_rmdbarrier_t *barrier_data,
                              int numsteps, unsigned int state,
                              gex_AM_Arg_t value, gex_AM_Arg_t flags) {
   GASNET_BEGIN_FUNCTION(); /* XXX: can we remove/avoid this lookup? */
   unsigned int step = state >> 1;
   gex_Event_t event;
   gasnete_coll_rmdbarrier_inbox_t *payload;
-  gasnete_coll_rmdbarrier_t *barrier_data = team->barrier_data;
   int i;
 
   /* Use the upper half (padding) an "other phase" inbox as an in-segment temporary.
@@ -1226,7 +1225,7 @@ void gasnete_rmdbarrier_send(gasnete_coll_team_t team,
   for (i = 0; i < numsteps; ++i, state += 2, step += 1) {
     const gex_Rank_t jobrank = barrier_data->barrier_peers[step].jobrank;
     void * const addr = GASNETE_RDMABARRIER_INBOX_REMOTE(barrier_data, step, state);
-    gasnete_put_nbi(team->e_tm0, jobrank, addr, payload, sizeof(*payload),
+    gasnete_put_nbi(gasneti_THUNK_TM, jobrank, addr, payload, sizeof(*payload),
                     GEX_EVENT_DEFER, 0 GASNETI_THREAD_PASS);
   }
   event = gasnete_end_nbi_accessregion(0 GASNETI_THREAD_PASS);
@@ -1261,7 +1260,7 @@ static int gasnete_rmdbarrier_kick_pshm(gasnete_coll_team_t team) {
         barrier_data->barrier_state = state + 2;
         gasnete_rmdbarrier_unlock(&barrier_data->barrier_lock); /* Cannot send while holding HSL */
         if (barrier_data->barrier_size && !barrier_data->barrier_passive) {
-          gasnete_rmdbarrier_send(team, 1, state+2, value, flags);
+          gasnete_rmdbarrier_send(barrier_data, 1, state+2, value, flags);
         } else {
           gasnete_barrier_pf_disable(team);
         }
@@ -1388,7 +1387,7 @@ void gasnete_rmdbarrier_kick(gasnete_coll_team_t team) {
   gasnete_rmdbarrier_unlock(&barrier_data->barrier_lock);
 
   if (numsteps) { /* need to issue one or more Puts */
-    gasnete_rmdbarrier_send(team, numsteps, state+2, value, flags);
+    gasnete_rmdbarrier_send(barrier_data, numsteps, state+2, value, flags);
   }
 }
 
@@ -1420,7 +1419,7 @@ static void gasnete_rmdbarrier_notify(gasnete_coll_team_t team, int id, int flag
   gasneti_sync_writes();
   barrier_data->barrier_state = state;
 
-  if (do_send) gasnete_rmdbarrier_send(team, 1, state, id, flags);
+  if (do_send) gasnete_rmdbarrier_send(barrier_data, 1, state, id, flags);
   if (want_pf) gasnete_barrier_pf_enable(team);
 
   /*  update state */
@@ -1750,7 +1749,7 @@ void gasnete_amcbarrier_send(gasnete_coll_team_t team, int phase, int value, int
 #if GASNETI_PSHM_BARRIER_HIER
     if (!barrier_data->amcbarrier_passive)
 #endif
-    gex_AM_RequestShort4(    team->e_tm0, barrier_data->amcbarrier_master,
+    gex_AM_RequestShort4(gasneti_THUNK_TM, barrier_data->amcbarrier_master,
                              gasneti_handleridx(gasnete_amcbarrier_notify_reqh), 0,
                              team->team_id, phase, value, flags);
   }
@@ -1821,7 +1820,7 @@ void gasnete_amcbarrier_kick(gasnete_coll_team_t team) {
 
       /*  inform the active nodes */
       for (i=0; i < barrier_data->amcbarrier_max; i++) {
-        gex_AM_RequestShort4(    team->e_tm0, barrier_data->amcbarrier_active[i],
+        gex_AM_RequestShort4(gasneti_THUNK_TM, barrier_data->amcbarrier_active[i],
                                  gasneti_handleridx(gasnete_amcbarrier_done_reqh), 0,
                                  team->team_id, phase, flags, value);
       }

@@ -368,13 +368,12 @@ typedef struct {
 
 
 GASNETI_INLINE(gasnete_ibdbarrier_send)
-void gasnete_ibdbarrier_send(gasnete_coll_team_t team,
+void gasnete_ibdbarrier_send(gasnete_coll_ibdbarrier_t *barrier_data,
                              int numsteps, unsigned int state,
                              gex_AM_Arg_t value, gex_AM_Arg_t flags) {
   GASNET_BEGIN_FUNCTION(); // TODO-EX: eliminate this?
   unsigned int step = state >> 1;
   gasnete_coll_rmdbarrier_inbox_t *payload;
-  gasnete_coll_ibdbarrier_t *barrier_data = team->barrier_data;
   int i;
 
   /* Use the upper half (padding) an "other phase" inbox as an in-segment temporary.
@@ -402,7 +401,7 @@ void gasnete_ibdbarrier_send(gasnete_coll_team_t team,
       *(volatile gasnete_coll_rmdbarrier_inbox_t *)addr = *payload;
     } else
 #endif
-    (void) gasnetc_rdma_put(team->e_tm0, jobrank, 0, (void*)payload, addr, sizeof(*payload), 0,
+    (void) gasnetc_rdma_put(gasneti_THUNK_TM, jobrank, 0, (void*)payload, addr, sizeof(*payload), 0,
                             NULL, NULL, NULL, NULL GASNETI_THREAD_PASS);
   }
 }
@@ -426,7 +425,7 @@ static int gasnete_ibdbarrier_kick_pshm(gasnete_coll_team_t team) {
         barrier_data->barrier_state = state + 2;
         gasnete_rmdbarrier_unlock(&barrier_data->barrier_lock); /* Cannot send while holding HSL */
         if (barrier_data->barrier_size && !barrier_data->barrier_passive) {
-          gasnete_ibdbarrier_send(team, 1, state+2, value, flags);
+          gasnete_ibdbarrier_send(barrier_data, 1, state+2, value, flags);
         } else {
           gasnete_barrier_pf_disable(team);
         }
@@ -548,7 +547,7 @@ void gasnete_ibdbarrier_kick(gasnete_coll_team_t team) {
   gasnete_rmdbarrier_unlock(&barrier_data->barrier_lock);
 
   if (numsteps) { /* need to issue one or more Puts */
-    gasnete_ibdbarrier_send(team, numsteps, state+2, value, flags);
+    gasnete_ibdbarrier_send(barrier_data, numsteps, state+2, value, flags);
   }
 }
 
@@ -580,7 +579,7 @@ static void gasnete_ibdbarrier_notify(gasnete_coll_team_t team, int id, int flag
   gasneti_sync_writes();
   barrier_data->barrier_state = state;
 
-  if (do_send) gasnete_ibdbarrier_send(team, 1, state, id, flags);
+  if (do_send) gasnete_ibdbarrier_send(barrier_data, 1, state, id, flags);
   if (want_pf) gasnete_barrier_pf_enable(team);
 
   /*  update state */

@@ -93,7 +93,6 @@ static int gasnete_node_pair_sort_fn(const void *a_p, const void *b_p) {
 }
 
 void gasnete_coll_team_init(gasnet_team_handle_t team, 
-                            gex_TM_t tm0,
                             uint32_t team_id, 
                             uint32_t total_ranks,
                             gex_Rank_t myrank,
@@ -114,7 +113,6 @@ void gasnete_coll_team_init(gasnet_team_handle_t team,
   gex_Rank_t *supernodes = NULL;
   uint32_t i;
   initialize_team_fields(team, images, myrank, total_ranks, scratch_segs GASNETI_THREAD_PASS); 
-  team->e_tm0 = tm0;
   team->team_id = team_id;
   team->total_ranks = total_ranks;
   team->myrank = myrank;
@@ -270,8 +268,7 @@ void gasnete_coll_teamid_reqh(gex_Token_t token,
 }
 
 /* collective function that should be called by all participating nodes */
-gasnet_team_handle_t gasnete_coll_team_create(gex_TM_t tm0,
-                                              uint32_t total_ranks,
+gasnet_team_handle_t gasnete_coll_team_create(uint32_t total_ranks,
                                               gex_Rank_t myrank,
                                               gex_Rank_t *rel2act_map, gasnet_seginfo_t* scratch_segs GASNETI_THREAD_FARG)
 {
@@ -300,7 +297,7 @@ gasnet_team_handle_t gasnete_coll_team_create(gex_TM_t tm0,
     
     /* send out team_id */
     for(i=1; i<total_ranks; i++) {
-      gex_AM_RequestShort(        tm0, rel2act_map[i],
+      gex_AM_RequestShort(gasneti_THUNK_TM, rel2act_map[i],
                                   gasneti_handleridx(gasnete_coll_teamid_reqh), 0,
                                   new_team_id);
     }
@@ -317,7 +314,7 @@ gasnet_team_handle_t gasnete_coll_team_create(gex_TM_t tm0,
 
   /* create the team locally */
   team = (gasnet_team_handle_t)gasneti_calloc(1,sizeof(struct gasnete_coll_team_t_));
-  gasnete_coll_team_init(team, tm0, new_team_id, total_ranks, myrank, rel2act_map, scratch_segs, NULL GASNETI_THREAD_PASS);
+  gasnete_coll_team_init(team, new_team_id, total_ranks, myrank, rel2act_map, scratch_segs, NULL GASNETI_THREAD_PASS);
   new_team_id = 0;
   
   /* unlock */
@@ -431,7 +428,7 @@ gasnet_team_handle_t gasnete_coll_team_split(gasnet_team_handle_t team,
   fflush(stderr);
 #endif
 
-  newteam = gasnete_coll_team_create(team->e_tm0, new_total_ranks, new_myrank, rel2act_map, segments GASNETI_THREAD_PASS);
+  newteam = gasnete_coll_team_create(new_total_ranks, new_myrank, rel2act_map, segments GASNETI_THREAD_PASS);
   
   gasneti_free(rel2act_map);
   gasnete_coll_consensus_barrier(team GASNETI_THREAD_PASS);
