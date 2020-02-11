@@ -270,8 +270,11 @@ int _gasneti_in_segment_t(const void *_ptr, size_t _nbytes, const gex_Segment_t 
     gex_Segment_t _segment = gasneti_export_segment(_ep->_segment);
     return _segment && _gasneti_in_segment_t(_ptr, _nbytes, _segment);
   }
-  #define gasneti_in_local_fullsegment(ep,ptr,nbytes) \
-    (gasneti_in_local_clientsegment(ep,ptr,nbytes) || gasneti_in_local_auxsegment(ep,ptr,nbytes))
+  GASNETI_INLINE(gasneti_in_local_fullsegment)
+  int gasneti_in_local_fullsegment(gasneti_EP_t _ep, void *_ptr, size_t _nbytes) {
+    return gasneti_in_local_clientsegment(_ep, _ptr, _nbytes) ||
+           gasneti_in_local_auxsegment(_ep, _ptr, _nbytes);
+  }
 #endif
 
 #ifdef _INCLUDED_GASNET_INTERNAL_H
