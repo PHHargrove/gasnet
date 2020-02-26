@@ -33,6 +33,9 @@
   #include <alloca.h>
 #endif
 
+uintptr_t gasnetc_msg_maxsize;
+static uintptr_t gasnetc_np_max_med;
+
 // Max number of times to poll the AM mailboxes per entry
 // TODO: distinct value for CQ events reaped vs service limit on "slow" list?
 static int gasnetc_ampoll_burst; // Units of events
@@ -635,12 +638,23 @@ void gasnetc_init_gni(gasnet_seginfo_t seginfo)
   size_t bb_size = gasnetc_bounce_buffers.size / gasnetc_domain_count_max;
   int max_memreg = gasneti_getenv_int_withdefault("GASNET_GNI_MEMREG", GASNETC_GNI_MEMREG_DEFAULT, 0);
 
+  int64_t lub_medium = gasneti_getenv_int_withdefault("GASNET_GNI_MAX_MEDIUM", GASNETC_GNI_DEFAULT_MAX_MEDIUM, 0);
+  if (lub_medium < 512 ||
+      lub_medium >= 65472 ||
+      lub_medium != GASNETI_ALIGNUP(lub_medium, 64)) {
+    gasneti_fatalerror("GASNET_GNI_MAX_MEDIUM %"PRIi64" is not a multiple of 64, between 512 and 65408, inclusive.", lub_medium);
+  }
+  gasnetc_msg_maxsize = GASNETI_ALIGNUP(GASNETC_HEADLEN(medium, GASNETC_MAX_ARGS) + lub_medium,
+                                        GASNETC_CACHELINE_SIZE);
+  // We cannot send 65536 bytes in a 16-bit field (bug 4042)
+  gasnetc_np_max_med = MIN(gasnetc_msg_maxsize, 65535);
+
   if (bb_size < GASNET_PAGESIZE) {
     gasneti_fatalerror("GASNET_GNI_BOUNCE_SIZE must be %d or larger", (int)GASNET_PAGESIZE);
   }
 
-  if (bb_size < GASNETC_MSG_MAXSIZE) {
-    gasneti_fatalerror("GASNET_GNI_BOUNCE_SIZE must be %d or larger", (int)GASNETC_MSG_MAXSIZE);
+  if (bb_size < gasnetc_msg_maxsize) {
+    gasneti_fatalerror("GASNET_GNI_BOUNCE_SIZE must be %d or larger", (int)gasnetc_msg_maxsize);
   }
 
   /* Protocol switch points: FMA vs. RDMA */
@@ -1006,7 +1020,7 @@ uintptr_t gasnetc_init_messaging(void)
   // Default is arch-dependent
   gasnetc_packedlong_cutover = gasneti_getenv_int_withdefault("GASNET_GNI_PACKEDLONG_CUTOVER",
                                                               GASNETC_GNI_PACKEDLONG_CUTOVER_DEFAULT, 0);
-  gasnetc_packedlong_cutover = MIN(GASNETC_MSG_MAXSIZE, gasnetc_packedlong_cutover);
+  gasnetc_packedlong_cutover = MIN(gasnetc_msg_maxsize, gasnetc_packedlong_cutover);
 
   GASNETC_INITLOCK_GNI();
   GASNETC_INITLOCK_AM_BUFFER();
@@ -1062,15 +1076,15 @@ uintptr_t gasnetc_init_messaging(void)
 
     request_bits = am_maxcredit;
 
-    am_replysz = GASNETI_ALIGNUP(GASNETC_MSG_MAXSIZE, GASNETC_CACHELINE_SIZE); // No-op??
+    am_replysz = GASNETI_ALIGNUP(gasnetc_msg_maxsize, GASNETC_CACHELINE_SIZE); // No-op??
   } else {
     /* Eager: GASNET_NETWORKDEPTH_SPACE */
     GASNETI_TRACE_PRINTF(I, ("Using Eager protocol for AM Requests"));
     request_region_length = gasneti_getenv_int_withdefault("GASNET_NETWORKDEPTH_SPACE",
                                                            GASNETC_NETWORKDEPTH_SPACE_DEFAULT, 1);
     request_region_length = GASNETI_ALIGNUP(request_region_length, 64);
-    request_region_length = MAX(request_region_length,  2*GASNETC_MSG_MAXSIZE);
-    request_region_length = MIN(request_region_length, 64*GASNETC_MSG_MAXSIZE);
+    request_region_length = MAX(request_region_length,  2*gasnetc_msg_maxsize);
+    request_region_length = MIN(request_region_length, 64*gasnetc_msg_maxsize);
     am_slotsz = gasnetc_next_power_of_2(request_region_length / 64);
     am_slot_bits = ffs(am_slotsz) - 1;
     am_maxcredit = request_region_length / am_slotsz;
@@ -1083,7 +1097,7 @@ uintptr_t gasnetc_init_messaging(void)
     // Clip credits to NETWORKDEPTH_TOTAL for use in computing size of Cq and notify ring
     am_maxcredit = MIN(am_maxcredit, reply_count);
     /* reply destination is also request source.  So, must fit largest *outgoing* message */
-    am_replysz = GASNETI_ALIGNUP(GASNETC_MSG_MAXSIZE, am_slotsz);
+    am_replysz = GASNETI_ALIGNUP(gasnetc_msg_maxsize, am_slotsz);
   }
 
   // NOTE: 1<<64 is undefined and indeed icc yields 1.  So, we special case 64.
@@ -2042,9 +2056,9 @@ gasnetc_alloc_request_post_descriptor_np(
 #if GASNETC_NP_MEDXL
   gasnetc_post_descriptor_t *gpd =
     request_post_descriptor_inner(dest, 0, 0, min_length, max_length, flags GASNETI_THREAD_PASS);
-  if (gpd && (gpd->pd.length > GASNETC_MSG_MAXSIZE)) {
+  if (gpd && (gpd->pd.length > gasnetc_msg_maxsize)) {
     // We have a "extra large" landing zone on the peer, but the gpd has a
-    // source buffer of at most GASNETC_MSG_MAXSIZE.  We need an alternate.
+    // source buffer of at most gasnetc_msg_maxsize.  We need an alternate.
     void *buf = gasneti_lifo_pop(&medxl_descriptor_pool);
     if_pf (! buf) buf = gasneti_malloc(am_maxcredit << am_slot_bits);
     gpd->pd.local_addr = (uint64_t) buf;
@@ -2053,8 +2067,7 @@ gasnetc_alloc_request_post_descriptor_np(
   return gpd;
 #else
   // TODO-EX: cannot negotiate larger than MaxMedium until/unless reply_pool is over-sized too
-  // We cannot send 65536 bytes in a 16-bit field (bug 4042)
-  max_length = MIN(max_length, MIN(GASNETC_MSG_MAXSIZE,65535));
+  max_length = MIN(max_length, gasnetc_np_max_med);
   return request_post_descriptor_inner(dest, 0, 0, min_length, max_length, flags GASNETI_THREAD_PASS);
 #endif
 }
@@ -2103,7 +2116,7 @@ void gasnetc_recv_am_unlocked(peer_struct_t * const peer, gasnetc_packet_t * con
       { /* payload follows args - copy it into place */
           const size_t head_len = GASNETC_HEADLEN(long, numargs);
           uint8_t * data = (uint8_t *)packet + head_len;
-          gasneti_assert(head_len + packet->galp.data_length <= GASNETC_MSG_MAXSIZE);
+          gasneti_assert(head_len + packet->galp.data_length <= gasnetc_msg_maxsize);
           GASNETI_MEMCPY(packet->galp.data, data, packet->galp.data_length);
       }
       GASNETI_FALLTHROUGH
@@ -4284,7 +4297,7 @@ void gasnetc_init_bounce_buffer_pool(GASNETC_DIDX_FARG_ALONE)
 
   buffer_size = MAX(gasnetc_get_bounce_register_cutover,
                     gasnetc_put_bounce_register_cutover);
-  buffer_size = MAX(buffer_size, GASNETC_MSG_MAXSIZE);
+  buffer_size = MAX(buffer_size, gasnetc_msg_maxsize);
   buffer_size = GASNETI_ALIGNUP(buffer_size, GASNETC_CACHELINE_SIZE);
 
   num_bounce = gasnetc_bounce_buffers.size / buffer_size / gasnetc_domain_count_max;

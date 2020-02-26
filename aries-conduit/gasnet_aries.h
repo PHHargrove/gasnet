@@ -209,11 +209,8 @@ typedef union gasnetc_packet_u {
 #define GASNETC_HEADLEN(cat,nargs) \
         GASNETC_HEADLEN_AUX(gasnetc_am_##cat##_packet_t,(nargs))
 
-/* maximum message size: */
 #define GASNETC_CACHELINE_SIZE 64
-#define GASNETC_MSG_MAXSIZE \
-        GASNETI_ALIGNUP_NOASSERT((GASNETC_HEADLEN(medium, GASNETC_MAX_ARGS) \
-                                 + GASNETC_LUB_MEDIUM), GASNETC_CACHELINE_SIZE)
+extern uintptr_t gasnetc_msg_maxsize;
 
 /* max data one can pack into a message with a long header: */
 extern size_t gasnetc_packedlong_cutover;

@@ -24,8 +24,6 @@
 GASNETI_IDENT(gasnetc_IdentString_Version, "$GASNetCoreLibraryVersion: " GASNET_CORE_VERSION_STR " $");
 GASNETI_IDENT(gasnetc_IdentString_Name,    "$GASNetCoreLibraryName: " GASNET_CORE_NAME_STR " $");
 
-GASNETI_IDENT(gasnetc_IdentString_AMMaxMedium, "$GASNetAMMaxMedium: " _STRINGIFY(GASNETC_GNI_MAX_MEDIUM) " $");
-
 static void gasnetc_atexit(int exitcode);
 
 gex_AM_Entry_t const *gasnetc_get_handlertable(void);
@@ -52,7 +50,7 @@ static void gasnetc_check_config(void) {
   gasneti_assert((1<<GASNETC_LOG2_MAXNODES) == GASNET_MAXNODES);
 
   /* Otherwise space is being wasted: */
-  gasneti_assert(GASNETC_MSG_MAXSIZE ==
+  gasneti_assert(gasnetc_msg_maxsize ==
                  (GASNETC_HEADLEN(medium, GASNETC_MAX_ARGS) + GASNETC_LUB_MEDIUM));
   
   gasneti_assert((int)GC_CMD_AM_LONG_PACKED == ((int)GC_CMD_AM_LONG + 1));
@@ -219,7 +217,7 @@ void gasnetc_bootstrapBarrier_gni(void))
     phase ^= 1;
 }
 
-#define GASNETC_SYS_EXCHANGE_MAX GASNETC_GNI_MAX_MEDIUM
+#define GASNETC_SYS_EXCHANGE_MAX GASNETC_MAX_MEDIUM(2)
 static unsigned int gasnetc_sys_exchange_rcvd[2][GASNETC_LOG2_MAXNODES];
 static uint8_t *gasnetc_sys_exchange_buf[2] = { NULL, NULL };
 

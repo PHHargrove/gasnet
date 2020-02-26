@@ -3795,7 +3795,7 @@ if test "$enabled_aries" = yes; then
      [GASNET_ERR_SAVE()
       AC_MSG_ERROR([--with-aries-max-medium must be a multiple of 64 and no smaller than 512])],
      [gni_max_medium=4032])
-  AC_DEFINE_UNQUOTED(GASNETC_GNI_MAX_MEDIUM, [$gni_max_medium])
+  AC_DEFINE_UNQUOTED(GASNETC_GNI_DEFAULT_MAX_MEDIUM, [$gni_max_medium])
 
   GASNET_IF_ENABLED(aries-multi-domain, [Use experimental multi-domain support in PAR builds], [AC_DEFINE(GASNETC_GNI_MULTI_DOMAIN)])
 
