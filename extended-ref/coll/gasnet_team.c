@@ -372,12 +372,14 @@ gasnet_team_handle_t gasnete_coll_team_split(gasnet_team_handle_t team,
   my_args.color = mycolor;
   my_args.relrank = myrelrank;
   my_args.segment = *(gasnet_seginfo_t*)clientdata;
+  gasneti_console_message("INFO:", "Allocating %"PRIuSZ"-byte temporary for team split exchange", sizeof(my_args) * team->total_ranks);
   all_args = gasneti_malloc(sizeof(my_args) * team->total_ranks);
   gasnet_coll_gather_all(team, all_args, &my_args, sizeof(my_args),
                          GASNET_COLL_LOCAL|GASNET_COLL_IN_MYSYNC | GASNET_COLL_OUT_MYSYNC);
 
   /* short-circuit if excluded */
   if (mycolor == -1) {
+    gasneti_console_message("INFO:", "Freeing temporary for team split exchange");
     gasneti_free(all_args);
     gasnete_coll_consensus_barrier(team GASNETI_THREAD_PASS);
     gasnete_coll_consensus_barrier(team GASNETI_THREAD_PASS);
@@ -391,6 +393,7 @@ gasnet_team_handle_t gasnete_coll_team_split(gasnet_team_handle_t team,
   }
 
   /* pass 2: collect and rank the members */
+  gasneti_console_message("INFO:", "Allocating %"PRIuSZ"-byte temporary for team split sort", new_total_ranks*sizeof(gasnete_coll_split_sort_t));
   gasnete_coll_split_sort_t *members = gasneti_malloc(new_total_ranks*sizeof(gasnete_coll_split_sort_t));
   for (i=j=0; i<team->total_ranks; i++) {
     if (mycolor == all_args[i].color) {
@@ -403,6 +406,7 @@ gasnet_team_handle_t gasnete_coll_team_split(gasnet_team_handle_t team,
   qsort(members, new_total_ranks, sizeof(gasnete_coll_split_sort_t), &gasnete_coll_split_sort_fn);
 
   /* pass 3: collect jobrank and segments of sorted members */
+  gasneti_console_message("INFO:", "Allocating %"PRIuSZ"-byte temporary for rank map", new_total_ranks*sizeof(gex_Rank_t));
   rel2act_map = (gex_Rank_t *)gasneti_malloc(new_total_ranks*sizeof(gex_Rank_t));
   segments = (gasnet_seginfo_t *)gasneti_malloc(new_total_ranks*sizeof(gasnet_seginfo_t));
   for (i=0; i < new_total_ranks; i++) {
@@ -412,7 +416,9 @@ gasnet_team_handle_t gasnete_coll_team_split(gasnet_team_handle_t team,
     segments[i] = all_args[j].segment;
   }
   gasneti_assert(new_myrank != GEX_RANK_INVALID);
+  gasneti_console_message("INFO:", "Freeing temporary for team split sort");
   gasneti_free(members);
+  gasneti_console_message("INFO:", "Freeing temporary for team split exchange");
   gasneti_free(all_args);
   
   /* It would be better to add some sanity check for team correctness here. */
@@ -430,6 +436,7 @@ gasnet_team_handle_t gasnete_coll_team_split(gasnet_team_handle_t team,
 
   newteam = gasnete_coll_team_create(new_total_ranks, new_myrank, rel2act_map, segments GASNETI_THREAD_PASS);
   
+  gasneti_console_message("INFO:", "Freeing temporary for rank map");
   gasneti_free(rel2act_map);
   gasnete_coll_consensus_barrier(team GASNETI_THREAD_PASS);
   return newteam;
