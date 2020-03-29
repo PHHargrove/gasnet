@@ -720,6 +720,8 @@ extern void gasneti_trace_updatemask(const char *newmask, char *maskstr, char *t
   const char *p;
   char *newmaskstr = maskstr;
   
+if (!gasneti_mynode)
+fprintf(stderr, "@ newmask='%s' maskstr='%s' types='%s'\n", newmask, maskstr, types);
   if (types == gasneti_tracetypes) { 
     typesall = gasneti_tracetypes_all; 
     desc = "GASNET_TRACEMASK"; 

@@ -1183,6 +1183,7 @@ am_memory_report:
   am_mmap_bytes = GASNETI_PAGE_ALIGNUP(am_mmap_bytes);
   am_mmap_ptr = gasneti_mmap(am_mmap_bytes);
 #endif
+  GASNETI_TRACE_PRINTF(I, ("mmap complete for AM space"));
 
   if (am_mmap_ptr == (char *)MAP_FAILED) {
     // print report, aborting right after
@@ -1272,6 +1273,7 @@ am_memory_report:
     uint8_t *local_peer_base = (uint8_t *)am_mmap_ptr + peer_region_offset;
 
     gasneti_spawner->Exchange(&my_am_exchg, sizeof(struct am_exchange), all_am_exchg);
+    GASNETI_TRACE_PRINTF(I, ("Completed exchange of AM space"));
   
     /* At this point all_am_exchg has the required information for everyone */
     for (i = 0; i < gasneti_nodes; i += 1) {

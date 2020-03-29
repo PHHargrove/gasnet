@@ -19,6 +19,8 @@
   ==============
 */
 
+extern void gasneti_memrpt(const char *msg);
+
 extern void gasnetc_exit(int exitcode) GASNETI_NORETURN;
 GASNETI_NORETURNP(gasnetc_exit)
 #define gasnet_exit gasnetc_exit

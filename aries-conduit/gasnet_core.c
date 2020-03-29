@@ -1020,6 +1020,7 @@ extern void gasnetc_exit(int exitcode) {
     gasneti_mutex_lock(&exit_lock);
   }
 
+  gasneti_memrpt("ENTER gasnetc_exit");
   GASNETI_TRACE_PRINTF(C,("gasnetc_exit(%i)\n", exitcode));
 
   /* LCS Code modelled after portals-conduit */

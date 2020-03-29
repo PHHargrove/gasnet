@@ -1840,6 +1840,26 @@ extern gasneti_spawnerfn_t const *gasneti_spawnerInit(int *argc_p, char ***argv_
     return NULL;
   }
 #endif
+
+void gasneti_memrpt(const char *msg) {
+  gasneti_heapstats_t stats;
+  gasneti_getheapstats(&stats);
+  GASNETI_TRACE_PRINTF(I, ("%s", msg));
+  GASNETI_TRACE_PRINTF(I, ("\tgasnet internal mem: %"PRIu64" bytes in %"PRIu64" objects",
+                           stats.live_bytes, stats.live_objects));
+  { FILE *fp;
+    char line[256];
+    if (NULL != (fp = fopen("/proc/self/status","r"))) {
+      while (fgets(line, sizeof(line)-1, fp)) {
+        if (!strncmp(line, "Vm", 2)) {
+          GASNETI_TRACE_PRINTF(I, ("\t%s", line));
+        }
+      }
+      fclose(fp);
+    }
+  }
+}
+
 #if GASNET_DEBUGMALLOC
 /* ------------------------------------------------------------------------------------ */
 /* Debug memory management
