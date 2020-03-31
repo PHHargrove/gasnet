@@ -564,7 +564,25 @@ static void bootstrapBroadcast(void *src, size_t len, void *dest, int rootnode) 
 }
 
 static void bootstrapSNodeBroadcast(void *src, size_t len, void *dest, int rootnode) {
-#if HAVE_PMI_ALLGATHER
+#if HAVE_PMI_ALLGATHER_ON_SMP
+    int count = gasneti_myhost.node_count;
+    uint8_t *tmp = gasneti_malloc(len * count);
+    int rc, i;
+
+    rc = PMI_Allgather_on_smp(src ? src : dest, tmp, len);
+    gasneti_assert_always(PMI_SUCCESS == rc);
+
+    /* Extract the right piece */
+    for (i = 0; i < count; ++i) {
+      if (rootnode == gasneti_myhost.nodes[i]) {
+        GASNETI_MEMCPY(dest, &tmp[i * len], len);
+        break;
+      }
+    }
+    gasneti_assert_always(i != count);
+
+    gasneti_free(tmp);
+#elif HAVE_PMI_ALLGATHER
     /* TODO: test our assumption that PMI_Allgather it better than the Put/Get code below */
     uint8_t *tmp = gasneti_malloc(len * gasneti_nodes);
     int rc, i;
