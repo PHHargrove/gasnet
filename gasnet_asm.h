@@ -107,24 +107,8 @@
     #define GASNETI_PGI_ASM_TPR24514 1
   #endif
 #elif PLATFORM_COMPILER_PGI /* x86 and x86-64 */
-  #if PLATFORM_COMPILER_VERSION_LT(7,2,5)
-    #error "GASNet does not support PGI compilers prior to 7.2-5"
-  #endif
-  #if PLATFORM_ARCH_32 && \
-      PLATFORM_COMPILER_VERSION_GE(7,1,5) && PLATFORM_COMPILER_VERSION_LT(8,0,6)
-    /* Compiler suffers from "tpr 14969" in which extended asm() output constraints can't
-     * be met unless they appear in a specific order.  This is on 32-bit targets only.
-     *
-     * NOTE: PGI reports TPR 14969 was fixed in 8.0-1.
-     * However, we have only been able to test 8.0-6 and later.
-     */
-    #define GASNETI_PGI_ASM_BUG2294 1
-  #endif
-  #if PLATFORM_COMPILER_VERSION_GE(7,0,0) && PLATFORM_COMPILER_VERSION_LT(10,8,0)
-    /* Compiler suffers from "tpr 17075" in which extended asm() may load only 32 bits of
-     * a 64-bit operand at -O1 (but is OK at -O0 and -O2).
-     */
-    #define GASNETI_PGI_ASM_BUG2843 1
+  #if PLATFORM_COMPILER_VERSION_LT(10,9,0)
+    #error "GASNet does not support PGI compilers prior to 10.9"
   #endif
   #if PLATFORM_COMPILER_PGI_CXX && PLATFORM_COMPILER_VERSION_GE(17,0,0)
     // C++ compiler generates code that is consistent with having lost the volatile

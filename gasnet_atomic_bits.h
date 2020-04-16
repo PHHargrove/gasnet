@@ -728,13 +728,8 @@
                 GASNETI_ASM_USED(4)
 		GASNETI_X86_LOCK_PREFIX
 		"cmpxchgl %3, %1	\n\t"
-	#if GASNETI_PGI_ASM_BUG2294 /* Sensitive to output constraint order */
-		"sete %2"
-		: "=a" (_readval), "=m" (_v->gasneti_ctr), "=qm" (_retval)
-	#else /* The version that has always worked everywhere else */
 		"sete %0"
 		: "=qm" (_retval), "=m" (_v->gasneti_ctr), "=a" (_readval)
-	#endif
 		: "r" (_newval), "m" (_v->gasneti_ctr), "a" (_oldval)
 		: "cc" GASNETI_ATOMIC_MEM_CLOBBER);
 	#if GASNETI_PGI_ASM_BUG1754
@@ -777,9 +772,6 @@
 
           GASNETI_INLINE(_gasneti_atomic64_compare_and_swap)
           int _gasneti_atomic64_compare_and_swap(gasneti_atomic64_t *_p, uint64_t _oldval, uint64_t _newval) {
-	  #if GASNETI_PGI_ASM_BUG2843 && GASNET_NDEBUG
-            #pragma routine opt 2 /* Bug 2843 - pgcc miscompiles this code at -O1, so force -O2 */
-          #endif
             GASNETI_ASM_REGISTER_KEYWORD unsigned char _retval;
             GASNETI_ASM_REGISTER_KEYWORD uint64_t _readval = _oldval;
             __asm__ __volatile__ (
@@ -799,9 +791,6 @@
           #define _gasneti_atomic64_compare_and_swap _gasneti_atomic64_compare_and_swap
           GASNETI_INLINE(_gasneti_atomic64_swap)
           uint64_t _gasneti_atomic64_swap(gasneti_atomic64_t *_v, uint64_t _value) {
-	  #if GASNETI_PGI_ASM_BUG2843 && GASNET_DEBUG
-            #pragma routine opt 1 /* pgcc miscompiles this code at -O0, so force -O1 */
-          #endif
             GASNETI_ASM_REGISTER_KEYWORD uint64_t _retval;
             __asm__ __volatile__(
                     GASNETI_ASM_USED(2)
@@ -816,9 +805,6 @@
           GASNETI_INLINE(_gasneti_atomic64_fetchadd)
           uint64_t _gasneti_atomic64_fetchadd(gasneti_atomic64_t *_v, uint64_t _op) {
             /* CAUTION: see atomic32_fetchadd for note about PathScale and Intel compilers */
-	  #if GASNETI_PGI_ASM_BUG2843 && GASNET_DEBUG
-            #pragma routine opt 1 /* pgcc miscompiles this code at -O0, so force -O1 */
-          #endif
             GASNETI_ASM_REGISTER_KEYWORD uint64_t _retval;
             __asm__ __volatile__(
                     GASNETI_ASM_USED(2)
