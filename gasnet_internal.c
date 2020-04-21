@@ -1569,6 +1569,9 @@ extern void gasneti_nodemapParse(void) {
 
   gasneti_free(s);
 
+if(!(gasneti_mynode%34))
+  fprintf(stderr, "%i> {sn,host}.count = %i %i\n", (int)gasneti_mynode,
+          (int)gasneti_mysupernode.node_count, (int)gasneti_myhost.node_count);
   #if GASNET_DEBUG_VERBOSE
   if (!gasneti_mynode) {
     for (i = 0; i < gasneti_nodes; ++i) {

@@ -178,6 +178,8 @@ GASNETI_INLINE(do_kvs_put)
 void do_kvs_put(void *value, size_t sz) {
     int rc;
     do_encode(value, sz);
+    GASNETI_STAT_EVENT_VAL(I, PMI_KEY, 1 + strlen(kvs_key));
+    GASNETI_STAT_EVENT_VAL(I, PMI_VAL, 1 + strlen(kvs_value));
 #if USE_PMIX_API
     /* PMIx does not need to encode data - however,
      * the current API doesn't allow us to avoid it,

@@ -584,8 +584,13 @@ size_t gasneti_format_ti(char *buf, gex_TI_t ti) {
   static void gasneti_file_vprintf(FILE *fp, const char *format, va_list argptr) {
     gasneti_mutex_assertlocked(&gasneti_tracelock);
     gasneti_assert(fp);
+int rc;
+rc =
     fprintf(fp, "%i> ", (int)gasneti_mynode);
+gasneti_assert_always_int(rc ,>=, 0);
+rc =
     vfprintf(fp, format, argptr);
+gasneti_assert_always_int(rc ,>=, 0);
     if (format[strlen(format)-1]!='\n') fprintf(fp, "\n");
     GASNETI_TRACEFILE_FLUSH(fp);
   }
@@ -680,8 +685,8 @@ static FILE *gasneti_open_outputfile(const char *filename, const char *desc) {
       fp = stderr;
     }
   }
-  fprintf(stderr, "GASNet reporting enabled - %s output directed to %s\n", 
-          desc, filename);
+//  fprintf(stderr, "GASNet reporting enabled - %s output directed to %s\n", 
+//          desc, filename);
   return fp;
 }
 

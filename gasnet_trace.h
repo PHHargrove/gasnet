@@ -791,6 +791,9 @@ extern void gasneti_trace_finish(void);
         VAL(I, GASNET_MALLOC, sz)                         \
         VAL(I, GASNET_FREE, sz)                           \
                                                           \
+        VAL(I, PMI_KEY, sz)                               \
+        VAL(I, PMI_VAL, sz)                               \
+                                                          \
         GASNETC_CONDUIT_STATS(CNT,VAL,TIME)               \
         GASNETE_CONDUIT_STATS(CNT,VAL,TIME)               
 

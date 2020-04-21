@@ -624,7 +624,7 @@ static int gasnetc_init( gex_Client_t            *client_p,
   /* Now enable tracing of all the following steps */
   gasneti_trace_init(argc, argv);
 
-  #if GASNET_DEBUG_VERBOSE
+  #if 1
     fprintf(stderr,"gasnetc_init(): gasnetc_init done - node %i/%i starting...\n", 
       gasneti_mynode, gasneti_nodes); fflush(stderr);
   #endif
@@ -633,6 +633,7 @@ static int gasnetc_init( gex_Client_t            *client_p,
   { int *nidlist;
     ret = PMI_Get_nidlist_ptr((void**) &nidlist);
     gasneti_assert(ret == PMI_SUCCESS);
+    gasneti_assert(nidlist);
     gasneti_nodemapInit(NULL, nidlist, sizeof(int), sizeof(int));
   }
 
