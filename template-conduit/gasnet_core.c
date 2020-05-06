@@ -360,13 +360,16 @@ extern void gasnetc_exit(int exitcode) {
   gasneti_trace_finish();
   gasneti_sched_yield();
 
-  /* (###) add code here to terminate the job across _all_ nodes 
-           with gasneti_killmyprocess(exitcode) (not regular exit()), preferably
+  /* (###) add code here to terminate the job across _all_ nodes, preferably
            after raising a SIGQUIT to inform the client of the exit
            Should include a call to gasneti_spawner->Fini() on normal exit
            or gasneti_spawner->Abort() for an abortive exit
+
+           As shown below, should finish with calls to GASNETI_ATEXIT_CHECK(exitcode)
+           and gasneti_killmyprocess(exitcode) (not regular exit()).
   */
 
+  GASNETI_ATEXIT_CHECK(exitcode);
   gasneti_killmyprocess(exitcode); /* last chance */
   gasneti_fatalerror("gasnetc_exit failed!");
 }

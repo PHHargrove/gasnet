@@ -800,6 +800,54 @@ typedef struct _gasneti_threaddata_t {
 } gasneti_threaddata_t;
 
 /* ------------------------------------------------------------------------------------ */
+// Handling for gasnet_exit() called as an atexit callback.
+
+// Prior to calling gasneti_killmyprocess() or equivalent, an implementation of
+// gasnet_exit() should invoke `GASNETI_ATEXIT_CHECK(exitcode);`, to ensure
+// that a non-zero exit() or return-from-main is not discarded in favor of 0.
+//
+// In addition to preserving non-zero exits, this call makes an (OS dependent)
+// best-effort to run any remaining atexit callbacks.
+//
+#if HAVE_ON_EXIT
+  #define GASNETI_ATEXIT_CHECK(exitcode) ((void)0)
+#else
+  // If (and only if) the current thread is executing an atexit callback:
+  //   1) Make best-effort to run any remaining callbacks
+  //   2) Return if the passed exitcode is zero
+  // A return (without calling gasneti_killmyprocess or equivalent) should
+  // allow the process to exit with the value passed to exit() or returned
+  // from main(), which might be non-zero.
+  #define GASNETI_ATEXIT_CHECK(exitcode) \
+          do { if (_gasneti_atexit_check(exitcode)) return; } while (0)
+
+  GASNETI_THREADKEY_DECLARE(_gasneti_in_atexit);
+
+  // Best effort to execute any remaining atexit callbacks
+  #if HAVE___CXA_FINALIZE
+    extern void __cxa_finalize(void *);
+    #define GASNETI_ATEXIT_FINISH() __cxa_finalize(NULL)
+  #elif HAVE__EXITHANDLE
+    extern void _exithandle(void);
+    #define GASNETI_ATEXIT_FINISH() _exithandle()
+  #else
+    #define GASNETI_ATEXIT_FINISH() ((void)0)
+  #endif
+
+  // Helper for GASNETI_ATEXIT_CHECK()
+  // Defined separately for possible use by conduits with unusual needs.
+  // Returns non-zero if the call to gasnet_exit() should return.
+  GASNETI_INLINE(_gasneti_atexit_check)
+  int _gasneti_atexit_check(int exitcode) {
+    if (gasneti_threadkey_get(_gasneti_in_atexit)) {
+      GASNETI_ATEXIT_FINISH();
+      return !exitcode;
+    }
+    return 0;
+  }
+#endif
+
+/* ------------------------------------------------------------------------------------ */
 GASNETI_END_NOWARN
 GASNETI_END_EXTERNC
 

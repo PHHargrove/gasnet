@@ -19,8 +19,12 @@
   ==============
 */
 
-extern void gasnetc_exit(int exitcode) GASNETI_NORETURN;
-GASNETI_NORETURNP(gasnetc_exit)
+#if HAVE_ON_EXIT
+  extern void gasnetc_exit(int exitcode) GASNETI_NORETURN;
+  GASNETI_NORETURNP(gasnetc_exit)
+#else
+  extern void gasnetc_exit(int exitcode);
+#endif
 #define gasnet_exit gasnetc_exit
 
 /* Some conduits permit gasnet_init(NULL,NULL).

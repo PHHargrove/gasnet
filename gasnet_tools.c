@@ -841,8 +841,12 @@ static void (*_gasneti_exitfn)(int);
     if (_gasneti_exitfn) _gasneti_exitfn(exitcode);
   }
 #else
+  GASNETI_THREADKEY_DEFINE(_gasneti_in_atexit);
   static void gasneti_atexit(void) {
-    if (_gasneti_exitfn) _gasneti_exitfn(0);
+    if (_gasneti_exitfn) {
+      gasneti_threadkey_set(_gasneti_in_atexit, (void *)(intptr_t)1);
+      _gasneti_exitfn(0);
+    }
   }
 #endif
 extern void gasneti_registerExitHandler(void (*_exitfn)(int)) {

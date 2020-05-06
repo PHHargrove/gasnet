@@ -907,6 +907,7 @@ extern void gasnetc_exit(int exitcode) {
   exitcode = gasnetc_get_exitcode();
 #endif
 
+  GASNETI_ATEXIT_CHECK(exitcode);
   gasneti_killmyprocess(exitcode);
 }
 

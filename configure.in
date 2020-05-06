@@ -4448,7 +4448,7 @@ dnl GASNET_TOOLSONLY_FALSE_END
 # Check for alloca in C code
 GASNET_FUNC_ALLOCA
 
-AC_CHECK_FUNCS(on_exit)
+AC_CHECK_FUNCS(on_exit __cxa_finalize _exithandle)
 
 AC_CHECK_FUNCS(gethostid)
 
