@@ -363,6 +363,7 @@ GASNETI_MALLOC gasnetc_reg_data_t *mem_reg_data_alloc(void)
     const int count = GASNET_PAGESIZE / sizeof(gasnetc_reg_data_t); /* TODO: env var to tune? */
     int i;
     result = gasneti_malloc(count * sizeof(gasnetc_reg_data_t));
+fprintf(stderr, "@%d> %d elem at %p\n", gasneti_mynode, count, result);
     gasneti_leak(result);
     for (i = 0; i < count - 1; ++i) {
       result[i].next = &result[i + 1];
@@ -412,6 +413,7 @@ gasnetc_udreg_register(void *addr, uint64_t len, void *context) {
     data = (GNI_RC_ERROR_RESOURCE == status) ? NULL : UDREG_DEVICE_REG_FAILED;
   }
 
+  fprintf(stderr, "@%d in REG\n", gasneti_mynode);
   return data;
 }
 
@@ -427,7 +429,21 @@ gasnetc_udreg_deregister(void *data_arg, void *context) {
   GASNETC_UNLOCK_GNI();
   gasneti_assert_always (status == GNI_RC_SUCCESS);
   mem_reg_data_free(data);
+  fprintf(stderr, "@%d in DEREG\n", gasneti_mynode);
   return 0; /* TODO: what else might be returned, and when/why? */
+}
+
+static void
+gasnetc_udreg_destructor(void *context) {
+  fprintf(stderr, "@%d in DESTROY\n", gasneti_mynode);
+
+gasnetc_reg_data_t *result = mem_reg_data_pool;
+int count = 0;
+while (result) { ++count; 
+fprintf(stderr, "@%d> free elem %p\n", gasneti_mynode, result);
+
+result = result->next; }
+fprintf(stderr, "@%d> %d elem free\n", gasneti_mynode, count);
 }
 
 /* Register local side of a pd, with unbounded retry on resource shortage.
@@ -702,7 +718,8 @@ void gasnetc_init_gni(gasnet_seginfo_t seginfo)
     attr.destructor_context  = NULL;
     attr.device_reg_func     = gasnetc_udreg_register;
     attr.device_dereg_func   = gasnetc_udreg_deregister;
-    attr.destructor_callback = NULL;
+    attr.destructor_callback = gasnetc_udreg_destructor;
+attr.destructor_callback = NULL;
 
     rc = UDREG_CacheCreate(&attr); /* TODO: error detect/recover? */
     if (UDREG_RC_SUCCESS != rc) {
