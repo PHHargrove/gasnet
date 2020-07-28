@@ -977,10 +977,18 @@ uintptr_t gasnetc_init_messaging(void)
   #if defined(GNI_CDM_MODE_FMA_SHARED) && defined(GNI_CDM_MODE_FMA_DEDICATED)
   {
     int my_cdm_count = gasneti_myhost.node_count * gasnetc_domain_count;
-    int avail_cmd_count = 123; // TODO: reduce by any used by MPI?
+    int avail_fma_count = 123; // Initial guess in case query fails
+    gni_job_res_desc_t res_desc;
+    if (GNI_RC_SUCCESS == GNI_GetJobResInfo(gasnetc_dev_id, gasnetc_ptag, GNI_JOB_RES_FMA, &res_desc)) {
+      avail_fma_count = res_desc.limit - res_desc.used;
+    }
     int fma_sharing = gasneti_getenv_yesno_withdefault("GASNET_GNI_FMA_SHARING",
-                                                       my_cdm_count > avail_cmd_count);
+                                                       my_cdm_count > avail_fma_count);
     gasnetc_cdm_mode |= fma_sharing ? GNI_CDM_MODE_FMA_SHARED: GNI_CDM_MODE_FMA_DEDICATED;
+    // Query must precede all of this node's GNI_CdmCreate() calls or else be out-of-date
+    // TODO: node-scoped barrier?
+    // TODO: Move this query to before some pre-existing synchronizing communication?
+    gasnetc_bootstrapBarrier();
   }
   #endif
 
