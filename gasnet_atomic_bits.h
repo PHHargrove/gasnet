@@ -2670,6 +2670,10 @@
   #if GASNETI_USE_TRUE_MUTEXES
     /* Case I: gasnett_mutex_t in a gasnet client or thread-safe tools client*/
     #define GASNETI_GENATOMIC_LOCKS 1
+    #if PLATFORM_ARCH_32 || defined(GASNETI_HYBRID_ATOMIC64) || defined(GASNETI_UNALIGNED_ATOMIC64)
+      // Inform gasnet_atomicops.h we need mutex on 64-bit read() to avoid word tearing
+      #define _gasneti_need_genatomic64_read 1
+    #endif
     // To avoid a header dependence cycle (bug 693), we must declare and define all
     // bits involving the mutexes (among other things) later.
     // So, here we just define macros to be expanded in gasnet_tools.{c,h}.
@@ -2700,7 +2704,7 @@
           /* Step 3. Return the index */                                  \
           return &((gasneti_mutex_atomic_tbl[_val & gasneti_mutex_atomic_tbl_mask])._lock); \
         }
-    #define GASNETI_ATOMIC_LOCK_TBL_DEFNS \
+    #define GASNETI_ATOMIC_LOCK_TBL_DEFNS(mallocator) \
         uintptr_t gasneti_mutex_atomic_tbl_mask = 0;                      \
         gasneti_mutex_atomic_tbl_t *gasneti_mutex_atomic_tbl = NULL;      \
         GASNETI_COLD GASNETI_NEVER_INLINE(gasneti_mutex_atomic_tbl_init,  \
@@ -2712,8 +2716,8 @@
               gasnett_getenv_int_withdefault("GASNET_ATOMIC_TABLESZ",256,0); \
             gasneti_assert_always(GASNETI_POWEROFTWO(gasneti_mutex_atomic_tbl_size)); \
             /* Over allocate to leave at least a cache line before and after */ \
-            gasneti_mutex_atomic_tbl = malloc((2 + gasneti_mutex_atomic_tbl_size)  \
-                                              * sizeof(gasneti_mutex_atomic_tbl_t)); \
+            gasneti_mutex_atomic_tbl = mallocator((2 + gasneti_mutex_atomic_tbl_size)  \
+                                                  * sizeof(gasneti_mutex_atomic_tbl_t)); \
             ++gasneti_mutex_atomic_tbl;                                   \
             for (int i = 0; i < gasneti_mutex_atomic_tbl_size; ++i) {     \
               gasnett_mutex_init(&(gasneti_mutex_atomic_tbl[i]._lock));   \
