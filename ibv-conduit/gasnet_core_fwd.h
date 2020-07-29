@@ -4,7 +4,7 @@
  * Terms of use are as specified in license.txt
  */
 
-#ifndef _IN_GASNETEX_H
+#if !defined(_IN_GASNETEX_H) && !defined(_IN_GASNET_TOOLS_C)
   #error This file is not meant to be included directly- clients should include gasnetex.h
 #endif
 

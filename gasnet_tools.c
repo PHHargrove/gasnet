@@ -4,11 +4,18 @@
  * Terms of use are as specified in license.txt
  */
 
+#if GASNETI_BUILDING_CONDUIT
+// Need GASNETI_CONDUIT_THREADS
+#define _IN_GASNET_TOOLS_C
+#include <gasnet_config.h>
+#include <gasnet_core_fwd.h>
+#endif
+
 #if defined(GASNETT_THREAD_SAFE) || defined(GASNETT_THREAD_SINGLE)
   /* nothing */
-#elif defined(GASNET_PARSYNC) || defined(GASNET_PAR)
+#elif defined(GASNET_PAR) || defined(GASNETI_CONDUIT_THREADS)
   #define GASNETT_THREAD_SAFE 1
-#elif defined(GASNET_SEQ)
+#elif defined(GASNET_SEQ) || defined(GASNET_PARSYNC)
   #define GASNETT_THREAD_SINGLE 1
 #else
   #error Missing threading definition

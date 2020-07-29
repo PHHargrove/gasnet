@@ -5,7 +5,7 @@
 
 #ifndef _INCLUDE_GASNET_CONFIG_H_
 #define _INCLUDE_GASNET_CONFIG_H_
-#if !defined(_IN_GASNETEX_H) && !defined(_IN_GASNET_TOOLS_H)
+#if !defined(_IN_GASNETEX_H) && !defined(_IN_GASNET_TOOLS_H) && !defined(_IN_GASNET_TOOLS_C)
   #error This file is not meant to be included directly- clients should include gasnetex.h or gasnet_tools.h
 #endif
 
