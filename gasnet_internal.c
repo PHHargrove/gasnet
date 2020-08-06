@@ -399,6 +399,7 @@ extern void gasneti_freezeForDebugger(void) {
 #ifndef _GEX_CLIENT_T
 #ifndef gasneti_import_client
 gasneti_Client_t gasneti_import_client(gex_Client_t _client) {
+  gasneti_assert(_client != NULL); // TODO: GEX_CLIENT_INVALID?
   const gasneti_Client_t _real_client = GASNETI_IMPORT_POINTER(gasneti_Client_t,_client);
   GASNETI_IMPORT_MAGIC(_real_client, CLIENT);
   return _real_client;
@@ -452,6 +453,7 @@ void gasneti_free_client(gasneti_Client_t client)
 #ifndef _GEX_SEGMENT_T
 #ifndef gasneti_import_segment
 gasneti_Segment_t gasneti_import_segment(gex_Segment_t _segment) {
+  gasneti_assert(_segment != GEX_SEGMENT_INVALID);
   const gasneti_Segment_t _real_segment = GASNETI_IMPORT_POINTER(gasneti_Segment_t,_segment);
   GASNETI_IMPORT_MAGIC(_real_segment, SEGMENT);
   return _real_segment;
@@ -506,6 +508,7 @@ void gasneti_free_segment(gasneti_Segment_t segment)
 #ifndef _GEX_EP_T
 #ifndef gasneti_import_ep
 gasneti_EP_t gasneti_import_ep(gex_EP_t _ep) {
+  gasneti_assert(_ep != NULL); // TODO: GEX_EP_INVALID ?
   const gasneti_EP_t _real_ep = GASNETI_IMPORT_POINTER(gasneti_EP_t,_ep);
   GASNETI_IMPORT_MAGIC(_real_ep, EP);
   return _real_ep;
@@ -560,6 +563,7 @@ void gasneti_free_ep(gasneti_EP_t endpoint)
 #ifndef _GEX_TM_T
 #ifndef gasneti_import_tm
 gasneti_TM_t gasneti_import_tm(gex_TM_t _tm) {
+  gasneti_assert(_tm != GEX_TM_INVALID);
   const gasneti_TM_t _real_tm = GASNETI_IMPORT_POINTER(gasneti_TM_t,_tm);
   GASNETI_IMPORT_MAGIC(_real_tm, TM);
   return _real_tm;

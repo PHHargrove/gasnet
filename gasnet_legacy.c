@@ -77,7 +77,7 @@ extern void gasneti_legacy_attach_checks(int checksegment) {
 }
 
 extern void gasneti_legacy_segment_attach_hook(gasneti_EP_t ep) {
-  if (ep == gasneti_import_ep(gasneti_thunk_endpoint)) {
+  if (gasneti_thunk_endpoint && ep == gasneti_import_ep(gasneti_thunk_endpoint)) {
      // We just attached a segment to the g2ex EP, set the g2ex thunk segment
      gasneti_assert(ep->_flags & GEX_FLAG_USES_GASNET1);
      ep->_segment->_flags |= GEX_FLAG_USES_GASNET1;
