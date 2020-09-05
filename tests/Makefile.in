@@ -105,6 +105,7 @@ testprograms_seq =      \
         testtmpair      \
         testreadonly    \
         testcudauva     \
+        testalltoall    \
         $(CONDUIT_TESTS) \
         $(MPI_TESTS_SEQ)
 
