@@ -410,7 +410,7 @@ gasnete_eop_t *gasnete_eop_new(gasneti_threaddata_t * const thread) {
   return eop;
 }
 
-#if GASNET_DEBUG
+#if GASNETI_ENABLE_ASSERT
 /*  query an iop for completeness -
  *  this means all catagories (puts, gets, LC, etc.)
  *  TODO-EX: DEPRECATE/REMOVE?
@@ -430,7 +430,7 @@ int gasnete_iop_isdone(gasnete_iop_t *iop) {
   }
   return result;
 }
-#endif // GASNET_DEBUG
+#endif // GASNETI_ENABLE_ASSERT
 
 /*  mark an op done - isget ignored for explicit ops */
 // TODO-EX: DEPRECATED
