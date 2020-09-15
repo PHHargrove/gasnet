@@ -158,16 +158,17 @@ GASNETI_NORETURNP(_gasneti_assert_fail)
     }                                                               \
 } while (0)
 #define gasneti_assert_always_dbl(op1, operator, op2) do {          \
-    double const _gaa_op1 = (op1);                                  \
-    double const _gaa_op2 = (op2);                                  \
-    if (!GASNETT_PREDICT_TRUE(_gaa_op1 operator _gaa_op2)) {        \
+    union { uint64_t _u64; double _dbl; } _gaa_op1, _gaa_op2; \
+    _gaa_op1._dbl = (op1);                                          \
+    _gaa_op2._dbl = (op2);                                          \
+    if (!GASNETT_PREDICT_TRUE(_gaa_op1._dbl operator _gaa_op2._dbl)) {\
       _gasneti_assert_fail(GASNETI_CURRENT_FUNCTION,__FILE__,__LINE__,\
          "%s %s %s\n"                                               \
          "   op1 : %#13.6g (0x%016" PRIx64 ") == %s\n"              \
          "   op2 : %#13.6g (0x%016" PRIx64 ") == %s\n"              \
        , #op1, #operator, #op2                                      \
-       , _gaa_op1, *(uint64_t*)&_gaa_op1, #op1                      \
-       , _gaa_op2, *(uint64_t*)&_gaa_op2, #op2                      \
+       , _gaa_op1._dbl, _gaa_op1._u64, #op1                         \
+       , _gaa_op2._dbl, _gaa_op2._u64, #op2                         \
       );                                                            \
     }                                                               \
 } while (0)
