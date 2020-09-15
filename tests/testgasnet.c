@@ -43,6 +43,7 @@ void doit3(int partner, int *partnerseg);
 void doit5(int partner, int *partnerseg);
 void doit6(int partner, int *partnerseg);
 void doit7(int partner, int *partnerseg);
+void doit8(int partner, int *partnerseg);
 
 static gex_Client_t      myclient;
 static gex_EP_t    myep;
@@ -1441,5 +1442,55 @@ void doit7(int partner, int *partnerseg) {
    * moved to gasnet_diagnostic.c (run from testinternal).
    */
   
+#ifndef TESTGASNET_NO_SPLIT
+  doit8(partner, partnerseg);
+}
+void doit8(int partner, int *partnerseg) {
+#endif
+
   BARRIER();
+  
+  #if !GASNET_SEGMENT_EVERYTHING
+  {
+    int success = 1;
+    unsigned int offset = 17;
+
+    gex_Segment_t g_segment = GEX_SEGMENT_INVALID;
+    GASNET_Safe(gex_Segment_Create(&g_segment, myclient, NULL, GASNET_PAGESIZE-offset, GEX_MEMKIND_HOST, 0));
+    if ((g_segment == GEX_SEGMENT_INVALID) ||
+        (gex_Segment_QueryAddr(g_segment) == NULL) ||
+        (gex_Segment_QuerySize(g_segment) != GASNET_PAGESIZE-offset)) {
+      MSG("*** ERROR - FAILED GASNET-ALLOCATED SEGMENT CREATE TEST!!!!!");
+      success = 0;
+    }
+    // GASNET_Safe(gex_Segment_Destroy(g_segment, 0));
+  
+    gex_Segment_t c_segment = GEX_SEGMENT_INVALID;
+    uint8_t *c_segment_mem = (uint8_t *) test_malloc(GASNET_PAGESIZE);
+    uint8_t *c_segment_start = c_segment_mem + offset;
+    size_t c_segment_len = GASNET_PAGESIZE - 2*offset;
+    GASNET_Safe(gex_Segment_Create(&c_segment, myclient, c_segment_start, c_segment_len, GEX_MEMKIND_HOST, 0));
+    if ((c_segment == GEX_SEGMENT_INVALID) ||
+        (gex_Segment_QueryAddr(c_segment) != c_segment_start) ||
+        (gex_Segment_QuerySize(c_segment) != c_segment_len)) {
+      MSG("*** ERROR - FAILED CLIENT-ALLOCATED SEGMENT CREATE TEST!!!!!");
+      success = 0;
+    }
+    // GASNET_Safe(gex_Segment_Destroy(c_segment, 0));
+
+    {
+      gex_TM_t scrambled; // all odds followed by all evens, each group in reverse order
+      gex_TM_Split(&scrambled, myteam, !(myrank & 1), numranks - myrank, NULL, 0, GEX_FLAG_TM_NO_SCRATCH);
+      if (GASNET_OK != gasnetc_Segment_CirculateM(&scrambled,  1, 0) ||
+          GASNET_OK != gasnetc_Segment_CirculateM(&myteam,  1, 0)) {
+        MSG("*** ERROR - FAILED NO-OP SEGMENT CIRCULATE TEST!!!!!");
+        success = 0;
+      }
+      GASNET_Safe(gex_TM_Destroy(scrambled, NULL, 0));
+    }
+
+    if (success) MSG("*** passed segment test!!");
+    BARRIER();
+  }
+  #endif
 }
