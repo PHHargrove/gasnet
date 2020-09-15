@@ -102,6 +102,9 @@
    */
 #define GASNETC_REQUESTV_POLLS 1
 
+  // uncomment if conduit provides a gasnetc-prefixed override
+//#define GASNETC_HAVE_SEGMENT_EP_BIND 1
+
   /* this can be used to add conduit-specific 
      statistical collection values (see gasnet_trace.h) */
 #define GASNETC_CONDUIT_STATS(CNT,VAL,TIME) 

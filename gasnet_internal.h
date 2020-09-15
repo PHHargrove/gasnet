@@ -474,6 +474,11 @@ int gasneti_segmentCreate(
                 gex_MemKind_t           kind,
                 gex_Flags_t             flags);
 
+void gasneti_Segment_EP_Bind(
+            gex_Segment_t  segment,
+            gex_EP_t       ep,
+            gex_Flags_t    flags);
+
 extern void gasneti_legacy_segment_attach_hook(gasneti_EP_t ep);
 extern void gasneti_legacy_alloc_tm_hook(gasneti_TM_t _tm);
 
