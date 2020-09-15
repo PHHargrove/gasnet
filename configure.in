@@ -998,6 +998,13 @@ GASNET_IF_ENABLED_WITH_AUTO(debug-malloc, Build GASNet with debugging malloc imp
   fi
 AM_CONDITIONAL(BUILDCONFIG_DEBUGMALLOC, test "$enabled_debug_malloc" = yes)
 
+GASNET_IF_ENABLED_WITH_AUTO(assert, Build GASNet with assertions enabled (enabled by default with --enable-debug),
+  enabled_assert=yes, enabled_assert=no, enabled_assert=$enabled_debug)
+  if test "$enabled_assert" = yes; then
+    AC_DEFINE(GASNETI_ENABLE_ASSERT)
+  fi
+AM_CONDITIONAL(BUILDCONFIG_ASSERT, test "$enabled_assert" = yes)
+
 GASNET_CORRECT_OPTIMIZEDDEBUG(CC,CFLAGS,CC,[$CPPFLAGS],[])
 
 case "$CC_FAMILY" in

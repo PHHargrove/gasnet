@@ -86,7 +86,7 @@ GASNETI_NORETURNP(_gasneti_assert_fail)
  * gasneti_assert_reason(expr, reason):
  *   same, but with a string reason to explain the failure (defaults to preprocessed expression)
  */
-#if GASNET_NDEBUG
+#if !GASNETI_ENABLE_ASSERT
   #define gasneti_assert(expr)               ((void)0)
   #define gasneti_assert_reason(expr,reason) ((void)0)
 #else
@@ -172,7 +172,7 @@ GASNETI_NORETURNP(_gasneti_assert_fail)
     }                                                               \
 } while (0)
 
-#if GASNET_NDEBUG
+#if !GASNETI_ENABLE_ASSERT
   #define gasneti_assert_int(op1, operator, op2)  do{}while(0)
   #define gasneti_assert_uint(op1, operator, op2) do{}while(0)
   #define gasneti_assert_ptr(op1, operator, op2)  do{}while(0)
