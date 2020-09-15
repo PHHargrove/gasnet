@@ -442,7 +442,7 @@ void gasneti_leaf_finish(gex_Event_t *opt_val) {
 #elif defined(GASNETI_ATOMICOPS_NOT_SIGNALSAFE)
   /* We don't implement this case due to lack of signal safety */
 #elif defined(GASNETI_HAVE_ATOMIC_CAS)
-  #if GASNET_DEBUG
+  #if GASNETI_ENABLE_ASSERT
     #define GASNETI_SPINLOCK_LOCKED	0xa5a5
     #define GASNETI_SPINLOCK_UNLOCKED	0xaa55
     #define GASNETI_SPINLOCK_DESTROYED	0xDEAD
@@ -505,7 +505,7 @@ void gasneti_leaf_finish(gex_Event_t *opt_val) {
   /* Here we use a binary semaphore */
   #define GASNETI_SPINLOCK_UNLOCKED	1
   #define GASNETI_SPINLOCK_DESTROYED	2
-  #if GASNET_DEBUG
+  #if GASNETI_ENABLE_ASSERT
     GASNETI_INLINE(gasneti_spinlock_is_valid)
     int gasneti_spinlock_is_valid(gasneti_atomic_t *plock) {
       uint32_t tmp = gasneti_atomic_read(plock, GASNETI_ATOMIC_RMB_PRE);
