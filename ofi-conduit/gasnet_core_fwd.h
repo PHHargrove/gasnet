@@ -95,6 +95,7 @@
 
   // uncomment if conduit provides a gasnetc-prefixed override
 //#define GASNETC_HAVE_SEGMENT_EP_BIND 1
+#define GASNETC_HAVE_SEGMENT_PUBLISH 1
 
   /* this can be used to add conduit-specific 
      statistical collection values (see gasnet_trace.h) */
