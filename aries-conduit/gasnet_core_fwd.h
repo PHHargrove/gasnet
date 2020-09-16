@@ -99,6 +99,7 @@
 
   // uncomment if conduit provides a gasnetc-prefixed override
 //#define GASNETC_HAVE_SEGMENT_EP_BIND 1
+#define GASNETC_HAVE_SEGMENT_PUBLISHM 1
 
 #if defined(GASNET_PAR) && GASNETC_GNI_MULTI_DOMAIN
 /* Need to hook pthread create to ensure collective creation of domains */

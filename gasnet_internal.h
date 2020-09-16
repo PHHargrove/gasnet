@@ -478,6 +478,11 @@ void gasneti_Segment_EP_Bind(
             gex_EP_t       ep,
             gex_Flags_t    flags);
 
+int gasneti_Segment_PublishM(
+            gex_TM_t       *tm,
+            size_t         num_tm,
+            gex_Flags_t    flags);
+
 extern void gasneti_legacy_segment_attach_hook(gasneti_EP_t ep);
 extern void gasneti_legacy_alloc_tm_hook(gasneti_TM_t _tm);
 

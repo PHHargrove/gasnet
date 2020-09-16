@@ -2926,6 +2926,25 @@ extern int gasnetc_Segment_Create(
   return rc;
 }
 
+extern int gasnetc_Segment_PublishM(
+                gex_TM_t               *tm,
+                size_t                 num_tm,
+                gex_Flags_t            flags)
+{
+  // Conduit-independent parts
+  int rc = gasneti_Segment_PublishM(tm, num_tm, flags);
+  if (GASNET_OK != rc) return rc;
+
+  // Conduit-dependent parts
+  gasnetc_segment_exchange(tm, num_tm);
+
+  // Avoid race in which AMRequestLong triggers AMRepyLong before exchange completes remotely
+  // TODO: barrier for multi-tm per-process
+  gex_Event_Wait(gex_Coll_BarrierNB(tm[0], 0));
+
+  return GASNET_OK;
+}
+
 extern int gasnetc_EP_Create(gex_EP_t           *ep_p,
                              gex_Client_t       client,
                              gex_Flags_t        flags) {
