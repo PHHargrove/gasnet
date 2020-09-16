@@ -1894,6 +1894,91 @@ void gasneti_Segment_EP_Bind(
 }
 
 /* ------------------------------------------------------------------------------------ */
+extern int gasneti_Segment_CirculateM(
+                gex_TM_t               *e_tm,
+                size_t                 num_tm,
+                gex_Flags_t            flags)
+{
+  gasneti_assert_always_int(num_tm ,==, 1);  // TODO: multi-ep support will make multi-tm-per-proc possible
+
+  GASNETI_TRACE_PRINTF(C,("gex_Segment_CirculateM: num_tm=%"PRIuSZ", flags=%d", num_tm, flags));
+  for (gex_Rank_t i = 0; i < num_tm; ++i) {
+    GASNETI_TRACE_PRINTF(C,("gex_Segment_CirculateM:    tm[%u] = "GASNETI_TMSELFFMT,
+                            i, GASNETI_TMSELFSTR(e_tm[i])));
+  }
+
+  if (! e_tm) {
+    gasneti_fatalerror("Invalid call to gex_Segment_CirculateM() with NULL tm[]");
+  }
+  if (!num_tm) {
+    gasneti_fatalerror("Invalid call to gex_Segment_CirculateM() with zero num_tm");
+  }
+  if (flags) {
+    gasneti_fatalerror("Invalid call to gex_Segment_CirculateM() with non-zero flags");
+  }
+  if (num_tm > 1) {
+    // TODO: assert that all elements of e_tm[] are part of same team (though we
+    // don't yet have a defn of gasnete_coll_team_t in scope in this file).
+  }
+
+  // Conduit-indep segment fields
+  struct exchg_data {
+    void       *addr;
+    uintptr_t  size;
+    // TODO: probably need the "class" from _kind
+  } *local, *global, *p;
+
+  // Variable HCA count complicates allocation and use
+  size_t elem_sz = sizeof(struct exchg_data);
+  gex_Rank_t team_sz = gex_TM_QuerySize(e_tm[0]);
+  local = gasneti_malloc(num_tm * elem_sz);
+  global = gasneti_malloc(num_tm * elem_sz * team_sz);
+
+  p = local;
+  for (gex_Rank_t i = 0; i < num_tm; ++i, ++p) {
+    gasneti_Segment_t segment = gasneti_import_ep(gex_TM_QueryEP(e_tm[i]))->_segment;
+    if (! segment) {
+      // TBD: does it matter that this conflates INVALID_SEGMENT w/ zero-length segment?
+      p->size = 0;
+    } else {
+      p->addr = segment->_addr;
+      p->size = segment->_size;
+      // TODO: kind class
+    }
+  }
+
+  // TODO: "VisitAll" in place of "GatherAll" to operate in bounded memory ??
+  // TODO: (num_tm > 1) will require "ExchangeV" operation here and maybe a permute?
+  gasneti_blockingExchange(e_tm[0], local, elem_sz, global);
+
+  // Unpack
+  p = global;
+  for (size_t i = 0; i < team_sz; ++i, ++p) {
+    if (!p->size) continue;
+
+    gex_EP_Location_t loc = gasneti_i_tm_rank_to_location(gasneti_import_tm(e_tm[0]), i, 0);
+    if (loc.gex_rank == gasneti_mynode) {
+      // Local:
+      continue;
+    } else if (! loc.gex_ep_index) {
+      // Remote + primordial:
+      gasnet_seginfo_t *si = gasneti_seginfo + loc.gex_rank;
+      gasneti_assert(!si->addr || si->addr == p->addr);
+      gasneti_assert(!si->size || si->size == p->size);
+      si->addr = p->addr;
+      si->size = p->size;
+    } else {
+      // Remote + non-primordial:
+      gasneti_unreachable_error(("gasnetc_Segment_CirculateM does not yet handle non-primordial EPs"));
+    }
+  }
+
+  // BIG-TODO: cross-mapping ??
+
+  return GASNET_OK;
+}
+
+/* ------------------------------------------------------------------------------------ */
 gasnet_seginfo_t gasneti_segmentAttach(
                 gex_Segment_t                 *segment_p,
                 size_t                        allocsz,

@@ -90,6 +90,7 @@
 
   // uncomment if conduit provides a gasnetc-prefixed override
 //#define GASNETC_HAVE_SEGMENT_EP_BIND 1
+//#define GASNETC_HAVE_SEGMENT_CIRCULATEM 1
 
 /* mpi-conduit supports top-level poll throttling */
 #define GASNETC_USING_SUSPEND_RESUME 1

@@ -567,6 +567,16 @@ extern void gex_Segment_EP_Bind(
             gex_EP_t       _ep,
             gex_Flags_t    _flags);
 
+#if GASNETC_HAVE_SEGMENT_CIRCULATEM
+  #define gex_Segment_CirculateM gasnetc_Segment_CirculateM
+#else
+  #define gex_Segment_CirculateM gasneti_Segment_CirculateM
+#endif
+extern int gex_Segment_CirculateM(
+            gex_TM_t       *_tm,
+            size_t         _num_tm,
+            gex_Flags_t    _flags);
+
 /* ------------------------------------------------------------------------------------ */
 /* extended types */
 

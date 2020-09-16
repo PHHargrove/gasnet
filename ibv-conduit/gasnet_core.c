@@ -2873,6 +2873,62 @@ extern int gasnetc_Segment_Create(
   return rc;
 }
 
+extern int gasnetc_Segment_CirculateM(
+                gex_TM_t               *e_tm,
+                size_t                 num_tm,
+                gex_Flags_t            flags)
+{
+  // Conduit-independant parts 
+  int rc = gasneti_Segment_CirculateM(e_tm, num_tm, flags);
+  if (GASNET_OK != rc) return rc;
+
+#if GASNETC_PIN_SEGMENT
+  // Conduit-specific portion consistes of one 32-bit rkey per HCA
+  gex_Rank_t team_sz = gex_TM_QuerySize(e_tm[0]);
+  uint32_t *local = gasneti_malloc(num_tm * sizeof(uint32_t));
+  uint32_t *global = gasneti_malloc(num_tm * team_sz * sizeof(uint32_t));
+  uint32_t *p;
+
+  p = local;
+  for (gex_Rank_t i = 0; i < num_tm; ++i, p += gasnetc_num_hcas) {
+    gasnetc_Segment_t segment = (gasnetc_Segment_t) gasneti_import_ep(gex_TM_QueryEP(e_tm[i]))->_segment;
+    if (! segment) continue;
+    for (int j = 0; j < gasnetc_num_hcas; ++j) {
+      p[j] = segment->seg_reg[j].handle->rkey;
+    }
+  }
+
+  // TODO: "VisitAll" in place of "GatherAll" to operate in bounded memory ??
+  // TODO: (num_tm > 1) will require "ExchangeV" operation here and maybe a permute?
+  gasneti_blockingExchange(e_tm[0], local, sizeof(uint32_t), global);
+
+  // Unpack
+  p = global;
+  for (size_t i = 0; i < team_sz; ++i, p+= gasnetc_num_hcas) {
+    gex_EP_Location_t loc = gasneti_i_tm_rank_to_location(gasneti_import_tm(e_tm[0]), i, 0);
+    if (loc.gex_rank == gasneti_mynode) {
+      // Local:
+      continue;
+    } else if (! loc.gex_ep_index) {
+      // Remote + primordial:
+      for (int j = 0; j < gasnetc_num_hcas; ++j) {
+        gasnetc_hca_t *hca = gasnetc_hca + j;
+        if (!hca->rkeys) {
+          hca->rkeys = gasneti_calloc(gasneti_nodes, sizeof(uint32_t));
+          gasneti_leak(hca->rkeys);
+        }
+        gasneti_assert(!hca->rkeys[loc.gex_rank] || hca->rkeys[loc.gex_rank] == p[hca->hca_index]);
+        hca->rkeys[loc.gex_rank] = p[hca->hca_index];
+      }
+    } else {
+      // Remote + non-primordial:
+    }
+  }
+#endif // GASNETC_PIN_SEGMENT
+
+  return GASNET_OK;
+}
+
 extern int gasnetc_EP_Create(gex_EP_t           *ep_p,
                              gex_Client_t       client,
                              gex_Flags_t        flags) {
