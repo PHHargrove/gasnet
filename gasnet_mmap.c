@@ -1826,36 +1826,53 @@ int gasneti_segment_map(
 }
 
 #if GASNET_PSHM
+// Cross-map one remote shared segment
+static
+void gasneti_segment_cross_map_one(
+                gex_Rank_t jobrank,
+                gasneti_pshm_rank_t pshm_rank,
+                void *addr, uintptr_t size,
+                int is_aux)
+{
+    gasneti_assert_uint(pshm_rank ,==, gasneti_pshm_jobrank_to_local_rank(jobrank));
+
+    uintptr_t *offset_p = is_aux ? &gasneti_nodeinfo[jobrank].auxoffset
+                                 : &gasneti_nodeinfo[jobrank].offset;
+
+    // At most once
+    if (*offset_p != (uintptr_t)(-1)) return;
+
+    void *segbase = gasneti_mmap_remote_shared(NULL, size, pshm_rank);
+
+    gasneti_assert_uint(((uintptr_t)segbase) % GASNET_PAGESIZE ,==, 0);
+    gasneti_assert_uint(size % GASNET_PAGESIZE ,==, 0);
+
+    *offset_p = (uintptr_t)segbase - (uintptr_t)addr;
+
+    GASNETI_TRACE_PRINTF(C, ("Remote %ssegment %d: segbase="GASNETI_LADDRFMT"  segsize=%"PRIuPTR,
+                             is_aux?"aux ":"", (int)jobrank, GASNETI_LADDRSTR(segbase), size));
+}
+
 // Cross-map the remote shared segments
 // TODO-EX: need scalable data structures in place of seginfo and gasneti_nodeinfo
 static // TODO-EX: static for now, at least
-void gasneti_segment_cross_map(gasnet_seginfo_t *seginfo)
+void gasneti_segment_cross_map_all(const gasnet_seginfo_t *seginfo, int is_aux)
 {
     gasneti_nodeinfo[gasneti_mynode].offset = 0;
-    gasneti_pshm_rank_t local_rank = 0;
+    gasneti_pshm_rank_t pshm_rank = 0;
 
     gasneti_publish_segment(seginfo[gasneti_mynode], 1); // collective
 
-    // Note that we try to avoid iteration over all nodes.
-    // For the case of supernode peers with contiguous ranks we examine no extra nodes
-    for (gex_Rank_t node = gasneti_pshm_firstnode; local_rank < gasneti_pshm_nodes; node++) {
-        if (! gasneti_pshm_jobrank_in_supernode(node)) continue;
-        gasneti_assert_uint(local_rank ,==, gasneti_pshm_jobrank_to_local_rank(node));
-        if (node != gasneti_mynode) {
-
-            const uintptr_t size = seginfo[node].size;
-            void *segbase = gasneti_mmap_remote_shared(NULL, size, local_rank);
-
-            gasneti_assert_uint(((uintptr_t)segbase) % GASNET_PAGESIZE ,==, 0);
-            gasneti_assert_uint(size % GASNET_PAGESIZE ,==, 0);
-
-            // TODO-EX: single global gasneti_nodeinfo is a problem (eg for aux vs client)
-            gasneti_nodeinfo[node].offset = (uintptr_t)segbase - (uintptr_t)seginfo[node].addr;
-
-            GASNETI_TRACE_PRINTF(C, ("Remote segment %d: segbase="GASNETI_LADDRFMT"  segsize=%"PRIuPTR,
-                                     (int)node, GASNETI_LADDRSTR(segbase), size));
+    // Note that we try to avoid iteration over all processes.
+    // For the case of supernode peers with contiguous ranks we examine no extra processes
+    for (gex_Rank_t jobrank = gasneti_pshm_firstnode; pshm_rank < gasneti_pshm_nodes; jobrank++) {
+        if (! gasneti_pshm_jobrank_in_supernode(jobrank)) continue;
+        if (jobrank != gasneti_mynode) {
+            void *addr = seginfo[jobrank].addr;
+            uintptr_t size = seginfo[jobrank].size;
+            gasneti_segment_cross_map_one(jobrank, pshm_rank, addr, size, is_aux);
         }
-        ++local_rank;
+        ++pshm_rank;
     }
 
     /* Barrier #1 ensures all attaches complete before unlinking */
@@ -1896,13 +1913,14 @@ gasneti_do_attach_segment(
     gasneti_pshmnet_bootstrapBarrierPoll();
 #endif
   } else {
-    // gasneti_assert(all_segments == gasneti_seginfo_aux); // Eventually only auxseg should use exchangefn
+    gasneti_assert(all_segments == gasneti_seginfo_aux); // only auxseg should use exchangefn
     gasneti_assert(exchangefn);
     (*exchangefn)(&local_segment, sizeof(gasnet_seginfo_t), all_segments);
   }
 
 #if GASNET_PSHM
-  gasneti_segment_cross_map(all_segments);
+  int is_aux = !tm; // Distingush aux seg by NULL tm value
+  gasneti_segment_cross_map_all(all_segments, is_aux);
   gasneti_pshm_cs_leave();
 #endif
 
@@ -1981,6 +1999,11 @@ extern int gasneti_EP_PublishBoundSegment(
     p->addr = segment->_addr;
     p->size = segment->_size;
     // TODO: kind class
+#if GASNET_PSHM
+    if (! p->loc.gex_ep_index) {
+      gasneti_publish_segment(gasneti_seginfo[gasneti_mynode], 0);
+    }
+#endif
     ++p;
   }
 
@@ -2015,23 +2038,18 @@ extern int gasneti_EP_PublishBoundSegment(
     #endif
       si->addr = p->addr;
       si->size = p->size;
+    #if GASNET_PSHM
+      if (gasneti_pshm_jobrank_in_supernode(jobrank)) {
+        gasneti_pshm_rank_t pshm_rank = gasneti_pshm_jobrank_to_local_rank(jobrank);
+        gasneti_segment_cross_map_one(jobrank, pshm_rank, p->addr, p->size, 0);
+      }
+    #endif
     } else {
       // Remote + non-primordial:
       gasneti_unreachable_error(("gex_EP_PublishBoundSegment does not yet handle non-primordial EPs"));
     }
   }
   gasneti_free(global);
-
-#if GASNET_PSHM
-  // BIG-TODO: PSHM cross-mapping ??
-  //   * Currently even cross-mapping of the primordial EP's segment is not
-  //     possible
-  //   * Main issue is that, in general, the current logic is collective over
-  //     supernode (in gasneti_publish_segment()).  Only XPMEM currently
-  //     communicates anything, but that case uses a supernode-scope exchange to
-  //     populate a global variable (not workable for this case for two
-  //     reasons).
-#endif
 
   return GASNET_OK;
 }
@@ -2121,7 +2139,7 @@ int gasneti_segmentCreate(
     } else {
       // GASNet-allocated segment
       gasnet_seginfo_t seginfo;
-      int rc = gasneti_segment_map(&seginfo, GASNETI_PAGE_ALIGNUP(length), 0, flags);
+      int rc = gasneti_segment_map(&seginfo, GASNETI_PAGE_ALIGNUP(length), 1, flags);
       if (rc != GASNET_OK) {
         gasneti_fatalerror("Unexpected failure return from gasneti_segment_map()");
       }
@@ -2498,13 +2516,6 @@ void gasneti_auxseg_attach(gasnet_seginfo_t *auxseg_info) {
     }
     gasneti_free(si);
   }
-
-#if GASNET_PSHM // TODO-EX: this is a hack until AttachRemote can set the right offset array
-  for (int i = 0; i < gasneti_pshm_nodes; i++){
-    const gex_Rank_t node = gasneti_nodemap_local[i];
-    gasneti_nodeinfo[node].auxoffset = gasneti_nodeinfo[node].offset;
-  }
-#endif
 }
 
 /* common case use of gasneti_auxseg_{preinit,attach} for conduits using gasneti_segmentAttach() */

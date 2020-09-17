@@ -1715,6 +1715,9 @@ extern void gasneti_nodemapParse(void) {
     gasneti_nodemap[i] = s[n].sn_lead;
     gasneti_nodeinfo[i].supernode = s[n].supernode;
     gasneti_nodeinfo[i].host = s[n].host;
+    // mark cross-mapping offsets as invalid until mapped (zero is a valid possibility)
+    gasneti_nodeinfo[i].offset = (uintptr_t)(-1);
+    gasneti_nodeinfo[i].auxoffset = (uintptr_t)(-1);
   }
   final = gasneti_nodemap[gasneti_mynode];
   gasneti_mysupernode.node_count = (final == s[initial].sn_lead) ? (((s[initial].width - 1) % limit) + 1) : limit;
