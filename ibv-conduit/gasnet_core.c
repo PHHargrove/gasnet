@@ -2670,6 +2670,79 @@ static int gasnetc_segment_register(gasnetc_Segment_t segment)
   return GASNET_OK;
 }
 
+// TODO: non-primordial EP support
+static int gasnetc_segment_exchange(gex_TM_t *tm, size_t num_tm)
+{
+  gex_Rank_t team_size = gex_TM_QuerySize(tm[0]);
+
+#if GASNETC_PIN_SEGMENT
+  // Exchange one 32-bit rkey per HCA
+  uint32_t *global = gasneti_malloc(num_tm * team_size * sizeof(uint32_t));
+  uint32_t *local = gasneti_malloc(num_tm * sizeof(uint32_t));
+  uint32_t *p;
+
+  p = local;
+  for (gex_Rank_t i = 0; i < num_tm; ++i, p += gasnetc_num_hcas) {
+    gasnetc_Segment_t segment = (gasnetc_Segment_t) gasneti_import_ep(gex_TM_QueryEP(tm[i]))->_segment;
+    if (! segment) {
+      p[0] = 0; // Invalid rkey
+    } else {
+      for (int j = 0; j < gasnetc_num_hcas; ++j) {
+        p[j] = segment->seg_reg[j].handle->rkey;
+      }
+    }
+  }
+
+  // TODO: "VisitAll" in place of "GatherAll" to operate in bounded memory ??
+  // TODO: (num_tm > 1) will require "ExchangeV" operation here and maybe a permute?
+  gasneti_blockingExchange(tm[0], local, gasnetc_num_hcas * sizeof(uint32_t), global);
+  gasneti_free(local);
+
+  // Unpack
+  p = global;
+  for (size_t i = 0; i < team_size; ++i, p+= gasnetc_num_hcas) {
+    if (! *p) continue; // no segment
+
+    gex_EP_Location_t loc = gasneti_i_tm_rank_to_location(gasneti_import_tm(tm[0]), i, 0);
+    gex_Rank_t jobrank = loc.gex_rank;
+    if (jobrank == gasneti_mynode) {
+      // Local:
+      continue;
+    } else if (! loc.gex_ep_index) {
+      // Remote + primordial:
+      for (int j = 0; j < gasnetc_num_hcas; ++j) {
+        gasnetc_hca_t *hca = gasnetc_hca + j;
+        if (!hca->rkeys) {
+          hca->rkeys = gasneti_calloc(gasneti_nodes, sizeof(uint32_t));
+          gasneti_leak(hca->rkeys);
+        }
+        gasneti_assert(!hca->rkeys[jobrank] || hca->rkeys[jobrank] == p[hca->hca_index]);
+        hca->rkeys[jobrank] = p[hca->hca_index];
+      }
+      gasnetc_cep_t *cep = GASNETC_NODE2CEP(gasnetc_ep0, jobrank);
+      if (cep) gasnetc_sndrcv_attach_peer(jobrank, cep);
+    } else {
+      // Remote + non-primordial:
+    }
+  }
+  gasneti_free(global);
+#else
+  // Per-endpoint work:
+  for (size_t i = 0; i < team_size; ++i) {
+    gex_EP_Location_t loc = gasneti_i_tm_rank_to_location(gasneti_import_tm(tm[0]), i, 0);
+    gex_Rank_t jobrank = loc.gex_rank;
+    if (jobrank == gasneti_mynode) {
+      continue;
+    } else if (! loc.gex_ep_index) {
+      gasnetc_cep_t *cep = GASNETC_NODE2CEP(gasnetc_ep0, jobrank);
+      if (cep) gasnetc_sndrcv_attach_peer(jobrank, cep);
+    }
+  }
+#endif
+
+  return GASNET_OK;
+}
+
 static int gasnetc_attach_segment(gex_Segment_t                 *segment_p,
                                   gex_TM_t                      tm,
                                   uintptr_t                     segsize,
@@ -2689,30 +2762,10 @@ static int gasnetc_attach_segment(gex_Segment_t                 *segment_p,
     if (rc) {
       gasneti_fatalerror("Unexpected failure return from gasnetc_segment_register()");
     }
-
-    // exchange the RKeys
-    gasnetc_hca_t *hca;
-    GASNETC_FOR_ALL_HCA(hca) {
-      hca->rkeys = gasneti_calloc(gasneti_nodes, sizeof(uint32_t));
-      gasneti_leak(hca->rkeys);
-
-      /* XXX: hca->rkeys is one of the O(N) storage requirements we might reduce/eliminate.
-       * + When using PSHM we could store rkeys just once per supernode
-       * + When not fully connected, we could utilize sparse storage
-       */
-      gasneti_assert(tm == gasneti_THUNK_TM); // Unless/until this is generalized
-      gasneti_blockingExchange(tm, &segment->seg_reg[hca->hca_index].handle->rkey,
-                               sizeof(uint32_t), hca->rkeys);
-    }
   #endif
 
-  /* Per-endpoint work */
-  for (gex_Rank_t i = 0; i < gasneti_nodes; i++) {
-    gasnetc_cep_t *cep = GASNETC_NODE2CEP(gasnetc_ep0, i);
-    if (cep) {
-      gasnetc_sndrcv_attach_peer(i, cep);
-    }
-  }
+  // Exchange registration info
+  gasnetc_segment_exchange(&tm, 1);
 
   return GASNET_OK;
 }
