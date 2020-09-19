@@ -832,32 +832,44 @@ void gasnetc_segment_register(gasnetc_Segment_t segment)
 }
 
 /*-------------------------------------------------*/
-// set the local memory handle the client segment and exchange with other procs
-void gasnetc_segment_exchange(gasnetc_Segment_t segment, gex_TM_t tm)
+// set the local memory handle for the client segment and exchanges with other procs
+// TODO: non-primordial EP support
+void gasnetc_segment_exchange(gex_TM_t *tm, size_t num_tm)
 {
-  gasneti_assert(tm == gasneti_THUNK_TM); // Unless/until this is generalized
+  gasnetc_Segment_t segment = (gasnetc_Segment_t) gasneti_import_ep(gex_TM_QueryEP(tm[0]))->_segment;
+  gex_Rank_t team_size = gex_TM_QuerySize(tm[0]);
+  size_t elem_size = sizeof(gni_mem_handle_t);
 
-  {
-    GASNETC_DIDX_POST(GASNETC_DEFAULT_DOMAIN);
-    gni_mem_handle_t *all_mem_handle = gasneti_malloc(gasneti_nodes * sizeof(gni_mem_handle_t));
-    gasneti_blockingExchange(tm, &segment->mem_handle, sizeof(gni_mem_handle_t), all_mem_handle);
-    for (gex_Rank_t i = 0; i < gasneti_nodes; ++i) {
-      DOMAIN_SPECIFIC_VAL(peer_data[i]).mem_handle = all_mem_handle[i];
-    }
-    gasneti_free(all_mem_handle);
-  }
+  // TODO: Somewhere (in gni-provider for OFI) there exists Cray-provided
+  // "evidence" that 0 is never a valid mem handle.  Find it and cite it here.
+  static gni_mem_handle_t zero_mem_handle; // 128 zero bits
+
+  gni_mem_handle_t *all_mem_handle = gasneti_malloc(team_size * elem_size);
+  gasneti_blockingExchange(tm[0], segment ? &segment->mem_handle : &zero_mem_handle, elem_size, all_mem_handle);
+
+  for (gex_Rank_t i = 0; i < team_size; ++i) {
+    if (! memcmp(all_mem_handle+i, &zero_mem_handle, elem_size)) continue; // GEX_SEGMENT_INVALID
+
+    gex_EP_Location_t loc = gasneti_e_tm_rank_to_location(tm[0], i, 0);
+
+    if (! loc.gex_ep_index ) { // Primordial EP (includes loopback)
+      GASNETC_DIDX_POST(GASNETC_DEFAULT_DOMAIN);
+      DOMAIN_SPECIFIC_VAL(peer_data[loc.gex_rank]).mem_handle = all_mem_handle[i];
 
 #if GASNETC_USE_MULTI_DOMAIN && (GASNETC_DOMAIN_ALLOC_POLICY == GASNETC_STATIC_DOMAIN_ALLOC)
-  /* Replicate mem handle - not stricty necessary, but cache-friendly: */
-  for (int d = 1; d < gasnetc_domain_count; d++) {
-    gasnete_threadidx_t tidx = gasnetc_get_domain_first_thread_idx(d);
-    GASNETC_DIDX_POST(gasnetc_get_domain_idx(tidx));
-
-    for (gex_Rank_t n = 0; n < gasneti_nodes; ++n) {
-      DOMAIN_SPECIFIC_VAL(peer_data[n]).mem_handle = gasnetc_cdom_data[0].peer_data[n].mem_handle;
+      // Replicate mem handle
+      for (int d = 1; d < gasnetc_domain_count; d++) {
+        gasnete_threadidx_t tidx = gasnetc_get_domain_first_thread_idx(d);
+        GASNETC_DIDX_POST(gasnetc_get_domain_idx(tidx));
+        DOMAIN_SPECIFIC_VAL(peer_data[loc.gex_rank]).mem_handle = all_mem_handle[i];
+      }
+#endif
+    } else {
+      // Non-primordial
     }
   }
-#endif
+
+  gasneti_free(all_mem_handle);
 }
 
 

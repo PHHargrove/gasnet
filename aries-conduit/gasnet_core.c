@@ -782,7 +782,7 @@ static int gasnetc_attach_segment(gex_Segment_t                 *segment_p,
   gasnetc_segment_register(segment);
 
   // Exchange registration info
-  gasnetc_segment_exchange(segment, tm);
+  gasnetc_segment_exchange(&tm, 1);
 
   return GASNET_OK;
 }
