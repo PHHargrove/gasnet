@@ -1003,18 +1003,33 @@ int gasnetc_segment_register(gasnetc_Segment_t segment)
 }
 
 // Exchange memory keys with other nodes.
-void gasnetc_segment_exchange(gasnetc_Segment_t segment, gex_TM_t tm)
+// TODO: multi-ep/tm support
+void gasnetc_segment_exchange(gex_TM_t *tm, size_t num_tm)
 {
-  gasneti_assert(!tm || tm == gasneti_THUNK_TM); // Unless/until this is generalized
+  if (GASNETC_OFI_HAS_MR_SCALABLE) return;
 
-  if (!GASNETC_OFI_HAS_MR_SCALABLE) {
-      uint64_t local_mr_key = fi_mr_key(segment->mrfd);
-      if (tm) { // Use collectives if available
-        gasneti_blockingExchange(tm, &local_mr_key, sizeof(uint64_t), gasnetc_ofi_target_keys);
-      } else {
-        gasneti_bootstrapExchange(&local_mr_key, sizeof(uint64_t), gasnetc_ofi_target_keys);
-      }
+  gasnetc_Segment_t segment = (gasnetc_Segment_t) gasneti_import_ep(gex_TM_QueryEP(tm[0]))->_segment;
+  gex_Rank_t team_size = gex_TM_QuerySize(tm[0]);
+  size_t elem_size = sizeof(uint64_t);
+
+  uint64_t local_mr_key = fi_mr_key(segment->mrfd);
+  uint64_t *all_mr_keys = gasneti_malloc(team_size * elem_size);
+  gasneti_blockingExchange(tm[0], &local_mr_key, elem_size, all_mr_keys);
+
+  for (gex_Rank_t i = 0; i < team_size; ++i) {
+    if (! all_mr_keys[i]) continue; // GEX_SEGMENT_INVALID
+
+    gex_EP_Location_t loc = gasneti_e_tm_rank_to_location(tm[0], i, 0);
+    gex_Rank_t jobrank = loc.gex_ep_index;
+
+    if (! loc.gex_ep_index ) { // Primordial EP (includes loopback)
+      gasneti_assert(!gasnetc_ofi_target_keys[jobrank] ||
+                     gasnetc_ofi_target_keys[jobrank] == all_mr_keys[i]);
+      gasnetc_ofi_target_keys[jobrank] = all_mr_keys[i];
+    } else {
+      // Non-primordial
     }
+  }
 }
 
 /*------------------------------------------------

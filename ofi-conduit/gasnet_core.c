@@ -174,7 +174,7 @@ static int gasnetc_attach_segment(gex_Segment_t                 *segment_p,
   GASNETI_SAFE_PROPAGATE( gasnetc_segment_register(segment) );
 
   // Exchange memory keys
-  gasnetc_segment_exchange(segment, tm);
+  gasnetc_segment_exchange(&tm, 1);
 
   return GASNET_OK;
 }
