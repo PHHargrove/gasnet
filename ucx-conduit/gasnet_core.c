@@ -303,45 +303,46 @@ gasnetc_segment_register(void *seg_start, size_t segsize)
   return mem_info;
 }
 
+// TODO: multi-ep/tm generalizations
 static int
 gasnetc_segment_exchange(gasnetc_mem_info_t* mem_info, gex_TM_t tm)
 {
-  gasneti_assert(!tm || tm == gasneti_THUNK_TM); // Unless/until this is generalized
+  gex_Rank_t team_size = tm ? gex_TM_QuerySize(tm) : gasneti_nodes;
   #define DO_EXCHANGE(src, len, dst) \
           (tm ? gasneti_blockingExchange(tm, src, len, dst) \
               : gasneti_bootstrapExchange(src, len, dst))
-       
-  /* identify max rkey size */
-  size_t rkey_max_size = mem_info->bsize;
-  size_t *rkey_sizes = gasneti_calloc(gasneti_nodes, sizeof(size_t));
+
+  // identify max rkey size
+  // TODO: reduce-to-all in O(log(N)) time and O(1) storage
+  size_t rkey_max_size = mem_info ? mem_info->bsize : 0;
+  size_t *rkey_sizes = gasneti_calloc(team_size, sizeof(size_t));
   DO_EXCHANGE(&rkey_max_size, sizeof(rkey_max_size), rkey_sizes);
-  for (gex_Rank_t i = 0; i < gasneti_nodes; i++) {
-    if (i == gasneti_mynode) {
-      continue;
-    }
+  for (gex_Rank_t i = 0; i < team_size; i++) {
     rkey_max_size = MAX(rkey_max_size, rkey_sizes[i]);
   }
   gasneti_free(rkey_sizes);
 
   /* pack my mem map info */
   size_t mem_info_len =
-      /* rkey size */ sizeof(uint64_t)
-      +  /* rkey buf */ rkey_max_size
-      + /* addr */ sizeof(uint64_t)
-      + /* len */ sizeof(uint64_t);
+      /* len */ sizeof(uint64_t)
+      + /* addr */ sizeof(void *)
+      + /* rkey size */ sizeof(uint64_t) // TODO: cannot imagine multi-GB rkeys!
+      + /* rkey buf */ rkey_max_size;
   void * mem_info_buf = gasneti_calloc(1, mem_info_len);
-
   size_t info_offset = 0;
-  gasneti_mem_pack(mem_info_buf, &mem_info->bsize, sizeof(uint64_t),
-                   0, info_offset);
-  gasneti_mem_pack(mem_info_buf, mem_info->buffer,
-                   mem_info->bsize, rkey_max_size, info_offset);
-  gasneti_mem_pack(mem_info_buf, &mem_info->addr, sizeof(uint64_t),
-                   0, info_offset);
-  gasneti_mem_pack(mem_info_buf, &mem_info->length, sizeof(uint64_t),
-                   0, info_offset);
 
-  char * recv_buf = gasneti_malloc(mem_info_len * gasneti_nodes);
+  if (mem_info) {
+    gasneti_mem_pack(mem_info_buf, &mem_info->length, sizeof(uint64_t),
+                     0, info_offset);
+    gasneti_mem_pack(mem_info_buf, &mem_info->addr, sizeof(void *),
+                     0, info_offset);
+    gasneti_mem_pack(mem_info_buf, &mem_info->bsize, sizeof(uint64_t),
+                     0, info_offset);
+    gasneti_mem_pack(mem_info_buf, mem_info->buffer, mem_info->bsize,
+                     rkey_max_size, info_offset);
+  }
+
+  char * recv_buf = gasneti_malloc(mem_info_len * team_size);
 
   /* TODO:
   * + When using PSHM we could store rkeys just once per supernode
@@ -350,31 +351,74 @@ gasnetc_segment_exchange(gasnetc_mem_info_t* mem_info, gex_TM_t tm)
   DO_EXCHANGE(mem_info_buf, mem_info_len, recv_buf);
 
   info_offset = 0;
-  for (gex_Rank_t i = 0; i < gasneti_nodes; i++) {
-    if (i == gasneti_mynode) {
+  for (gex_Rank_t i = 0; i < team_size; i++) {
+    gex_Rank_t jobrank;
+    if (tm) {
+      gex_EP_Location_t loc = gasneti_e_tm_rank_to_location(tm, i, 0);
+      gasneti_assert(! loc.gex_ep_index); // TODO: multi-ep support
+      jobrank = loc.gex_rank;
+    } else {
+      jobrank = i;
+    }
+
+    if (jobrank == gasneti_mynode) {
       info_offset += mem_info_len;
       continue;
     }
-    ucp_ep_h ep = GASNETC_UCX_GET_EP(i);
-    gasnet_ep_info_t * ep_info = &gasneti_ucx_module.ep_tbl[i];
+
+    uint64_t length;
+    gasneti_mem_unpack(&length, recv_buf,
+                       sizeof(uint64_t), 0, info_offset);
+    if (!length) { // GEX_SEGENT_INVALID
+      info_offset += mem_info_len - sizeof(length);
+      continue;
+    }
+
+    void * addr;
+    gasneti_mem_unpack(&addr, recv_buf,
+                       sizeof(void *), 0, info_offset);
+    uint64_t bsize;
+    gasneti_mem_unpack(&bsize, recv_buf,
+                       sizeof(uint64_t), 0, info_offset);
+    char * buffer = gasneti_calloc(1, bsize);
+    gasneti_mem_unpack(buffer, recv_buf,
+                       bsize, rkey_max_size,
+                       info_offset);
+
+    gasnet_ep_info_t * ep_info = &gasneti_ucx_module.ep_tbl[jobrank];
+
+    // Multiple calls to Publish must not create duplicate entries
+    // TODO: thread safety in list traversal?
+    {
+      int found = 0;
+      GASNETI_LIST_FOREACH(mem_info, &ep_info->mem_tbl, gasnetc_mem_info_t) {
+        if ((mem_info->addr   == addr  ) &&
+            (mem_info->length == length) &&
+            (mem_info->bsize  == bsize ) &&
+            !memcmp(mem_info->buffer, buffer, bsize)) {
+          gasneti_free(buffer);
+          found = 1;
+          break;
+        }
+      }
+      if (found) {
+        continue;
+      }
+    }
 
     GASNETI_LIST_ITEM_ALLOC(mem_info, gasnetc_mem_info_t, gasnetc_minfo_reset);
-    gasneti_list_enq(&ep_info->mem_tbl, mem_info);
 
-    gasneti_mem_unpack(&mem_info->bsize, recv_buf,
-                       sizeof(uint64_t), 0, info_offset);
-    mem_info->buffer =
-        gasneti_calloc(1, mem_info->bsize);
-    gasneti_mem_unpack(mem_info->buffer, recv_buf,
-                       mem_info->bsize, rkey_max_size,
-                       info_offset);
-    gasneti_rkey_unpack(ep, mem_info->buffer, &mem_info->rkey);
-    gasneti_mem_unpack(&mem_info->addr, recv_buf,
-                       sizeof(uint64_t), 0, info_offset);
-    gasneti_mem_unpack(&mem_info->length, recv_buf,
-                       sizeof(uint64_t), 0, info_offset);
+    mem_info->addr   = addr;
+    mem_info->length = length;
+    mem_info->bsize  = bsize;
+    mem_info->buffer = buffer;
+
+    ucp_ep_h ep = GASNETC_UCX_GET_EP(jobrank);
+    gasneti_rkey_unpack(ep, buffer, &mem_info->rkey);
+
+    gasneti_list_enq(&ep_info->mem_tbl, mem_info); // TODO: thread safety?
   }
-  gasneti_assert(info_offset == mem_info_len * gasneti_nodes);
+  gasneti_assert(info_offset == mem_info_len * team_size);
 
   gasneti_free(mem_info_buf);
   gasneti_free(recv_buf);
