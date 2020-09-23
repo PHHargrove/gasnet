@@ -385,6 +385,23 @@ extern gasneti_TM_t gasneti_thing_that_goes_thunk_in_the_dark;
 #define gasneti_THUNK_SEGMENT gasneti_export_segment(gasneti_thing_that_goes_thunk_in_the_dark->_ep->_segment)
 
 /* ------------------------------------------------------------------------------------ */
+// EP management
+
+GASNETI_INLINE(gasneti_i_tm_to_i_ep)
+gasneti_EP_t gasneti_i_tm_to_i_ep(gasneti_TM_t i_tm) {
+  gasneti_assert(i_tm);
+  if (gasneti_i_tm_is_pair(i_tm)) {
+    gex_EP_Index_t ep_idx = gasneti_tm_pair_loc_idx((gasneti_TM_Pair_t) i_tm);
+    // TODO: multi-ep support will fetch the given EP from tm->_client
+    gasneti_assert_int(ep_idx ,==, 0);
+    return gasneti_import_ep(gasneti_THUNK_EP);
+  } else {
+    return i_tm->_ep;
+  }
+}
+#define gasneti_e_tm_to_i_ep(e_tm) gasneti_i_tm_to_i_ep(gasneti_import_tm(e_tm))
+
+/* ------------------------------------------------------------------------------------ */
 // Internal conduit interface to spawner
 
 typedef void (*gasneti_bootstrapExchangefn_t)(void *src, size_t len, void *dest);

@@ -4493,7 +4493,7 @@ int gasnetc_AMRequestShort( gex_TM_t tm, gex_Rank_t rank, gex_AM_Index_t handler
 {
   int retval;
   gasneti_assert(tm);
-  gasnetc_EP_t ep = (gasnetc_EP_t)gasneti_import_ep(gex_TM_QueryEP(tm));
+  gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_e_tm_to_i_ep(tm);
   gasneti_assert(ep == gasnetc_ep0);
   gex_Rank_t jobrank = gasneti_e_tm_rank_to_jobrank(tm, rank);
   if (GASNETI_NBRHD_JOBRANK_IS_LOCAL(jobrank)) {
@@ -4517,7 +4517,7 @@ int gasnetc_AMRequestMedium(gex_TM_t tm, gex_Rank_t rank, gex_AM_Index_t handler
 {
   int retval;
   gasneti_assert(tm);
-  gasnetc_EP_t ep = (gasnetc_EP_t)gasneti_import_ep(gex_TM_QueryEP(tm));
+  gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_e_tm_to_i_ep(tm);
   gasneti_assert(ep == gasnetc_ep0);
   gex_Rank_t jobrank = gasneti_e_tm_rank_to_jobrank(tm, rank);
   if (GASNETI_NBRHD_JOBRANK_IS_LOCAL(jobrank)) {
@@ -4584,7 +4584,7 @@ int gasnetc_AMRequestLong(  gex_TM_t tm, gex_Rank_t rank, gex_AM_Index_t handler
 {
   int retval;
   gasneti_assert(tm);
-  gasnetc_EP_t ep = (gasnetc_EP_t)gasneti_import_ep(gex_TM_QueryEP(tm));
+  gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_e_tm_to_i_ep(tm);
   gasneti_assert(ep == gasnetc_ep0);
   gex_Rank_t jobrank = gasneti_e_tm_rank_to_jobrank(tm, rank);
   if (GASNETI_NBRHD_JOBRANK_IS_LOCAL(jobrank)) {
@@ -5099,7 +5099,7 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareRequestMedium(
     } else {
         const gex_Flags_t immediate = flags & GEX_FLAG_IMMEDIATE;
 
-        gasnetc_EP_t ep = (gasnetc_EP_t)gasneti_import_tm(tm)->_ep;
+        gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_e_tm_to_i_ep(tm);
         gasneti_assert(ep == gasnetc_ep0);
         gasnetc_cep_t *cep = gasnetc_am_select_cep(ep, jobrank);
         if (gasnetc_am_get_credit(ep, cep, immediate GASNETI_THREAD_PASS)) {

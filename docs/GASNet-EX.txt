@@ -3166,6 +3166,12 @@ int gasneti_TM_Destroy(
       // Valid flags:
       //   GEX_FLAG_GLOBALLY_QUIESCED
 
+gex_TM_t gex_TM_Pair(
+            gex_EP_t        local_ep,
+            gex_EP_Index_t  remote_ep_index);
+      // Valid flags:
+      //   N/A
+
 //----------------------------------------------------------------------
 
 // vim: syntax=c

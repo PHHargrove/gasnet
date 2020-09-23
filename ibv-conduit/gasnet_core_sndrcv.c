@@ -3092,7 +3092,7 @@ extern int gasnetc_rdma_put(
                 GASNETI_THREAD_FARG)
 {
   gex_Rank_t jobrank = gasneti_e_tm_rank_to_jobrank(tm, rank);
-  gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_import_tm(tm)->_ep;
+  gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_e_tm_to_i_ep(tm);
   GASNETC_DECL_SR_DESC(sr_desc, GASNETC_SND_SG);
 
   // TODO-EX:
@@ -3230,7 +3230,7 @@ extern int gasnetc_rdma_get(
                 GASNETI_THREAD_FARG)
 {
   gex_Rank_t jobrank = gasneti_e_tm_rank_to_jobrank(tm, rank);
-  gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_import_tm(tm)->_ep;
+  gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_e_tm_to_i_ep(tm);
   GASNETC_DECL_SR_DESC(sr_desc, GASNETC_SND_SG);
 
   // TODO-EX:
@@ -3278,7 +3278,7 @@ extern int gasnetc_rdma_put(
                 GASNETI_THREAD_FARG)
 {
   gex_Rank_t jobrank = gasneti_e_tm_rank_to_jobrank(tm, rank);
-  gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_import_tm(tm)->_ep;
+  gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_e_tm_to_i_ep(tm);
 
   uintptr_t src = (uintptr_t)src_ptr;
   uintptr_t dst = (uintptr_t)dst_ptr;
@@ -3391,7 +3391,7 @@ extern int gasnetc_rdma_get(
                 GASNETI_THREAD_FARG)
 {
   gex_Rank_t jobrank = gasneti_e_tm_rank_to_jobrank(tm, rank);
-  gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_import_tm(tm)->_ep;
+  gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_e_tm_to_i_ep(tm);
 
   uintptr_t src = (uintptr_t)src_ptr;
   uintptr_t dst = (uintptr_t)dst_ptr;
