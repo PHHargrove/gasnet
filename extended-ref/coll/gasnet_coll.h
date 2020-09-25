@@ -141,7 +141,7 @@ extern void gasnet_coll_set_dissem_limit(gasnet_team_handle_t _team, size_t _dis
     #define gasnete_coll_format_addrlist(list,flags) gasneti_extern_strdup("[LIST]")
   #endif 
   // TODO-EX: Remove this work-around for fact that collective's "team" is not a "tm"
-  #define GASNETI_RADDRSTR_COLL(root,ptr) GASNETI_RADDRSTR((gex_TM_t)(uintptr_t)1,root,ptr)
+  #define GASNETI_RADDRSTR_COLL(root,ptr) GASNETI_RADDRSTR((gex_TM_t)(uintptr_t)2,root,ptr)
   // Legacy Collective OPs
   #define GASNETI_TRACE_COLL_BROADCAST(name,team,dst,root,src,nbytes,flags) do {                           \
     GASNETI_TRACE_EVENT_VAL(W,name,nbytes);                                                                \
