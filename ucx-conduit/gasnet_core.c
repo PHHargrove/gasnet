@@ -1308,6 +1308,7 @@ static void gasnetc_exit_body(void) {
   {
     GASNETC_LOCK_UCX();
     gasneti_assert(GASNETC_MY_THREADIDX == gasnetc_exit_thread);
+    GASNETC_UNLOCK_UCX();
   }
 #endif
 
