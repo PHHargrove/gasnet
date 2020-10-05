@@ -558,6 +558,18 @@ typedef struct gasnetc_Segment_t_ {
 #endif
 } *gasnetc_Segment_t;
 
+// TODO: hoist to gasneti_ ?
+#if GASNET_HAVE_MK_CLASS_CUDA_UVA
+GASNETI_INLINE(gasnetc_segment_kind_is_host)
+int gasnetc_segment_kind_is_host(gasneti_Segment_t segment) {
+  // Either NULL (such as for no bound segment, which is just fine for
+  // out-of-segment or in-aux-seg local addrs) OR the kind is GEX_MK_HOST.
+  return !segment || (segment->_kind == GEX_MK_HOST);
+}
+#else
+  #define gasnetc_segment_kind_is_host(segment) 1
+#endif
+
 /* Description of a receive buffer.
  *
  * Note that use of the freelist will overwrite the first sizeof(void *) bytes (linkage).
