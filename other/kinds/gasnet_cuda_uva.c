@@ -68,6 +68,7 @@ static int gasneti_MK_Segment_Create_cuda_uva(
   CUdeviceptr dptr;
   CUresult result;
   void * to_free = NULL;
+  int retval = GASNET_OK;
 
   gasneti_check_cudacall(cuCtxPushCurrent(kind->ctx));
 
@@ -116,7 +117,8 @@ static int gasneti_MK_Segment_Create_cuda_uva(
     result = cuMemAlloc(&dptr, size);
 
     if (result == CUDA_ERROR_OUT_OF_MEMORY) {
-      return GASNET_ERR_RESOURCE;
+      retval = GASNET_ERR_RESOURCE;
+      goto out;
     } else if (result != CUDA_SUCCESS) {
       gasneti_fatalerror("cuMemAlloc() returned unexpected failure: "
                          GASNETI_CURESULT_FMT, GASNETI_CURESULT_STRING(result));
@@ -135,14 +137,15 @@ static int gasneti_MK_Segment_Create_cuda_uva(
   gasneti_Segment_t i_segment = gasneti_alloc_segment(client, addr, size, e_mk, flags);
   i_segment->_opaque_mk_use = to_free;
 
+  *i_segment_p = i_segment;
+
+out:
   {
     CUcontext prev_ctx;
     gasneti_check_cudacall(cuCtxPopCurrent(&prev_ctx));
     gasneti_assert(prev_ctx == kind->ctx);
   }
-
-  *i_segment_p = i_segment;
-  return GASNET_OK;
+  return retval;
 }
 
 //
