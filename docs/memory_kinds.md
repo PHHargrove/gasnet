@@ -40,7 +40,7 @@ For brevity, these will be referenced as "the Multi-EP Proposal" and
 
 By default, the `configure` script in this branch probes for the necessary CUDA
 headers and libraries and enable the prototype implementation of memory kinds if
-such support is found.  Use of configure new option `--enable-mem-kind-cuda-uva`
+such support is found.  Use of configure new option `--enable-kind-cuda-uva`
 will make failure of that probe fatal.
 
 On our main development platforms, the logic in `configure` is sufficient to
@@ -96,21 +96,35 @@ Testing conducted to date is insufficient to establish whether the current
 implementation is compatible with the use of CUDA MPS.  Reports (positive or
 negative) regarding such compatibility are welcome.
 
-## Loopback and PSHM
+## Loopback
+
+The currently implementation does not handle RMA operations between combinations
+of host and GPU memory in the same processes (loopback), though this will be
+supported in the future.
+
+It should be noted that this temporary limitation precludes use of GASNet for
+transfers which could alternatively be performed using `cudaMemcpy()`, or
+`cuMemcpy{DtoH,HtoD,DtoD}()` (possibly with some CUDA calls to enable
+peer-to-peer access).  Therefore, it is recommended practice (and will
+*continue* to be so when this limitation is removed) that clients bypass
+GASNet-EX to perform such transfers.
+
+## PSHM
 
 Currently the implementation is sufficient (when using supported hardware,
 drivers and libraries) to perform RMA operations between combinations of host
 and GPU memory in which the two involved endpoints are in distinct "nbrhds".
-This precludes any RMA transfers between endpoints in the same process, or
-intra-nbrhd transfers when PSHM is active (where "inactive" equates to either
-`--disable-pshm` at configure time, or `GASNET_SUPERNODE_MAXSIZE=1` in ones
-environment at runtime).  This is a temporary limitation.
 
-Notably, the transfers prohibited by the current limitation are ones that can be
-performed using `cudaMemcpy()`, or `cuMemcpy{DtoH,HtoD,DtoD}()` (possibly with
-some CUDA calls to enable peer-to-peer access).  Therefore, it is recommended
-practice (and will *continue* to be so when this limitation is removed) that
-clients bypass GASNet-EX to perform such transfers.
+There is a temporary limitation (in addition to the no-loopback limitation,
+above) which prohibits intra-nbrhd RMA operations.  In other words, there is no
+support for RMA operations in which one or both endpoints has a GPU memory
+segment and the two processes are in the same shared memory domain (aka "nbrhd"
+in GASNet-EX documentation).
+
+Currently, RMA transfers involving GPU memory between processes in the same
+compute node are supported only when PSHM is "inactive" (meaning either
+`--disable-pshm` at configure time, or `GASNET_SUPERNODE_MAXSIZE=1` in ones
+environment at runtime).
 
 # Tested Configurations
 
