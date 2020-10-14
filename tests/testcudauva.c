@@ -193,7 +193,7 @@ int main(int argc, char **argv)
       cuMemcpyHtoD((CUdeviceptr)loc_gpu, array2, len);
       BARRIER();
       gex_RMA_GetBlocking(LG_RG, loc_gpu+len, peer, rem_gpu, len, 0);
-      cuMemcpyDtoH(tmp, (CUdeviceptr)loc_gpu, len);
+      cuMemcpyDtoH(tmp, (CUdeviceptr)loc_gpu+len, len);
       if (memcmp(tmp, array2, len)) {
          ERR("Case 4 verification failed");
       } else {
