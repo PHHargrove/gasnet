@@ -21,6 +21,10 @@ typedef enum {
     GEX_MK_CLASS_CUDA_UVA,  // CUDA UVA memory
 } gex_MK_Class_t;
 
+// A set of GASNET_HAVE_MK_CLASS_* identifiers are either `1` or unset
+#define GASNET_HAVE_MK_CLASS_HOST 1 // For consistency - always available
+// All others are defined per-build via gasnet_config.h
+
 // Struct containing a union and an enum to indicate which member has been populated.
 // Each union member is a struct named with the lowercase of the enum identifier.
 // All types in here are basic types, possibly type-erased/indirected versions of types
@@ -34,16 +38,6 @@ typedef struct {
         }                    gex_class_cuda_uva;
     }                    gex_args;
 } gex_MK_Create_args_t;
-
-// A set of GASNET_HAVE_MK_CLASS_* identifiers are either `1` or unset
-#define GASNET_HAVE_MK_CLASS_HOST 1 // For consistency - always available
-
-#if GASNET_HAVE_MK_CLASS_CUDA_UVA
-  #undef GASNET_HAVE_MK_CLASS_CUDA_UVA
-  #define GASNET_HAVE_MK_CLASS_CUDA_UVA 1
-#else
-  #undef GASNET_HAVE_MK_CLASS_CUDA_UVA
-#endif
 
 // Constructor for gex_MK_t
 // This is a non-collective call

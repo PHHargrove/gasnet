@@ -1438,6 +1438,16 @@ extern gasnet_nodeinfo_t *gasneti_nodeinfo;
 #endif
 
 /* ------------------------------------------------------------------------------------ */
+// Memory Kinds
+
+#if GASNET_HAVE_MK_CLASS_CUDA_UVA
+  #undef GASNET_HAVE_MK_CLASS_CUDA_UVA
+  #define GASNET_HAVE_MK_CLASS_CUDA_UVA 1
+#else
+  #undef GASNET_HAVE_MK_CLASS_CUDA_UVA
+#endif
+
+/* ------------------------------------------------------------------------------------ */
 /* PSHM support */
 #if GASNET_PSHM
 
