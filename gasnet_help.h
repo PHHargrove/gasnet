@@ -1440,6 +1440,10 @@ extern gasnet_nodeinfo_t *gasneti_nodeinfo;
 /* ------------------------------------------------------------------------------------ */
 // Memory Kinds
 
+// The following GASNET_HAVE_MK_CLASS_* identifiers are either `1` or unset
+
+#define GASNET_HAVE_MK_CLASS_HOST 1 // For consistency - always available
+
 #if GASNET_HAVE_MK_CLASS_CUDA_UVA
   #undef GASNET_HAVE_MK_CLASS_CUDA_UVA
   #define GASNET_HAVE_MK_CLASS_CUDA_UVA 1
