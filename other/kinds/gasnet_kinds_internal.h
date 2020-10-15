@@ -63,7 +63,7 @@ struct gasneti_mk_impl_s {
   void (*mk_destroy)(gasneti_MK_t, gex_Flags_t);
 
   // Hook for gex_Segment_Create()
-  // If NULL, the default is failure of gex_Segment_Create() with GASNET_ERRR_BAD_ARG
+  // If NULL, the default is failure of gex_Segment_Create() with GASNET_ERR_BAD_ARG
   int (*mk_segment_create)(gasneti_Segment_t *, gasneti_MK_t, void *, uintptr_t, gex_Flags_t);
 };
 
