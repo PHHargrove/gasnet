@@ -60,7 +60,8 @@ all have sensible defaults once the installation prefix is known.
 # Supported Configurations
 
 All current memory kinds implementation work is limited to devices with the
-CUDA Device API and Unified Virtual Memory (UVA).
+CUDA Device API and Unified Virtual Addressing (UVA).  This should include
+all modern NVIDIA GPUs and CUDA Toolkit versions.
 
 Support is limited to ibv-conduit on Linux and only when using Mellanox
 InfiniBand hardware and drivers with support for "GPUDirect RDMA".  In some
