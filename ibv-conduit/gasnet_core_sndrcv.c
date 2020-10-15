@@ -1646,7 +1646,7 @@ void gasnetc_do_put_inline(
 
   gasneti_assert(nbytes != 0);
   gasneti_assert(nbytes <= gasnetc_inline_limit);
-  gasneti_assert(gasnetc_segment_kind_is_host(ep->_segment));
+  gasneti_assert(gasneti_i_segment_kind_is_host(ep->_segment));
 
   sreq = gasnetc_get_sreq(GASNETC_OP_PUT_INLINE GASNETI_THREAD_PASS);
   sreq->fh_count = 0;
@@ -1685,7 +1685,7 @@ void gasnetc_do_put_bounce(
                                                         : GASNETC_OP_PUT_BOUNCE;
 
   gasneti_assert(nbytes != 0);
-  gasneti_assert(gasnetc_segment_kind_is_host(ep->_segment));
+  gasneti_assert(gasneti_i_segment_kind_is_host(ep->_segment));
 
   do {
     gasnetc_sreq_t * const sreq = gasnetc_get_sreq(sreq_op GASNETI_THREAD_PASS);
@@ -1771,7 +1771,7 @@ void gasnetc_do_get_bounce(
 
   gasneti_assert(nbytes != 0);
   gasneti_assert(remote_cnt != NULL);
-  gasneti_assert(gasnetc_segment_kind_is_host(ep->_segment));
+  gasneti_assert(gasneti_i_segment_kind_is_host(ep->_segment));
 
   do {
     gasnetc_sreq_t * const sreq = gasnetc_get_sreq(GASNETC_OP_GET_BOUNCE GASNETI_THREAD_PASS);
@@ -3100,7 +3100,7 @@ extern int gasnetc_rdma_put(
 
   // Local "device memory" can never use inline or bounce buffers
   // TODO: maybe some devices classes can in the future?
-  const int device_mem = !gasnetc_segment_kind_is_host(ep->_segment);
+  const int device_mem = !gasneti_i_segment_kind_is_host(ep->_segment);
 
   gasneti_assert(nbytes != 0);
   
