@@ -144,7 +144,7 @@ Summit:
 Dirac:  
 
   + x86_64 (Intel Nahalem)
-  + CUDA 11.0
+  + CUDA 11.1
   + Mellanox ConnectX-5 HCAs
   + NVIDIA Maxwell-class GPUs
 
@@ -156,7 +156,7 @@ possibly higher.
 Currently the implementation is sufficient (when hardware, software and
 configuration constraints are met) to use the pseudo-code below to perform RMA
 operations between combinations of host and GPU memory (subject to the
-previously noted temporary prohibition on loopback intra-nbrhd transfers).
+previously noted temporary prohibitions on loopback and intra-nbrhd transfers).
 
 Please note that all error checking has been elided from this example.
 
