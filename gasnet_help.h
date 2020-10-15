@@ -1457,7 +1457,7 @@ extern gasnet_nodeinfo_t *gasneti_nodeinfo;
     return !_segment || (_segment->_kind == GEX_MK_HOST);
   }
   #define gasneti_e_segment_kind_is_host(segment) \
-          gasneti_e_segment_kind_is_host(gasneti_import_segment(segment))
+          gasneti_i_segment_kind_is_host(gasneti_import_segment(segment))
 #else
   #define gasneti_i_segment_kind_is_host(segment) 1
   #define gasneti_e_segment_kind_is_host(segment) 1
