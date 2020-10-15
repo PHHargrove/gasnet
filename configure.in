@@ -4716,17 +4716,16 @@ if test "$enable_mk_cuda_uva" != "no"; then
     AC_MSG_RESULT([no (ILP32 targets are not supported)])
     have_mk_cuda_uva=no
   else
-    result=no
+    have_mk_cuda_uva=no
     case "$target_cpu:$target_os" in
-      x86_64:linux*)    result='yes';;
-      powerpc*:linux*)  if test "$WORDS_BIGENDIAN" = '0'; then result='yes'; fi;;
-      aarch64:linux*)   result='maybe';;
+      x86_64:linux*)    have_mk_cuda_uva='yes';;
+      powerpc*:linux*)  if test "$WORDS_BIGENDIAN" = '0'; then have_mk_cuda_uva='yes'; fi;;
+      aarch64:linux*)   have_mk_cuda_uva='maybe';;
     esac
-    have_mk_cuda_uva="$result"
-    if test "$result" = 'no'; then
+    if test "$have_mk_cuda_uva" = 'no'; then
       AC_MSG_RESULT([no (unsupported or unrecognized target $target)])
     else
-      AC_MSG_RESULT([$result])
+      AC_MSG_RESULT([$have_mk_cuda_uva])
     fi
   fi
 
@@ -4770,7 +4769,7 @@ if test "$enable_mk_cuda_uva" != "no"; then
       have_mk_cuda_uva=no
       GASNET_MSG_WARN([It appears your system has the software required for CUDA UVA memory kinds support.
 However, $target may not be officially supported.
-You can enable an unsupport build of this feature with --enable-kind-cuda-uva.
+You can enable an unsupported build of this feature with --enable-kind-cuda-uva.
 Otherwise, you can disable this message with --disable-kind-cuda-uva.])
     fi
   fi
