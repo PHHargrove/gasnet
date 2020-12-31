@@ -4875,6 +4875,7 @@ case "$target_os" in
   ;;
 esac
 
+# PLPA
 enabled_plpa="no"
 if test "$cross_compiling" = "no" ; then
   case "$target_os" in
@@ -4909,6 +4910,79 @@ if test "$enabled_plpa" = "yes"; then
       fi
 fi
 AM_CONDITIONAL(USE_PLPA,test "$enabled_plpa" = "yes")
+
+# HWLOC header and library
+GASNET_IF_ENABLED_WITH_AUTO(hwloc, hwloc library (auto-detected),
+                            enabled_hwloc_lib=yes, enabled_hwloc_lib=no, enabled_hwloc_lib=probe)
+have_hwloc_lib=no
+if test "$enabled_hwloc_lib" != no; then
+  GASNET_PACKAGE_HOME(HWLOC, [hwloc], [hwloc-info], [/usr/local], [include/hwloc.h])
+  GASNET_PACKAGE_CFLAGS(HWLOC)
+  GASNET_ENV_DEFAULT(HWLOC_LIBS, -lhwloc)
+  GASNET_PACKAGE_LDFLAGS(HWLOC, hwloc)
+  GASNET_SPLIT_LINKER_OPTS(HWLOC_LDFLAGS,HWLOC_LIBS)
+
+  # Try to compile and link a basic program using hwloc
+  GASNET_PUSHVAR(CFLAGS,"$CFLAGS $HWLOC_CFLAGS")
+  GASNET_PUSHVAR(LDFLAGS,"$LDFLAGS $HWLOC_LDFLAGS")
+  GASNET_PUSHVAR(LIBS,"$LIBS $HWLOC_LIBS")
+
+    GASNET_TRY_CACHE_LINK(for working hwloc configuration, libhwloc_works, [
+      #include <hwloc.h>
+    ], [
+      hwloc_topology_t topology;
+      hwloc_topology_init(&topology);
+      hwloc_topology_load(topology);
+    ], [ have_hwloc_lib=yes ])
+
+  GASNET_POPVAR(LIBS)
+  GASNET_POPVAR(LDFLAGS)
+  GASNET_POPVAR(CFLAGS)
+
+  if test "$have_hwloc_lib" = yes; then
+    AC_DEFINE(GASNETI_HAVE_HWLOC_LIB)
+    AC_SUBST(HWLOC_CFLAGS)
+    AC_SUBST(HWLOC_LDFLAGS)
+    AC_SUBST(HWLOC_LIBS)
+  elif test "$enabled_hwloc_lib" = yes; then
+    GASNET_ERR_SAVE()
+    AC_MSG_ERROR(User requested --enable-hwloc but the required hwloc header or library were not found.)
+  fi
+fi
+
+# HWLOC utilies: hwloc-{bind,calc}
+# Used as fallback if !have_hwloc_lib
+GASNET_IF_ENABLED_WITH_AUTO(hwloc-utils, hwloc utilities (auto-detected),
+                            enabled_hwloc_utils=yes, enabled_hwloc_utils=no, enabled_hwloc_utils=probe)
+have_hwloc_utils=no
+if test "$enabled_hwloc_utils" != no; then
+  if test "$have_fork" = yes; then
+    hwloc_path="${withval:+$withval:}$PATH"
+    AC_PATH_PROGS(GASNETI_HWLOC_BIND_PATH, hwloc-bind, , $hwloc_path)
+    AC_PATH_PROGS(GASNETI_HWLOC_CALC_PATH, hwloc-calc, , $hwloc_path)
+    if test -n "$GASNETI_HWLOC_BIND_PATH" && test -n "$GASNETI_HWLOC_CALC_PATH"; then
+      have_hwloc_utils=yes
+      AC_DEFINE(GASNETI_HAVE_HWLOC_UTILS)
+      AC_DEFINE_UNQUOTED(GASNETI_HWLOC_BIND_PATH,"$GASNETI_HWLOC_BIND_PATH")
+      AC_DEFINE_UNQUOTED(GASNETI_HWLOC_CALC_PATH,"$GASNETI_HWLOC_CALC_PATH")
+    elif test "$enabled_hwloc_utils" = yes; then
+      GASNET_ERR_SAVE()
+      AC_MSG_ERROR(User requested --enable-hwloc-utils but one or both of hwloc-calc or hwloc-bind was not found.)
+    fi
+  elif test "$enabled_hwloc_utils" = yes; then
+    GASNET_ERR_SAVE()
+    AC_MSG_ERROR(User requested --enable-hwloc-utils but this option requires popen which $fork_reason.)
+  fi
+fi
+
+# We "have" hwloc is we could find either the lib or the utils
+if test "$have_hwloc_lib$have_hwloc_utils" = nono; then
+  have_hwloc=no
+else
+  have_hwloc=yes
+  AC_DEFINE(GASNETI_HAVE_HWLOC)
+fi
+AM_CONDITIONAL(HAVE_HWLOC, test "$have_hwloc" = "yes")
 
 #  AC_FUNC_MMAP
 # Check for mmap functionality we actually use
