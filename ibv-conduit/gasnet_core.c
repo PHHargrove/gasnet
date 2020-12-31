@@ -11,6 +11,10 @@
 
 #include <gasnet_event_internal.h> // access to eop and iop
 
+#if GASNETI_HAVE_HWLOC
+#include <gasnet_hwloc_internal.h>
+#endif
+
 #include <errno.h>
 #include <unistd.h>
 #include <signal.h>
@@ -1130,7 +1134,11 @@ static int gasnetc_load_settings(void) {
     fprintf(stderr, "WARNING: GASNET_PORT_NUM set in environment, but ignored.  See gasnet/ibv-conduit/README.\n");
   }
 
+#if GASNETI_HAVE_HWLOC
+  gasnetc_ibv_ports = gasneti_hwloc_getenv_withdefault("GASNET_IBV_PORTS", GASNETC_DEFAULT_IBV_PORTS, "Package");
+#else
   gasnetc_ibv_ports = gasneti_getenv_withdefault("GASNET_IBV_PORTS", GASNETC_DEFAULT_IBV_PORTS);
+#endif
 
   #define GASNETC_ENVINT(program_var, env_key, default_val, minval, is_mem) do {     \
       int64_t _tmp = gasneti_getenv_int_withdefault(#env_key, default_val, is_mem);  \
