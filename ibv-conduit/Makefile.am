@@ -54,7 +54,7 @@ if HAVE_HWLOC
 hwloc_srcdir = $(top_srcdir)/other/hwloc
 hwloc_sources = $(hwloc_srcdir)/gasnet_hwloc.c
 hwloc_deps = $(hwloc_srcdir)/*.[ch]
-hwloc_extralibcflags = -I$(hwloc_srcdir)
+hwloc_extralibcflags = -I$(hwloc_srcdir) @HWLOC_CFLAGS@
 endif
 
 ##
