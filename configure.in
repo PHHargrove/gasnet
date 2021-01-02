@@ -4872,6 +4872,27 @@ if test "$enable_mk_hip" != "no"; then
     GASNET_PACKAGE_CFLAGS(HIP)
     GASNET_ENV_DEFAULT(HIP_LIBS, -lamdhip64)
     GASNET_PACKAGE_LDFLAGS(HIP, amdhip64)
+
+    # UNDOCUMENTED option to enable use of HIP over CUDA *by GASNet developers*.
+    # TODO:  REMOVE or DOCUMENT
+    hip_platform=hcc
+    GASNET_WITH_NOHELP(hip-platform, [
+      case "$withval" in
+        hcc|nvcc) hip_platform="$withval";;
+           *) AC_MSG_ERROR([--with-hip-platform requires an argument (hcc or nvcc)]) ;;
+      esac
+    ])
+    case "$hip_platform" in
+      hcc)  AC_DEFINE(GASNETI_HIP_PLATFORM_HCC)
+            ;;
+      nvcc) GASNET_PACKAGE_HOME(CUDA, [CUDA toolkit], [nvcc], [/usr/local/cuda], [include/cuda.h])
+            HIP_LIBS="$HIP_LIBS -lcudart -lcuda"
+            HIP_LDFLAGS="$HIP_LDFLAGS -L${CUDA_HOME}/lib64"
+            HIP_CFLAGS="$HIP_CFLAGS -I${CUDA_HOME}/include"
+            AC_DEFINE(GASNETI_HIP_PLATFORM_NVCC)
+            ;;
+    esac
+
     GASNET_SPLIT_LINKER_OPTS(HIP_LDFLAGS,HIP_LIBS)
 
     # Try to compile and link a basic program using the HIP Driver API
@@ -4880,7 +4901,11 @@ if test "$enable_mk_hip" != "no"; then
     GASNET_PUSHVAR(LIBS,"$LIBS $HIP_LIBS")
 
     GASNET_TRY_CACHE_LINK(for working HIP configuration, libamdhip64_works, [
-      #define __HIP_PLATFORM_HCC__
+      #if GASNETI_HIP_PLATFORM_NVCC
+        #define __HIP_PLATFORM_NVCC__
+      #else
+        #define __HIP_PLATFORM_HCC__
+      #endif
       #include <hip/hip_runtime_api.h>
     ], [
       void *addr;
