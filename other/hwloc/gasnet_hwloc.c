@@ -104,6 +104,12 @@ char *gasneti_hwloc_getenv_withdefault(const char *keyname, const char *dflt_val
     goto out;
   }
   topo_is_init = 1;
+  // Enable "whole system" mode for uniform counting/naming
+  #if HWLOC_API_VERSION >= 0x020100 // 2.1.0
+    (void)hwloc_topology_set_flags(topology, HWLOC_TOPOLOGY_FLAG_INCLUDE_DISALLOWED);
+  #else
+    (void)hwloc_topology_set_flags(topology, HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM);
+  #endif
   cpuset = hwloc_bitmap_alloc();
   if (!cpuset ||
       (hwloc_topology_load(topology) < 0) ||
