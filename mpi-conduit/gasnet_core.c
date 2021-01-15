@@ -1218,7 +1218,6 @@ extern int  gasnetc_hsl_trylock(gex_HSL_t *hsl) {
       const gex_AM_Entry_t * const handler_entry = &gasnetc_handler[handlerId];
       gasneti_amtbl_check(handler_entry, numargs, (gasneti_category_t)cat, isReq);
     #endif
-    GASNETI_HANDLER_ENTER(isReq); // TODO: absorb HSL check, below
     switch (cat) {
       case ammpi_Short:
         if (isReq) GASNETI_TRACE_AMSHORT_REQHANDLER(handlerId, token, numargs, args);
@@ -1234,13 +1233,13 @@ extern int  gasnetc_hsl_trylock(gex_HSL_t *hsl) {
         break;
       default: gasneti_unreachable_error(("Unknown handler type in gasnetc_enteringHandler_hook(): 0x%x",(int)cat));
     }
+    GASNETI_HANDLER_ENTER(isReq); // TODO: absorb HSL check, below
     #if (!GASNETC_NULL_HSL && GASNETC_HSL_ERRCHECK)
       gasnetc_enteringHandler_hook_hsl(cat, isReq, handlerId, token, buf, nbytes,
                                        numargs, (gex_AM_Arg_t *)args);
     #endif
   }
   extern void gasnetc_leavingHandler_hook(ammpi_category_t cat, int isReq) {
-    GASNETI_HANDLER_LEAVE(isReq); // TODO: absorb HSL check, below
     switch (cat) {
       case ammpi_Short:
         GASNETI_TRACE_PRINTF(A,("AM%s_SHORT_HANDLER: handler execution complete", (isReq?"REQUEST":"REPLY"))); \
@@ -1253,6 +1252,7 @@ extern int  gasnetc_hsl_trylock(gex_HSL_t *hsl) {
         break;
       default: gasneti_unreachable_error(("Unknown handler type in gasnetc_leavingHandler_hook(): 0x%x",(int)cat));
     }
+    GASNETI_HANDLER_LEAVE(isReq); // TODO: absorb HSL check, below
     #if (!GASNETC_NULL_HSL && GASNETC_HSL_ERRCHECK)
       gasnetc_leavingHandler_hook_hsl(cat, isReq);
     #endif
