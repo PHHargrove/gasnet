@@ -90,11 +90,12 @@
 /* utility macros for dispatching AM handlers */
 
 #if GASNET_DEBUG
-// Note: so we do not require FARG/POST'd context in callers
+// Note: use of GASNETI_MYTHREAD_GET_OR_LOOKUP is necessary here
+// to ensure we do not require FARG/POST'd context in callers.
 #define GASNETI_HANDLER_ENTER(isReq) \
   do {                                                        \
-    GASNET_BEGIN_FUNCTION();                                  \
-    gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD; \
+    gasneti_threaddata_t * const mythread =                   \
+                              GASNETI_MYTHREAD_GET_OR_LOOKUP; \
     if (mythread) { /* some conduits use AMs very early */    \
       int *cntr_p = isReq ? &mythread->request_handler_active \
                           : &mythread->reply_handler_active;  \
@@ -104,8 +105,8 @@
   } while (0)
 #define GASNETI_HANDLER_LEAVE(isReq) \
   do {                                                        \
-    GASNET_BEGIN_FUNCTION();                                  \
-    gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD; \
+    gasneti_threaddata_t * const mythread =                   \
+                              GASNETI_MYTHREAD_GET_OR_LOOKUP; \
     if (mythread) { /* some conduits use AMs very early */    \
       int *cntr_p = isReq ? &mythread->request_handler_active \
                           : &mythread->reply_handler_active;  \
