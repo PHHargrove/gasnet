@@ -356,13 +356,25 @@ int main(int argc, char **argv) {
     assert_always(global_segsz > 0);
   #endif
 
-  { uintptr_t size = (uintptr_t)-5;
+  { uintptr_t size = (uintptr_t)-3;
     void *owneraddr = (void*)&size;
     void *localaddr = (void*)&size;
 
     // No segments have been created/bound yet.
-    // Local and remote bound-segment queries must return non-zero and preserve output locations.
+    // Local and remote bound-segment queries must return zero size:
     gex_Rank_t peer = (myrank + 1) % numranks;
+    gex_Event_t ev = gex_EP_QueryBoundSegment(myteam, myrank, NULL, NULL, &size, 0);
+    if (ev == GEX_EVENT_NO_OP || (gex_Event_Wait(ev),0) || size) {
+      MSG("*** ERROR - FAILED NO BOUND SEGMENT TEST!!!!!");
+    }
+    size = (uintptr_t)-4;
+    ev = gex_EP_QueryBoundSegment(myteam, peer, NULL, NULL, &size, 0);
+    if (ev == GEX_EVENT_NO_OP || (gex_Event_Wait(ev),0) || size) {
+      MSG("*** ERROR - FAILED NO BOUND SEGMENT TEST!!!!!");
+    }
+    
+    // DEPRECATED queries must return non-zero and preserve output locations:
+    size = (uintptr_t)-5;
     if (!gex_Segment_QueryBound(myteam, myrank, &owneraddr, &localaddr, &size) ||
         !gex_Segment_QueryBound(myteam, peer,   &owneraddr, &localaddr, &size) ||
         owneraddr != (void*)&size || localaddr != (void*)&size || size != (uintptr_t)-5) {
@@ -551,7 +563,16 @@ void doit(int partner, int *partnerseg) {
   { void *owneraddr, *localaddr;
     uintptr_t size;
 
-    // Local bound-segment query must return 0 and give same data as direct queries
+    // Local segment query must locate the segment and give same data as direct queries
+    gex_Event_t ev = gex_EP_QueryBoundSegment(myteam, myrank, &owneraddr, &localaddr, &size, GEX_FLAG_IMMEDIATE);
+    if (ev        != GEX_EVENT_INVALID ||
+        size      != gex_Segment_QuerySize(mysegment) ||
+        owneraddr != gex_Segment_QueryAddr(mysegment) ||
+        owneraddr != localaddr) {
+      MSG("*** ERROR - FAILED LOCAL BOUND SEGMENT TEST!!!!!");
+    }
+    // and DEPRECATED API should too:
+    owneraddr = localaddr = NULL; size = 0;
     if (gex_Segment_QueryBound(myteam, myrank, &owneraddr, &localaddr, &size) ||
         size      != gex_Segment_QuerySize(mysegment) ||
         owneraddr != gex_Segment_QueryAddr(mysegment) ||
@@ -564,9 +585,18 @@ void doit(int partner, int *partnerseg) {
       size = 0;
       owneraddr = NULL;
       localaddr = (void*)&size;
-      // Remote bound-segment query must return 0 and set all outputs to "plausible" values
-      if (gex_Segment_QueryBound(myteam, peer, &owneraddr, &localaddr, &size) ||
+      // Remote bound-segment queries must locate the segment and set all outputs to "plausible" values
+      ev = gex_EP_QueryBoundSegment(myteam, peer, &owneraddr, &localaddr, &size, 0);
+      if ((ev == GEX_EVENT_NO_OP) || (gex_Event_Wait(ev),0) ||
           !size || !owneraddr || localaddr == (void*)&size) {
+        MSG("*** ERROR - FAILED REMOTE BOUND SEGMENT TEST!!!!!");
+      }
+      // and DEPRECATED API should match:
+      void *owneraddr2 = NULL;
+      void *localaddr2 = NULL;
+      uintptr_t size2 = 0;
+      if (gex_Segment_QueryBound(myteam, peer, &owneraddr2, &localaddr2, &size2) ||
+          size2 != size || owneraddr2 != owneraddr || localaddr2 != localaddr) {
         MSG("*** ERROR - FAILED REMOTE BOUND SEGMENT TEST!!!!!");
       }
     }
@@ -656,8 +686,10 @@ void doit(int partner, int *partnerseg) {
     BARRIER();
     for (gex_Rank_t i = 0; i < neighbor_size; ++i) {
       gex_Rank_t *crossmap = NULL;
-      int rc = gex_Segment_QueryBound(myteam, neighbor_array[i].gex_jobrank, NULL, (void**)&crossmap, NULL);
-      assert_always(rc == 0);
+      size_t size;
+      gex_Event_Wait(
+          gex_EP_QueryBoundSegment(myteam, neighbor_array[i].gex_jobrank, NULL, (void**)&crossmap, &size, 0) );
+      assert_always(size != 0);
       assert_always(crossmap != NULL);
       crossmap[neighbor_rank] = myrank;
     }

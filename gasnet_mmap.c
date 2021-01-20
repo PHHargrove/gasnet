@@ -2305,7 +2305,8 @@ extern int gasneti_getSegmentInfo(gasnet_seginfo_t *seginfo_table, int numentrie
   return GASNET_OK;
 }
 
-int gasneti_Segment_QueryBound(
+// Inlining decision left to the compiler
+static int gasneti_query_bound_segment(
                         gex_TM_t tm,
                         gex_Rank_t rank,
                         void **owneraddr_p,
@@ -2344,6 +2345,40 @@ int gasneti_Segment_QueryBound(
 
   return 0;
 }
+
+// DEPRECATED
+int gex_Segment_QueryBound(
+                        gex_TM_t tm,
+                        gex_Rank_t rank,
+                        void **owneraddr_p,
+                        void **localaddr_p,
+                        uintptr_t *size_p)
+{
+  GASNETI_CHECK_INJECT();
+  return gasneti_query_bound_segment(tm, rank, owneraddr_p, localaddr_p, size_p);
+}
+
+// TODO: once representation is not dense, must return GEX_EVENT_NO_OP
+// for unknown/missing data when flags contains GEX_FLAG_IMMEDIATE.
+gex_Event_t gex_EP_QueryBoundSegment(
+                        gex_TM_t tm,
+                        gex_Rank_t rank,
+                        void **owneraddr_p,
+                        void **localaddr_p,
+                        uintptr_t *size_p,
+                        gex_Flags_t flags)
+{
+  if (! (flags && GEX_FLAG_IMMEDIATE)) GASNETI_CHECK_INJECT();
+
+  int rc = gasneti_query_bound_segment(tm, rank, owneraddr_p, localaddr_p, size_p);
+  if (rc && size_p) { 
+    // non-zero rc means not bound, which we return as 0-length.
+    *size_p = 0;
+  }
+
+  return GEX_EVENT_INVALID;
+}
+
 
 /* ------------------------------------------------------------------------------------ */
 /* Aux-seg support */
