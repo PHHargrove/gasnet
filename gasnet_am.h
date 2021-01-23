@@ -25,7 +25,7 @@
   } while (0)
 #define GASNETI_COMMON_AMREQUESTMEDIUM(tm,rank,handler,source_addr,nbytes,lc_opt,flags,numargs) do { \
     GASNETI_CHECKATTACH();                                                           \
-    GASNETI_CHECK_INJECT();                                                          \
+    if (! (flags & GASNETI_FLAG_INTERNAL_CALLER)) GASNETI_CHECK_INJECT();            \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_CLIENT));                    \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_ALLOC));                     \
     gasneti_assert_int(numargs ,>=, 0);                                        \
