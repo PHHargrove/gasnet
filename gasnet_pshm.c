@@ -9,7 +9,7 @@
 #if GASNET_PSHM /* Otherwise file is empty */
 
 #include <gasnet_core_internal.h> /* for gasnetc_handler[] */
-#include <gasnet_am.h> /* for gasneti_prepare_alloc_buffer() */
+#include <gasnet_am.h> /* for gasneti_{prepare_alloc,commit_free}_buffer() */
 
 #include <sys/types.h>
 #include <signal.h>
@@ -1337,8 +1337,6 @@ int ampshm_prepare_inner(
     inline_long = (size <= GASNETI_AMPSHM_MSG_LONG_INLINE);
   }
 
-  gasneti_assert(sd->_tofree == NULL);  // check this before possible IMMEDIATE failure
-
   // Allocate our buffer (honoring IMMEDIATE)
   gasneti_pshmnet_t *vnet = (isReq ? gasneti_request_pshmnet : gasneti_reply_pshmnet);
   void *msg = ampshm_buf_alloc(vnet, category, isReq, pshmrank, size, flags GASNETI_THREAD_PASS);
@@ -1364,7 +1362,7 @@ int ampshm_prepare_inner(
   } else if (inline_long) {
     sd->_gex_buf = sd->_addr = GASNETI_AMPSHM_MSG_LONG_TMP(msg);
   } else {
-    sd->_tofree = gasneti_prepare_alloc_buffer(sd);
+    sd->_tofree = gasneti_alloc_npam_buffer(sd, isReq);
   }
 
   return 0;
@@ -1423,9 +1421,8 @@ void ampshm_commit_inner(
   gasneti_pshmnet_t *vnet = (isReq ? gasneti_request_pshmnet : gasneti_reply_pshmnet);
   gasneti_pshmnet_deliver_send_buffer(vnet, msg, 0 /*msgsz unused*/, sd->_pshm._pshmrank);
 
-  if (sd->_tofree) { // Branch to avoid free(NULL) library call overhead for NPAM/cb
-    gasneti_free(sd->_tofree);
-    sd->_tofree = NULL;
+  if (sd->_tofree) {
+    gasneti_free_npam_buffer(sd);
   }
 }
 

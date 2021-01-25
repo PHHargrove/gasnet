@@ -688,9 +688,8 @@ void gasnetc_AM_CommitRequestMediumM(
         int rc = gasneti_AMRequestMediumV(tm, rank, handler, src_addr, nbytes, lc_opt, flags, nargs, argptr);
         gasneti_assert(!rc); // IMMEDIATE is only permissible reason to return non-zero
 
-        if (sd->_tofree) { // Branch to avoid free(NULL) library call overhead for NPAM/cb
-          gasneti_free(sd->_tofree);
-          sd->_tofree = NULL;
+        if (sd->_tofree) {
+          gasneti_free_npam_buffer(sd);
         }
     }
     va_end(argptr);
@@ -728,9 +727,8 @@ void gasnetc_AM_CommitReplyMediumM(
         int rc = gasneti_AMReplyMediumV(token, handler, src_addr, nbytes, lc_opt, flags, nargs, argptr);
         gasneti_assert(!rc); // IMMEDIATE is only permissible reason to return non-zero
 
-        if (sd->_tofree) { // Branch to avoid free(NULL) library call overhead for NPAM/cb
-          gasneti_free(sd->_tofree);
-          sd->_tofree = NULL;
+        if (sd->_tofree) {
+          gasneti_free_npam_buffer(sd);
         }
     }
     va_end(argptr);
@@ -771,9 +769,8 @@ void gasnetc_AM_CommitRequestLongM(
         int rc = gasneti_AMRequestLongV(tm, rank, handler, src_addr, nbytes, dest_addr, lc_opt, flags, nargs, argptr);
         gasneti_assert(!rc); // IMMEDIATE is only permissible reason to return non-zero
 
-        if (sd->_tofree) { // Branch to avoid free(NULL) library call overhead for NPAM/cb
-          gasneti_free(sd->_tofree);
-          sd->_tofree = NULL;
+        if (sd->_tofree) {
+          gasneti_free_npam_buffer(sd);
         }
     }
     va_end(argptr);
@@ -812,9 +809,8 @@ void gasnetc_AM_CommitReplyLongM(
         int rc = gasneti_AMReplyLongV(token, handler, src_addr, nbytes, dest_addr, lc_opt, flags, nargs, argptr);
         gasneti_assert(!rc); // IMMEDIATE is only permissible reason to return non-zero
 
-        if (sd->_tofree) { // Branch to avoid free(NULL) library call overhead for NPAM/cb
-          gasneti_free(sd->_tofree);
-          sd->_tofree = NULL;
+        if (sd->_tofree) {
+          gasneti_free_npam_buffer(sd);
         }
     }
     va_end(argptr);
