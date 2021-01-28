@@ -244,6 +244,7 @@ done: /*  error return while locked */
 
 /* ------------------------------------------------------------------------------------ */
 extern int gasnetc_amregister(gex_AM_Index_t index, gex_AM_Entry_t *entry) {
+  // NOTE: we do not currently attempt to hold the AMLOCK
   if (AM_SetHandler(gasnetc_endpoint, (handler_t)index, entry->gex_fnptr) != AM_OK)
     GASNETI_RETURN_ERRR(RESOURCE, "AM_SetHandler() failed while registering handlers");
   return GASNET_OK;
@@ -367,20 +368,14 @@ extern int gasnetc_attach( gex_TM_t               _tm,
         GASNETI_RETURN_ERRR(RESOURCE,"Error attaching segment");
     #endif
 
-  AMLOCK();
     /*  register client handlers */
     if (table && gasneti_amregister_legacy(ep->_amtbl, table, numentries) != GASNET_OK)
-      INITERR(RESOURCE,"Error registering handlers");
-  AMUNLOCK();
+      GASNETI_RETURN_ERRR(RESOURCE,"Error registering handlers");
 
   /* ensure everything is initialized across all nodes */
   gasnet_barrier(0, GASNET_BARRIERFLAG_UNNAMED);
 
   return GASNET_OK;
-
-done: /*  error return while locked */
-  AMUNLOCK();
-  GASNETI_RETURN(retval);
 }
 /* ------------------------------------------------------------------------------------ */
 // TODO-EX: this is a candidate for factorization (once we understand the per-conduit variations)
