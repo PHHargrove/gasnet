@@ -945,6 +945,9 @@ typedef struct {
 // Therefore the client must provide for any synchronization required to
 // ensure handlers are registered before any process may send a corresponding
 // AM to the Endpoint.
+// The client is also responsible for serializing registration calls on a given
+// Endpoint.  This includes any call to gasnet_attach() with non-zero
+// `numentries` (which registers AM handlers on the primordial Endpoint).
 //
 // May be called multiple times on the same Endpoint to incrementally register handlers.
 // Like gasnet_attach() the handler indices specified in the table (other than
