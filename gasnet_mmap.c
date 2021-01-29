@@ -2354,6 +2354,8 @@ int gex_Segment_QueryBound(
                         void **localaddr_p,
                         uintptr_t *size_p)
 {
+  GASNETI_TRACE_PRINTF(O,("gex_Segment_QueryBound: tm:rank=" GASNETI_TMRANKFMT,
+                          GASNETI_TMRANKSTR(tm,rank)));
   GASNETI_CHECK_INJECT();
   return gasneti_query_bound_segment(tm, rank, owneraddr_p, localaddr_p, size_p);
 }
@@ -2368,6 +2370,9 @@ gex_Event_t gex_EP_QueryBoundSegment(
                         uintptr_t *size_p,
                         gex_Flags_t flags)
 {
+  GASNETI_TRACE_PRINTF(O,("gex_EP_QueryBoundSegment: tm:rank=" GASNETI_TMRANKFMT " flags=0x%x",
+                          GASNETI_TMRANKSTR(tm,rank), flags));
+
   if (! (flags && GEX_FLAG_IMMEDIATE)) GASNETI_CHECK_INJECT();
 
   int rc = gasneti_query_bound_segment(tm, rank, owneraddr_p, localaddr_p, size_p);
