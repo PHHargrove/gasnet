@@ -361,13 +361,14 @@ int main(int argc, char **argv) {
     void *localaddr = (void*)&size;
 
     // No segments have been created/bound yet.
-    // Local and remote bound-segment queries must return zero size:
-    gex_Rank_t peer = (myrank + 1) % numranks;
+    // Local bound-segment query must succeed synchronously and return zero size:
     gex_Event_t ev = gex_EP_QueryBoundSegment(myteam, myrank, NULL, NULL, &size, 0);
-    if (ev == GEX_EVENT_NO_OP || (gex_Event_Wait(ev),0) || size) {
+    if (ev != GEX_EVENT_INVALID || size) {
       MSG("*** ERROR - FAILED NO BOUND SEGMENT TEST!!!!!");
     }
+    // Remote bound-segment query must not "fail", and must return zero size:
     size = (uintptr_t)-4;
+    gex_Rank_t peer = (myrank + 1) % numranks;
     ev = gex_EP_QueryBoundSegment(myteam, peer, NULL, NULL, &size, 0);
     if (ev == GEX_EVENT_NO_OP || (gex_Event_Wait(ev),0) || size) {
       MSG("*** ERROR - FAILED NO BOUND SEGMENT TEST!!!!!");
@@ -585,10 +586,21 @@ void doit(int partner, int *partnerseg) {
       size = 0;
       owneraddr = NULL;
       localaddr = (void*)&size;
-      // Remote bound-segment queries must locate the segment and set all outputs to "plausible" values
-      ev = gex_EP_QueryBoundSegment(myteam, peer, &owneraddr, &localaddr, &size, 0);
-      if ((ev == GEX_EVENT_NO_OP) || (gex_Event_Wait(ev),0) ||
-          !size || !owneraddr || localaddr == (void*)&size) {
+      // Remote bound-segment IMMEDIATE queries may fail, but can never return a real event
+      ev = gex_EP_QueryBoundSegment(myteam, peer, &owneraddr, &localaddr, &size, GEX_FLAG_IMMEDIATE);
+      if (ev == GEX_EVENT_NO_OP) {
+        // IMMEDIATE "failed.  Non-IMMEDIATE retry must locate the segment.
+        ev = gex_EP_QueryBoundSegment(myteam, peer, &owneraddr, &localaddr, &size, 0);
+        if (ev == GEX_EVENT_NO_OP) {
+          MSG("*** ERROR - FAILED REMOTE BOUND SEGMENT TEST!!!!!");
+        }
+        gex_Event_Wait(ev);
+      } else if (ev != GEX_EVENT_INVALID) {
+        // "real" event (or entirely bogus value) returned from an IMMEDIATE query
+        MSG("*** ERROR - FAILED REMOTE BOUND SEGMENT TEST!!!!!");
+      }
+      // Successfully query must set all outputs to "plausible" values
+      if (!size || !owneraddr || localaddr == (void*)&size) {
         MSG("*** ERROR - FAILED REMOTE BOUND SEGMENT TEST!!!!!");
       }
       // and DEPRECATED API should match:
