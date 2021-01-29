@@ -2313,8 +2313,6 @@ static int gasneti_query_bound_segment(
                         void **localaddr_p,
                         uintptr_t *size_p)
 {
-  GASNETI_CHECK_INJECT();
-
   // Trivial implementation using legacy data structures and assumptions.
   gex_Rank_t jobrank = gasneti_e_tm_rank_to_jobrank(tm, rank);
 
@@ -2373,7 +2371,7 @@ gex_Event_t gex_EP_QueryBoundSegment(
   GASNETI_TRACE_PRINTF(O,("gex_EP_QueryBoundSegment: tm:rank=" GASNETI_TMRANKFMT " flags=0x%x",
                           GASNETI_TMRANKSTR(tm,rank), flags));
 
-  if (! (flags && GEX_FLAG_IMMEDIATE)) GASNETI_CHECK_INJECT();
+  if (! (flags & GEX_FLAG_IMMEDIATE)) GASNETI_CHECK_INJECT();
 
   int rc = gasneti_query_bound_segment(tm, rank, owneraddr_p, localaddr_p, size_p);
   if (rc && size_p) { 

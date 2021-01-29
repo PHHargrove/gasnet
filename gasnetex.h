@@ -639,7 +639,7 @@ extern gex_Event_t gex_EP_QueryBoundSegment(
             void           **_owneraddr_p,
             void           **_localaddr_p,
             uintptr_t      *_size_p,
-            gex_Flags_t    _flags);
+            gex_Flags_t    _flags) GASNETI_WARN_UNUSED_RESULT;
 
 /* ------------------------------------------------------------------------------------ */
 /* extended types */
