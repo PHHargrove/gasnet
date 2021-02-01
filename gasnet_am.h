@@ -279,9 +279,9 @@ extern int gasneti_amregister_legacy(gex_AM_Entry_t *output,
 #endif
 
 /* ------------------------------------------------------------------------------------ */
-// Management of per-thread MaxMedum-sized buffers, one each for Request and Reply.
+// Management of per-thread MaxMedium-sized buffers, one each for Request and Reply.
 // These are used for "loopback" (same process) AM Mediums.
-// However, they are also useful for NPAM (so long as Commit provides syncronous LC).
+// However, they are also useful for NPAM (so long as Commit provides synchronous LC).
 
 #include <gasnet_core_internal.h> /* for gasnetc_handler[] */
 

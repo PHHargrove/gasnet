@@ -843,6 +843,7 @@ typedef struct _gasneti_threaddata_t {
   int request_handler_active, reply_handler_active;
 #endif
   struct gasneti_AM_SrcDesc request_sd, reply_sd;
+  // Buffers, sized to max-medium, used by loopback AM and reference NPAM
   void *requestBuf, *replyBuf;
 #if GASNET_DEBUG
   int requestBuf_live, replyBuf_live;
