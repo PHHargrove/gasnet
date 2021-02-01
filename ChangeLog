@@ -23,6 +23,9 @@ GASNet-EX ChangeLog
 * General and Misc.
   - Additional debug checks for use of calls which are prohibited in an
     AM handler context, and in the NPAM Prepare/Commit interval.
+  - Performance improvement for NPAM with GASNet-allocated buffer over
+    shared-memory (PSHM) and the reference implementation of NPAM (used by
+    ucx, udp and mpi conduits).
 
 * InfiniBand Verbs (ibv-conduit)
   - Now support the ODP APIs from the Linux "RDMA Core" distribution, where

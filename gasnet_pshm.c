@@ -1358,10 +1358,13 @@ int ampshm_prepare_inner(
     sd->_addr = (/*non-const*/void *)client_buf;
     gasneti_leaf_finish(lc_opt);
   } else if (category == gasneti_Medium) {
+    // NPAM Medium with GASNet-allocated buffer
     sd->_gex_buf = sd->_addr = GASNETI_AMPSHM_MSG_MED_DATA(msg);
   } else if (inline_long) {
+    // NPAM Long with GASNet-allocated buffer, "inline" with header
     sd->_gex_buf = sd->_addr = GASNETI_AMPSHM_MSG_LONG_TMP(msg);
   } else {
+    // NPAM Long with GASNet-allocated buffer, general case
     sd->_tofree = gasneti_alloc_npam_buffer(sd, isReq);
   }
 

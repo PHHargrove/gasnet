@@ -475,19 +475,22 @@ extern int gasneti_amregister_legacy(gex_AM_Entry_t *output,
         GASNETI_TRACE_COMMIT_REPLYLONG(handler,source_addr,nbytes,dest_addr,numargs)
 
 #ifndef _GEX_AM_SRCDESC_T
+
+// NPAM GASNet-allocated buffer can use per-thread buffers up to a limit
+#define GASNETI_NPAM_USING_PERTHREAD(sd) ((sd)->_size <= GASNETC_MAX_MEDIUM_NBRHD)
+
 // Allocate a buffer (use IFF client_buf is NULL)
 GASNETI_INLINE(gasneti_alloc_npam_buffer)
 void *gasneti_alloc_npam_buffer(gasneti_AM_SrcDesc_t sd, int isReq)
 {
-    size_t size = sd->_size;
     void *result;
 
     // Prefer use of per-thread buffer over malloc/free
-    sd->_perthread = (size <= GASNETC_MAX_MEDIUM_NBRHD);
-    if (sd->_perthread) {
+    if (GASNETI_NPAM_USING_PERTHREAD(sd)) {
         GASNET_POST_THREADINFO(sd->_thread);
         result = gasneti_alloc_perthread_medium_buffer(isReq GASNETI_THREAD_PASS);
     } else {
+        size_t size = sd->_size;
     #if GASNET_DEBUG
         // Allocate at least one byte because zero-byte allocation
         // returns NULL which then leads to ambiguity in argument checking.
@@ -502,10 +505,9 @@ GASNETI_INLINE(gasneti_free_npam_buffer)
 void gasneti_free_npam_buffer(gasneti_AM_SrcDesc_t sd)
 {
     gasneti_assert(sd->_tofree);
-    if (sd->_perthread) {
+    if (GASNETI_NPAM_USING_PERTHREAD(sd)) {
         GASNET_POST_THREADINFO(sd->_thread);
         gasneti_free_perthread_medium_buffer(sd->_tofree, sd->_isreq GASNETI_THREAD_PASS);
-        sd->_perthread = 0;
     } else {
         gasneti_free(sd->_tofree);
     }
@@ -532,9 +534,8 @@ gasneti_AM_SrcDesc_t gasneti_init_request_srcdesc(GASNETI_THREAD_FARG_ALONE)
   GASNETI_CHECK_INJECT();
   GASNETI_CHECK_MAGIC(sd, GASNETI_AM_SRCDESC_BAD_MAGIC);
   GASNETI_INIT_MAGIC(sd, GASNETI_AM_SRCDESC_MAGIC);
-  // Check invariants assumed by users of the srcdesc:
+  // Check invariant(s) assumed by users of the srcdesc:
   gasneti_assert(! sd->_tofree);
-  gasneti_assert(! sd->_perthread);
 #endif
   sd->_gex_buf = NULL;
   return sd;
@@ -819,8 +820,10 @@ int gasnetc_loopback_prepare_inner(
       sd->_addr = (/*non-const*/void *)client_buf;
       gasneti_leaf_finish(lc_opt);
     } else if (category == gasneti_Medium) {
+      // NPAM Medium with GASNet-allocated buffer
       sd->_addr = sd->_gex_buf = sd->_void_p;
     } else {
+      // NPAM Long with GASNet-allocated buffer
       sd->_tofree = gasneti_alloc_npam_buffer(sd, isReq);
     }
   }

@@ -760,7 +760,6 @@ typedef struct gasneti_srcdesc_s *gex_AM_SrcDesc_t;
     gex_Flags_t          _flags;
     int8_t               _nargs;
     int8_t               _is_nbrhd;
-    int8_t               _perthread;
   #if GASNET_PSHM
     struct {
       gex_Rank_t           _pshmrank; // should be gasneti_pshm_rank_t
