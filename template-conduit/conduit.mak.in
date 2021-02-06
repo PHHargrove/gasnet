@@ -22,6 +22,9 @@
 CONDUIT_LDFLAGS = @PMI_SPAWNER_LDFLAGS@
 CONDUIT_LIBS = $(MPI_COMPAT_LIBS) $(SSH_LIBS) @PMI_SPAWNER_LIBS@
 
+# (###) Uncomment line for each memory kind this conduit can support
+#@HAVE_MK_CLASS_CUDA_UVA_TRUE@CONDUIT_KINDS += CUDA_UVA
+
 # (###) If this conduit has internal conduit threads, then it needs 
 # threading flags and libs - even in GASNET_SEQ mode
 # CONDUIT_DEFINES_SEQ = @GASNET_THREAD_DEFINES@
