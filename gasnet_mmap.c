@@ -2360,7 +2360,7 @@ int gex_Segment_QueryBound(
 
 // TODO: once representation is not dense, must return GEX_EVENT_NO_OP
 // for unknown/missing data when flags contains GEX_FLAG_IMMEDIATE.
-gex_Event_t gex_EP_QueryBoundSegment(
+gex_Event_t gex_EP_QueryBoundSegmentNB(
                         gex_TM_t tm,
                         gex_Rank_t rank,
                         void **owneraddr_p,
@@ -2368,7 +2368,7 @@ gex_Event_t gex_EP_QueryBoundSegment(
                         uintptr_t *size_p,
                         gex_Flags_t flags)
 {
-  GASNETI_TRACE_PRINTF(O,("gex_EP_QueryBoundSegment: tm:rank=" GASNETI_TMRANKFMT " flags=0x%x",
+  GASNETI_TRACE_PRINTF(O,("gex_EP_QueryBoundSegmentNB: tm:rank=" GASNETI_TMRANKFMT " flags=0x%x",
                           GASNETI_TMRANKSTR(tm,rank), flags));
 
   if (! (flags & GEX_FLAG_IMMEDIATE)) GASNETI_CHECK_INJECT();

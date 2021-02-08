@@ -361,14 +361,14 @@ int main(int argc, char **argv) {
 
     // No segments have been created/bound yet.
     // Local bound-segment query must succeed synchronously and return zero size:
-    gex_Event_t ev = gex_EP_QueryBoundSegment(myteam, myrank, NULL, NULL, &size, 0);
+    gex_Event_t ev = gex_EP_QueryBoundSegmentNB(myteam, myrank, NULL, NULL, &size, 0);
     if (ev != GEX_EVENT_INVALID || size) {
       MSG("*** ERROR - FAILED NO BOUND SEGMENT TEST!!!!!");
     }
     // Remote bound-segment query must not "fail", and must return zero size:
     size = (uintptr_t)-4;
     gex_Rank_t peer = (myrank + 1) % numranks;
-    ev = gex_EP_QueryBoundSegment(myteam, peer, NULL, NULL, &size, 0);
+    ev = gex_EP_QueryBoundSegmentNB(myteam, peer, NULL, NULL, &size, 0);
     if (ev == GEX_EVENT_NO_OP || (gex_Event_Wait(ev),0) || size) {
       MSG("*** ERROR - FAILED NO BOUND SEGMENT TEST!!!!!");
     }
@@ -564,7 +564,7 @@ void doit(int partner, int *partnerseg) {
     uintptr_t size;
 
     // Local segment query must locate the segment and give same data as direct queries
-    gex_Event_t ev = gex_EP_QueryBoundSegment(myteam, myrank, &owneraddr, &localaddr, &size, GEX_FLAG_IMMEDIATE);
+    gex_Event_t ev = gex_EP_QueryBoundSegmentNB(myteam, myrank, &owneraddr, &localaddr, &size, GEX_FLAG_IMMEDIATE);
     if (ev        != GEX_EVENT_INVALID ||
         size      != gex_Segment_QuerySize(mysegment) ||
         owneraddr != gex_Segment_QueryAddr(mysegment) ||
@@ -586,10 +586,10 @@ void doit(int partner, int *partnerseg) {
       owneraddr = NULL;
       localaddr = (void*)&size;
       // Remote bound-segment IMMEDIATE queries may fail, but can never return a real event
-      ev = gex_EP_QueryBoundSegment(myteam, peer, &owneraddr, &localaddr, &size, GEX_FLAG_IMMEDIATE);
+      ev = gex_EP_QueryBoundSegmentNB(myteam, peer, &owneraddr, &localaddr, &size, GEX_FLAG_IMMEDIATE);
       if (ev == GEX_EVENT_NO_OP) {
         // IMMEDIATE "failed.  Non-IMMEDIATE retry must locate the segment.
-        ev = gex_EP_QueryBoundSegment(myteam, peer, &owneraddr, &localaddr, &size, 0);
+        ev = gex_EP_QueryBoundSegmentNB(myteam, peer, &owneraddr, &localaddr, &size, 0);
         if (ev == GEX_EVENT_NO_OP) {
           MSG("*** ERROR - FAILED REMOTE BOUND SEGMENT TEST!!!!!");
         }
@@ -699,7 +699,7 @@ void doit(int partner, int *partnerseg) {
       gex_Rank_t *crossmap = NULL;
       size_t size;
       gex_Event_Wait(
-          gex_EP_QueryBoundSegment(myteam, neighbor_array[i].gex_jobrank, NULL, (void**)&crossmap, &size, 0) );
+          gex_EP_QueryBoundSegmentNB(myteam, neighbor_array[i].gex_jobrank, NULL, (void**)&crossmap, &size, 0) );
       assert_always(size != 0);
       assert_always(crossmap != NULL);
       crossmap[neighbor_rank] = myrank;
