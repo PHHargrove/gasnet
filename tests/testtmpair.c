@@ -223,7 +223,7 @@ int main(int argc, char **argv)
     struct test_segment *rem_seg = (struct test_segment *)next_base;
 #else
     struct test_segment *rem_seg;
-    gex_Event_Wait( gex_EP_QueryBoundSegment(pair, next, (void**)&rem_seg, NULL, NULL, 0) );
+    gex_Event_Wait( gex_EP_QueryBoundSegmentNB(pair, next, (void**)&rem_seg, NULL, NULL, 0) );
 #endif
 
     loc_seg->get_src = myrank;
