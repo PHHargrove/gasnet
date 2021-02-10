@@ -606,20 +606,14 @@ int gasnetc_am_reqrep_inner(gasnetc_ucx_am_type_t am_type,
       gasneti_assert(dst_addr);
 #if GASNETC_PIN_SEGMENT
       {
-        int status;
         __am_req_format(0);
-        status = gasnetc_ucx_am_put(jobrank, src_addr, nbytes, dst_addr,
-            local_cnt, local_cb);
-        /* reset a local completion for next operation, it is already handled */
-        local_cnt = NULL;
-        local_cb = NULL;
-        /* checking if put status is completed inline */
-        if (!status && is_sync) {
-          gasneti_assert(counter);
-          GASNETC_LOCK_RELEASE(GASNETC_LOCK_REGULAR);
-          gasnetc_counter_wait(counter, is_request GASNETI_THREAD_PASS);
-          GASNETC_LOCK_ACQUIRE(GASNETC_LOCK_REGULAR);
-        }
+        // Launch payload put and wait for remote completion before sending the header
+        gasnetc_counter_t rc_counter = GASNETC_COUNTER_INITIALIZER;
+        gasnetc_ucx_putget_inner(1, jobrank, src_addr, nbytes, dst_addr,
+                                 NULL, NULL, &rc_counter.initiated, gasnetc_cb_counter);
+        GASNETC_LOCK_RELEASE(GASNETC_LOCK_REGULAR);
+        gasnetc_counter_wait(&rc_counter, is_request GASNETI_THREAD_PASS);
+        GASNETC_LOCK_ACQUIRE(GASNETC_LOCK_REGULAR);
       }
 #else
       __am_req_format(1);
