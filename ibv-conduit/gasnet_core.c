@@ -5133,8 +5133,30 @@ void gasnetc_commit_common(
     gasneti_assert(!lc_opt);
     local_cb = NULL;
     local_cnt = NULL;
-    // TODO: RDMA of Long payload can be beneficial
-    copy_len = nbytes;
+    switch (category) {
+    #if GASNETC_HAVE_NP_REQ_MEDIUM || GASNETC_HAVE_NP_REP_MEDIUM
+      case gasneti_Medium:
+        copy_len = nbytes;
+        break;
+    #endif
+
+    #if GASNETC_HAVE_NP_REQ_LONG || GASNETC_HAVE_NP_REP_LONG
+      case gasneti_Long:
+        if (nbytes <= gasnetc_packedlong_limit || !sd->_buf_alloc) {
+          // Small enough to send like a Medium OR not in a bounce buffer
+          // TODO: distinct limit since local memcpy() is "free"?
+          copy_len = nbytes;
+        } else {
+          // Inject RMA
+          int rc = gasnetc_rdma_npam_long_put(sd->_ep,  sd->_cep, sd->_addr, dest_addr, nbytes,
+                                              /*imm*/0  GASNETI_THREAD_PASS);
+          gasneti_assert(!rc); // Never fails, since never "immediate"
+        }
+        break;
+    #endif
+
+      default: gasneti_unreachable_error(("Invalid AM category: 0x%x",(int)category));
+    }
   }
 
   gasnetc_am_commit( sd->_void_p, sd->_buf_alloc,
