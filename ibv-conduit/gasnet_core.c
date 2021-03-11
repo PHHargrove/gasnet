@@ -145,7 +145,7 @@ int gasnetc_qp_timeout, gasnetc_qp_retry_count;
  * 128kB is the peak of the bandwidth curve and thus a good size.
  * We don't yet deal well with many small regions and some adapters have
  * no limit on the number of regions supported (Omni-Path).
- * With 16k * 128k we can pin up to 2TB of physical memory per host.
+ * With 16m * 128KB we can pin up to 2TB of physical memory per host.
  * Note that GASNET_FIREHOSE_* env vars can override these.
  */
 static unsigned int gasnetc_fh_maxregions = 16777216;
