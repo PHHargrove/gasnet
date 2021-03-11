@@ -52,11 +52,12 @@ GASNet-EX ChangeLog
   - GASNET_DISABLE_MUNMAP=1 is now the default on 64-bit platforms, regardless
     of whether ODP is enabled or not.  Previously, enabling ODP would change
     the default to 0.
-  - Improved handling, in FAST and EVERYTHING segment modes, of non-default
-    parameter settings and corner-cases with the default settings.  This
-    includes a significant increase in the default firehose resources on
-    modern InfiniBand HCAs.
+  - Improved handling, in LARGE and EVERYTHING segment modes, of non-default
+    parameter settings for the firehose dynamic memory registration library.
+    Corner cases with default settings are also handled better.
     See documentation for GASNET_FIREHOSE_* settings in the conduit README.
+  - Significantly increase the default firehose resources on modern InfiniBand
+    HCAs in all segment modes.
 
 * Cray XC uGNI (aries-conduit)
   - A new environment variable GASNET_GNI_MAX_MEDIUM enables selecting the
