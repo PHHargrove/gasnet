@@ -57,7 +57,11 @@ GASNet-EX ChangeLog
     Corner cases with default settings are also handled better.
     See documentation for GASNET_FIREHOSE_* settings in the conduit README.
   - Significantly increase the default firehose resources on modern InfiniBand
-    HCAs in all segment modes.
+    HCAs in all segment modes, leading to improved performance in various
+    circumstances.
+  - A new GASNET_PINNED_REGIONS_MAX environment variable allows control over
+    the number of pinned regions (a bounded HCA resource) may be used by
+    ibv-conduit.
 
 * Cray XC uGNI (aries-conduit)
   - A new environment variable GASNET_GNI_MAX_MEDIUM enables selecting the
