@@ -978,7 +978,6 @@ static void gasnetc_init_pin_info(int first_local, int num_local) {
   gasnetc_pin_info.num_local = num_local;
 
   // How many pinnable regions per host?
-  // TODO: may want explicit knob(s) in addition to those for firehose
   gasnetc_pin_info.regions = ~((uint32_t)0);
   GASNETC_FOR_ALL_HCA_INDEX(i) {
     if (! gasnetc_hca[i].hca_cap.max_mr) { // Treat zero as unbounded (e.g. Omni-Path)
@@ -990,6 +989,7 @@ static void gasnetc_init_pin_info(int first_local, int num_local) {
   // Heuristic: cap use at same fraction of HCA resources as of physical memory
   gasnetc_pin_info.regions *= ((double)limit / physmemsz);
   gasnetc_pin_info.regions = MIN(gasnetc_pin_info.regions, gasnetc_fh_maxregions);
+  gasnetc_pin_info.regions = gasneti_getenv_int_withdefault("GASNET_PINNED_REGIONS_MAX", gasnetc_pin_info.regions, 0);
   GASNETI_TRACE_PRINTF(I, ("Max pinnable regions per host: %u", (unsigned int)gasnetc_pin_info.regions));
 
   if (do_probe) {
