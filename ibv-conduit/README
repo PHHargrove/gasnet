@@ -845,6 +845,11 @@ Paul H. Hargrove <PHHargrove@lbl.gov>
     Similar to GASNET_PHYSMEM_MAX, the value gives an upper bound on pinned
     regions per host, which is divided equally among processes on each host.
     This may constrain dynamic registration via firehose (below).
+    The value may specify either a relative or absolute size.  If the value
+    parses as a floating-point value less than 1.0 (including fractions such as
+    "5/8"), then this is taken as a fraction of the maximum supported region
+    count reported by the HCA(s).  Otherwise the value is taken as an absolute
+    region count.
     The default is to use a fraction of the HCA pinning resources equal to
     the fraction of physical memory given by GASNET_PHYSMEM_MAX, subject to
     a maximum value.
