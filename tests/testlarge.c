@@ -293,6 +293,7 @@ int main(int argc, char **argv)
     int skipwarmup = 0;
     int use_cuda_uva = 0;
     int help = 0;   
+    size_t minsz = 0;
 
     /* call startup */
     GASNET_Safe(gex_Client_Init(&myclient, &myep, &myteam, "testlarge", &argc, &argv, 0));
@@ -327,6 +328,10 @@ int main(int argc, char **argv)
       } else if (!strcmp(argv[arg], "-s")) {
         skipwarmup = 1;
         ++arg;
+      } else if (!strcmp(argv[arg], "-min-size")) {
+        ++arg;
+        if (argc > arg) { minsz = atol(argv[arg]); arg++; }
+        else help = 1;
       } else if (!strcmp(argv[arg], "-max-step")) {
         ++arg;
         if (argc > arg) { max_step = atoi(argv[arg]); arg++; }
@@ -373,7 +378,7 @@ int main(int argc, char **argv)
                "    which by default advance by doubling until maxsz is reached.");
     if (help || argc > arg) test_usage();
     
-    min_payload = 16;
+    min_payload = minsz ? minsz : 16;
     max_payload = maxsz;
 
     if (max_payload < min_payload) {
