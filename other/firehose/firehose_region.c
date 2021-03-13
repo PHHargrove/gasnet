@@ -1477,7 +1477,7 @@ fh_init_plugin(uintptr_t max_pinnable_memory,
 	param_VM = param_RS * param_VR;
 
         // If truncation occurred, report it
-        if (rescaled) {
+        if (rescaled && !gasneti_mynode) {
             char str0[24], str1[24], str2[24], str3[24], str4[24], str5[24];
             uintptr_t max_space = param_RS * avail_regions;
             gasneti_console_message("WARNING",
