@@ -1405,12 +1405,14 @@ fh_init_plugin(uintptr_t max_pinnable_memory,
         // Ensure max size fits in available bits of fh_key_t
         uintptr_t RS_max = ((uintptr_t)(FH_BUCKET_SIZE - 1) << FH_BUCKET_SHIFT);
         if (param_RS > RS_max) {
-                char str0[24], str1[24];
-                gasneti_console_message("WARNING",
-                                        "GASNET_FIREHOSE_MAXREGION_SIZE (%s) has been "
-                                        "reduced to the largest supported value (%s).",
-                                        gasneti_format_number(param_RS, str0, 24, 1),
-                                        gasneti_format_number(RS_max, str1, 24, 1));
+                if (!gasneti_mynode) {
+                        char str0[24], str1[24];
+                        gasneti_console_message("WARNING",
+                                                "GASNET_FIREHOSE_MAXREGION_SIZE (%s) has been "
+                                                "reduced to the largest supported value (%s).",
+                                                gasneti_format_number(param_RS, str0, 24, 1),
+                                                gasneti_format_number(RS_max, str1, 24, 1));
+                }
                 param_RS = RS_max;
         }
 #endif
