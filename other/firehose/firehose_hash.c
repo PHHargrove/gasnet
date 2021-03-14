@@ -105,12 +105,13 @@ fh_hash_create(size_t entries)
 	hash->fh_table   = (void **) gasneti_calloc(entries, sizeof(void *));
 	hash->fh_mask    = entries-1;
 	hash->fh_entries = entries;
-	#ifdef FH_HASH_STATS
-		hash->fh_col_table = (int *) gasneti_malloc(entries * sizeof(int));
-                printf("hash create: entries=%"PRIuSZ", mask=%"PRIxSZ"\n", entries, entries-1);
-		hash->fh_used = 0;
-		hash->fh_collisions = 0;
-	#endif
+#ifdef FH_HASH_STATS
+        hash->fh_col_table = (int *) gasneti_calloc(entries, sizeof(int));
+        printf("[n%d] hash create: entries=%"PRIuSZ", mask=%"PRIxSZ"\n",
+               gasneti_mynode, entries, entries-1);
+        hash->fh_used = 0;
+        hash->fh_collisions = 0;
+#endif
 	
 	return hash;
 }
