@@ -6,6 +6,10 @@
 
 #ifndef GASNETI_FIREHOSE_STATS
   #define GASNETI_FIREHOSE_STATS(CNT,VAL,TIME)             \
+TIME(I, FH_REQUEST_HIT, request cost) \
+TIME(I, FH_REQUEST_FAIL, request cost) \
+TIME(I, FH_REQUEST_MISS, request cost) \
+TIME(I, FH_HASH, request cost) \
         VAL(C, FH_LOCAL_PIN, pages requested)              \
         CNT(C, FH_LOCAL_HIT, cnt)                          \
         CNT(C, FH_LOCAL_MISS, cnt)                         \

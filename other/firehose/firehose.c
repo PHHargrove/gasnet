@@ -456,6 +456,7 @@ firehose_try_remote_pin(gex_Rank_t node, uintptr_t addr, size_t len,
 #endif
 
 	FH_TABLE_LOCK;
+gasneti_tick_t ticks = GASNETI_TICKS_NOW_IFENABLED(I);
 
 	if (fh_region_ispinned(node, addr, len)) {
 		req = fh_request_new(ureq, 0);
@@ -466,13 +467,25 @@ firehose_try_remote_pin(gex_Rank_t node, uintptr_t addr, size_t len,
 
 			fh_commit_try_remote_region(req);
 			GASNETI_TRACE_EVENT(C,FH_TRY_REMOTE_HIT);
+#if GASNETI_STATS_OR_TRACE
+		ticks = GASNETI_TICKS_NOW_IFENABLED(I) - ticks;
+		GASNETI_TRACE_EVENT_TIME(I, FH_REQUEST_HIT, ticks);
+#endif
 		}
 		else {
 			GASNETI_TRACE_EVENT(C,FH_TRY_REMOTE_FAIL);
+#if GASNETI_STATS_OR_TRACE
+		ticks = GASNETI_TICKS_NOW_IFENABLED(I) - ticks;
+		GASNETI_TRACE_EVENT_TIME(I, FH_REQUEST_FAIL, ticks);
+#endif
 		}
 	}
 	else {
 		GASNETI_TRACE_EVENT(C,FH_TRY_REMOTE_MISS);
+#if GASNETI_STATS_OR_TRACE
+		ticks = GASNETI_TICKS_NOW_IFENABLED(I) - ticks;
+		GASNETI_TRACE_EVENT_TIME(I, FH_REQUEST_MISS, ticks);
+#endif
 	}
 	FH_TABLE_UNLOCK;
 

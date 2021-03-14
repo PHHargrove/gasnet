@@ -11,6 +11,8 @@
 #include <firehose_internal.h>
 #include <gasnet_internal.h>
 #endif
+#define FH_HASH_STATS 1
+#define FH_HASH_KNUTH 0
 
 struct _fh_hash_t {
         void   **fh_table;
@@ -78,7 +80,15 @@ knuth_hash(fh_key_t full_key, fh_hash_t *hash)
   gasneti_assert_int(result ,<, hash->fh_entries);
   return result;
 }
-#define KEYHASH(key,hash) knuth_hash((key),(hash))
+//#define KEYHASH(full_key,hash) knuth_hash((full_key),(hash))
+GASNETI_INLINE(KEYHASH)
+int KEYHASH(fh_key_t full_key, fh_hash_t *hash) {
+  gasneti_tick_t ticks = GASNETI_TICKS_NOW_IFENABLED(I);
+  int result = knuth_hash(full_key,hash);
+  ticks = GASNETI_TICKS_NOW_IFENABLED(I) - ticks;
+  GASNETI_TRACE_EVENT_TIME(I, FH_HASH, ticks);
+  return result;
+}
 
 #else
 
@@ -114,8 +124,15 @@ inthash(fh_key_t full_key)
 #endif
 	return (int) key;
 }
-#define KEYHASH(key,hash) \
-        (inthash(key) & (hash)->fh_mask);
+//#define KEYHASH(full_key,hash) (inthash(full_key) & (hash)->fh_mask);
+GASNETI_INLINE(KEYHASH)
+int KEYHASH(fh_key_t full_key, fh_hash_t *hash) {
+  gasneti_tick_t ticks = GASNETI_TICKS_NOW_IFENABLED(I);
+  int result =(inthash(full_key) & (hash)->fh_mask);
+  ticks = GASNETI_TICKS_NOW_IFENABLED(I) - ticks;
+  GASNETI_TRACE_EVENT_TIME(I, FH_HASH, ticks);
+  return result;
+}
 #endif
 
 /* fh_hash_create(keylen,entries)
