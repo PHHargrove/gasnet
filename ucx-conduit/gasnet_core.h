@@ -162,17 +162,17 @@ size_t gasnetc_AMHeaderSize(void);
         (GASNETI_UNUSED_ARGS4(tm,rank,lc_opt,nargs), \
          ((flags) & GEX_FLAG_AM_PREPARE_LEAST_ALLOC  \
                   ? GASNETC_REF_NPAM_MAX_ALLOC       \
-                  : gex_AM_LUBRequestLong()))
+                  : GASNETC_MAX_LONG_(nargs)))
 #define gasnetc_AM_MaxReplyLong(tm,rank,lc_opt,flags,nargs)      \
         (GASNETI_UNUSED_ARGS4(tm,rank,lc_opt,nargs), \
          ((flags) & GEX_FLAG_AM_PREPARE_LEAST_ALLOC  \
                   ? GASNETC_REF_NPAM_MAX_ALLOC       \
-                  : gex_AM_LUBReplyLong()))
+                  : GASNETC_MAX_LONG_(nargs)))
 #define gasnetc_Token_MaxReplyLong(token,lc_opt,flags,nargs)     \
         (GASNETI_UNUSED_ARGS3(token,lc_opt,nargs),   \
          ((flags) & GEX_FLAG_AM_PREPARE_LEAST_ALLOC  \
                   ? GASNETC_REF_NPAM_MAX_ALLOC       \
-                  : gex_AM_LUBReplyLong()))
+                  : GASNETC_MAX_LONG_(nargs)))
 
 /* Example for true functions: */
 #if 0
