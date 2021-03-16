@@ -5081,6 +5081,7 @@ GASNETI_INLINE(gasnetc_prepare_common)
 int gasnetc_prepare_common(
                        gasneti_AM_SrcDesc_t    sd,
                        gasneti_category_t      category,
+                       const int               is_reply,
                        gasnetc_cep_t          *cep,
                        const void             *client_buf,
                        size_t                  least_payload,
@@ -5104,8 +5105,13 @@ int gasnetc_prepare_common(
 
   #if GASNET_NATIVE_NP_ALLOC_REQ_LONG || GASNET_NATIVE_NP_ALLOC_REP_LONG
     case gasneti_Long: {
+    #if GASNETC_PIN_SEGMENT
       gasneti_static_assert(GASNETC_MAX_LONG_REQ == GASNETC_MAX_LONG_REP);
       size_t limit = client_buf ? GASNETC_MAX_LONG_REQ : GASNETC_MAX_PACKEDLONG_(nargs);
+    #else
+      size_t limit = client_buf ? (is_reply ? GASNETC_MAX_LONG_REP : GASNETC_MAX_LONG_REQ)
+                                : GASNETC_MAX_PACKEDLONG_(nargs);
+    #endif
       nbytes = MIN(most_payload, limit);
       head_len = GASNETC_MSG_LONG_ARGSEND(nargs + have_flow);
       break;
@@ -5205,8 +5211,8 @@ void gasnetc_commit_common(
 
     #if GASNET_NATIVE_NP_ALLOC_REQ_LONG || GASNET_NATIVE_NP_ALLOC_REP_LONG
       case gasneti_Long:
-        if (nbytes <= gasnetc_packedlong_limit) {
-          // Small enough to send like a Medium
+        if ((nbytes <= gasnetc_packedlong_limit) || (!GASNETC_PIN_SEGMENT && is_reply)) {
+          // Small enough to send like a Medium (forced for Reply w/ firehose)
           if (gasnetc_am_use_gather(sd->_ep, sd->_addr, nbytes, local_cb)) {
             gath_len = nbytes;
           } else {
@@ -5405,7 +5411,7 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareRequestMedium(
         gasnetc_cep_t *cep = gasnetc_am_select_cep(ep, jobrank);
         if (gasnetc_am_get_credit(ep, cep, immediate GASNETI_THREAD_PASS)) {
             goto out_immediate;
-        } else if (gasnetc_prepare_common(sd, gasneti_Medium, cep, client_buf,
+        } else if (gasnetc_prepare_common(sd, gasneti_Medium, 0, cep, client_buf,
                                           least_payload, most_payload,
                                           lc_opt, flags, nargs
                                           GASNETI_THREAD_PASS)) {
@@ -5489,7 +5495,7 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareRequestLong(
         gasnetc_cep_t *cep = gasnetc_am_select_cep(ep, jobrank);
         if (gasnetc_am_get_credit(ep, cep, immediate GASNETI_THREAD_PASS)) {
             goto out_immediate;
-        } else if (gasnetc_prepare_common(sd, gasneti_Long, cep, client_buf,
+        } else if (gasnetc_prepare_common(sd, gasneti_Long, 0, cep, client_buf,
                                           least_payload, most_payload,
                                           lc_opt, flags, nargs
                                           GASNETI_THREAD_PASS)) {
@@ -5648,7 +5654,7 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareReplyMedium(
         sd = gasneti_init_reply_srcdesc(GASNETI_THREAD_PASS_ALONE);
         GASNETI_COMMON_PREP_REP(sd,token,client_buf,least_payload,most_payload,NULL,lc_opt,flags,nargs,Medium);
 
-        if (gasnetc_prepare_common(sd, gasneti_Medium, rbuf->cep, client_buf,
+        if (gasnetc_prepare_common(sd, gasneti_Medium, 1, rbuf->cep, client_buf,
                                    least_payload, most_payload,
                                    lc_opt, flags, nargs
                                    GASNETI_THREAD_PASS)) {
@@ -5723,7 +5729,7 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareReplyLong(
         sd = gasneti_init_reply_srcdesc(GASNETI_THREAD_PASS_ALONE);
         GASNETI_COMMON_PREP_REP(sd,token,client_buf,least_payload,most_payload,dest_addr,lc_opt,flags,nargs,Long);
 
-        if (gasnetc_prepare_common(sd, gasneti_Long, rbuf->cep, client_buf,
+        if (gasnetc_prepare_common(sd, gasneti_Long, 1, rbuf->cep, client_buf,
                                    least_payload, most_payload,
                                    lc_opt, flags, nargs
                                    GASNETI_THREAD_PASS)) {

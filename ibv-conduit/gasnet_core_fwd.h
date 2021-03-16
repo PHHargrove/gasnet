@@ -92,10 +92,8 @@
    */
 #define GASNET_NATIVE_NP_ALLOC_REQ_MEDIUM 1
 #define GASNET_NATIVE_NP_ALLOC_REP_MEDIUM 1
-#if GASNETC_PIN_SEGMENT
 #define GASNET_NATIVE_NP_ALLOC_REQ_LONG 1
 #define GASNET_NATIVE_NP_ALLOC_REP_LONG 1
-#endif
 
   /* uncomment for each GASNET_NATIVE_NP_ALLOC_* enabled above if the Commit function
      has the numargs argument even in an NDEBUG build (it is always passed in
@@ -103,10 +101,8 @@
    */
 #define GASNETC_AM_COMMIT_REQ_MEDIUM_NARGS 1
 #define GASNETC_AM_COMMIT_REP_MEDIUM_NARGS 1
-#if GASNETC_PIN_SEGMENT
 #define GASNETC_AM_COMMIT_REQ_LONG_NARGS 1
 #define GASNETC_AM_COMMIT_REP_LONG_NARGS 1
-#endif
 
 #define GASNETI_AM_SRCDESC_EXTRA \
         int                 _have_flow;         \
