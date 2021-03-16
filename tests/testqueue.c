@@ -72,6 +72,7 @@ int numflavors = 0;
 int numsync = 0;
 int do_bulk = 0, do_nonbulk = 0, do_value = 0;
 int do_implicit = 0, do_explicit = 0, do_blocking = 0;
+int do_gb = 0;
 
 void do_bulkputs(void);
 void do_nonbulkputgets(void);
@@ -130,6 +131,9 @@ int main(int argc, char **argv) {
         ++arg;
       } else if (!strcmp(argv[arg], "-k")) {
         do_blocking = 1; numsync++;
+        ++arg;
+      } else if (!strcmp(argv[arg], "-np-gb")) {
+        do_gb = 1;
         ++arg;
       } else if (argv[arg][0] == '-') {
         help = 1;
@@ -275,6 +279,13 @@ int main(int argc, char **argv) {
 
 }
 
+#define ADVANCESZ(sz, maxsz) do {                \
+        if (!sz) sz = 1;                         \
+        else if (sz < maxsz && sz*2 > maxsz) {   \
+           sz = maxsz;                           \
+        } else sz *= 2;                          \
+  } while (0)
+
     #define QUEUE_TEST(OPDESC, OP, SYNC, RECVRSYNC, PAYLOAD_LIMIT) do {     \
       int depth, payload, last_payload;                                     \
       BARRIER();                                                            \
@@ -292,7 +303,7 @@ int main(int argc, char **argv) {
       }                                                                     \
       last_payload = (((PAYLOAD_LIMIT) <= 0) ? max_payload :                \
                       MIN(max_payload, (PAYLOAD_LIMIT)));                   \
-      for (payload = min_payload; payload <= last_payload; payload *= 2) {  \
+      for (payload = min_payload; payload <= last_payload; ) {              \
         char row[1024];                                                     \
         char *prow = row;                                                   \
         size_t rused = 0;                                                   \
@@ -363,6 +374,7 @@ int main(int argc, char **argv) {
         if (iamsender) {                                                    \
           puts(row); fflush(stdout);                                        \
         }                                                                   \
+        ADVANCESZ(payload, last_payload);                                   \
       }                                                                     \
     } while (0)
 
@@ -487,6 +499,7 @@ void do_amtests(void) {
                  gex_AM_MaxRequestMedium(myteam,GEX_RANK_INVALID,GEX_EVENT_GROUP,0,0));
     }
 
+#if 0
     if (do_amlong && do_blocking) {
       gasnett_atomic_set(&amcount, 0, 0);
       QUEUE_TEST("gex_AM_RequestLong0 (blocking for LC)",
@@ -512,6 +525,19 @@ void do_amtests(void) {
                  gex_AM_RequestLong0(myteam, peerproc, hidx_ping_longhandler,
                                          msgbuf, payload, tgtmem, GEX_EVENT_GROUP, 0),
                  gex_NBI_Wait(GEX_EC_ALL,0),
+                { assert(iamrecver);
+                  GASNET_BLOCKUNTIL(gasnett_atomic_read(&amcount,0) == depth);
+                  gasnett_atomic_set(&amcount, 0, 0); },
+                 gex_AM_MaxRequestLong(myteam,GEX_RANK_INVALID,GEX_EVENT_GROUP,0,0));
+    }
+#endif
+    if (do_amlong) {
+      QUEUE_TEST("gex_AM_RequestLong0 (NPAM/GASNet-allocated buffer)",
+                { gex_AM_SrcDesc_t sd = 
+                  gex_AM_PrepareRequestLong(myteam,peerproc,NULL,payload,payload,tgtmem,NULL,0,0);
+                  memset(gex_AM_SrcDescAddr(sd), 99, payload);
+                  gex_AM_CommitRequestLong0(sd,hidx_ping_longhandler,payload,tgtmem); },
+                  ((void)0),
                 { assert(iamrecver);
                   GASNET_BLOCKUNTIL(gasnett_atomic_read(&amcount,0) == depth);
                   gasnett_atomic_set(&amcount, 0, 0); },
