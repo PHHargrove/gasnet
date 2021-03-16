@@ -5095,14 +5095,14 @@ int gasnetc_prepare_common(
 
   size_t nbytes, head_len;
   switch (category) {
-  #if GASNETC_HAVE_NP_REQ_MEDIUM || GASNETC_HAVE_NP_REP_MEDIUM
+  #if GASNET_NATIVE_NP_ALLOC_REQ_MEDIUM || GASNET_NATIVE_NP_ALLOC_REP_MEDIUM
     case gasneti_Medium:
       nbytes = MIN(most_payload, GASNETC_MAX_MEDIUM_(nargs));
       head_len = GASNETC_MSG_MED_ARGSEND(nargs + have_flow);
       break;
   #endif
 
-  #if GASNETC_HAVE_NP_REQ_LONG || GASNETC_HAVE_NP_REP_LONG
+  #if GASNET_NATIVE_NP_ALLOC_REQ_LONG || GASNET_NATIVE_NP_ALLOC_REP_LONG
     case gasneti_Long: {
       gasneti_static_assert(GASNETC_MAX_LONG_REQ == GASNETC_MAX_LONG_REP);
       size_t limit = client_buf ? GASNETC_MAX_LONG_REQ : GASNETC_MAX_PACKEDLONG_(nargs);
@@ -5136,7 +5136,7 @@ int gasnetc_prepare_common(
   sd->_cep = cep;
   if (client_buf) {
     sd->_addr = (/*non-const*/void *)client_buf;
-  #if GASNETC_HAVE_NP_REQ_MEDIUM || GASNETC_HAVE_NP_REP_MEDIUM
+  #if GASNET_NATIVE_NP_ALLOC_REQ_MEDIUM || GASNET_NATIVE_NP_ALLOC_REP_MEDIUM
     if (category == gasneti_Medium) {
       gasneti_leaf_finish(lc_opt); // Commit always yields synchronous LC of Medium
     }
@@ -5193,7 +5193,7 @@ void gasnetc_commit_common(
                          (category==gasneti_Medium)?"Medium":"Long");
     }
     switch (category) {
-    #if GASNETC_HAVE_NP_REQ_MEDIUM || GASNETC_HAVE_NP_REP_MEDIUM
+    #if GASNET_NATIVE_NP_ALLOC_REQ_MEDIUM || GASNET_NATIVE_NP_ALLOC_REP_MEDIUM
       case gasneti_Medium:
         if (gasnetc_am_use_gather(sd->_ep, sd->_addr, nbytes, local_cb)) {
           gath_len = nbytes;
@@ -5203,7 +5203,7 @@ void gasnetc_commit_common(
         break;
     #endif
 
-    #if GASNETC_HAVE_NP_REQ_LONG || GASNETC_HAVE_NP_REP_LONG
+    #if GASNET_NATIVE_NP_ALLOC_REQ_LONG || GASNET_NATIVE_NP_ALLOC_REP_LONG
       case gasneti_Long:
         if (nbytes <= gasnetc_packedlong_limit) {
           // Small enough to send like a Medium
@@ -5250,7 +5250,7 @@ void gasnetc_commit_common(
     }
   } else if (lc_opt == GEX_EVENT_NOW) {
     switch (category) {
-    #if GASNETC_HAVE_NP_REQ_MEDIUM || GASNETC_HAVE_NP_REP_MEDIUM
+    #if GASNET_NATIVE_NP_ALLOC_REQ_MEDIUM || GASNET_NATIVE_NP_ALLOC_REP_MEDIUM
       case gasneti_Medium:
         // Currently always synchronous LC
         gasneti_assert(counter.initiated == 0);
@@ -5258,7 +5258,7 @@ void gasnetc_commit_common(
         break;
     #endif
 
-    #if GASNETC_HAVE_NP_REQ_LONG || GASNETC_HAVE_NP_REP_LONG
+    #if GASNET_NATIVE_NP_ALLOC_REQ_LONG || GASNET_NATIVE_NP_ALLOC_REP_LONG
       case gasneti_Long:
         // block for local completion of RDMA transfer, if needed
         if (is_cbuf) gasnetc_counter_wait(&counter, is_reply GASNETI_THREAD_PASS);
@@ -5331,7 +5331,7 @@ extern int gasnetc_AMRequestMediumM(
   return (retval == GASNETC_FAIL_IMM);
 }
 
-#if !GASNETC_HAVE_NP_REQ_LONG
+#if !GASNET_NATIVE_NP_ALLOC_REQ_LONG
 extern int gasnetc_AMRequestLongV(
                             gex_TM_t tm, gex_Rank_t rank, gex_AM_Index_t handler,
                             void *source_addr, size_t nbytes, void *dest_addr,
@@ -5453,7 +5453,7 @@ extern void gasnetc_AM_CommitRequestMediumM(
 
 #endif // GASNET_NATIVE_NP_ALLOC_REQ_MEDIUM
 
-#if GASNETC_HAVE_NP_REQ_LONG
+#if GASNET_NATIVE_NP_ALLOC_REQ_LONG
 
 extern gex_AM_SrcDesc_t gasnetc_AM_PrepareRequestLong(
                        gex_TM_t           tm,
@@ -5536,7 +5536,7 @@ extern void gasnetc_AM_CommitRequestLongM(
     gasneti_reset_srcdesc(sd);
 }
 
-#endif // GASNETC_HAVE_NP_REQ_LONG
+#endif // GASNET_NATIVE_NP_ALLOC_REQ_LONG
 
 // ---- external FPAM replies ----
 
@@ -5585,7 +5585,7 @@ extern int gasnetc_AMReplyMediumM(
   return retval;
 }
 
-#if !GASNETC_HAVE_NP_REP_LONG
+#if !GASNET_NATIVE_NP_ALLOC_REP_LONG
 extern int gasnetc_AMReplyLongV(
                             gex_Token_t token, gex_AM_Index_t handler,
                             void *source_addr, size_t nbytes, void *dest_addr,
@@ -5691,7 +5691,7 @@ extern void gasnetc_AM_CommitReplyMediumM(
 
 #endif // GASNET_NATIVE_NP_ALLOC_REP_MEDIUM
 
-#if GASNETC_HAVE_NP_REP_LONG
+#if GASNET_NATIVE_NP_ALLOC_REP_LONG
 
 extern gex_AM_SrcDesc_t gasnetc_AM_PrepareReplyLong(
                        gex_Token_t        token,
@@ -5765,7 +5765,7 @@ extern void gasnetc_AM_CommitReplyLongM(
     gasneti_reset_srcdesc(sd);
 }
 
-#endif // GASNETC_HAVE_NP_REP_LONG
+#endif // GASNET_NATIVE_NP_ALLOC_REP_LONG
 
 /* ------------------------------------------------------------------------------------ */
 /*
