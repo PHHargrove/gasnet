@@ -2895,21 +2895,25 @@ static int gasnetc_segment_exchange(gex_TM_t tm, gex_EP_t *eps, size_t num_eps)
 /* ------------------------------------------------------------------------------------ */
 int gasnetc_segment_create_hook(gex_Segment_t e_segment)
 {
+#if GASNETC_PIN_SEGMENT
   // Register the segment
   gasnetc_Segment_t segment = (gasnetc_Segment_t) gasneti_import_segment(e_segment);
   if (GASNET_OK != gasnetc_segment_register(segment, 0)) {
     gasneti_fatalerror("Unexpected failure return from gasnetc_segment_register()");
   }
+#endif
   return GASNET_OK;
 }
 
 int gasnetc_segment_attach_hook(gex_Segment_t e_segment, gex_TM_t e_tm)
 {
+#if GASNETC_PIN_SEGMENT
   // Register the segment
   gasnetc_Segment_t segment = (gasnetc_Segment_t) gasneti_import_segment(e_segment);
   if (GASNET_OK != gasnetc_segment_register(segment, 1)) {
     gasneti_fatalerror("Unexpected failure return from gasnetc_segment_register()");
   }
+#endif
 
   // Exchange registration info
   gex_EP_t e_ep = gex_TM_QueryEP(e_tm);

@@ -643,6 +643,9 @@ extern int gex_Segment_Create(
   if (! length) {
     gasneti_fatalerror("Invalid call to gex_Segment_Create() with zero length");
   }
+  if (kind == GEX_MK_INVALID) {
+    gasneti_fatalerror("Invalid call to gex_Segment_Create() with kind = GEX_MK_INVALID");
+  }
 
   // Create the Segment object, allocating memory if appropriate
   int rc = gasneti_segmentCreate(segment_p, i_client, address, length, kind, flags);
