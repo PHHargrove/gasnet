@@ -2132,6 +2132,11 @@ int gasneti_segmentCreate(
 {
   gasneti_Segment_t segment = gasneti_import_segment(GEX_SEGMENT_INVALID);
 
+  gasneti_assert(segment_p);
+  gasneti_assert(! flags);
+  gasneti_assert(length);
+  gasneti_assert(kind != GEX_MK_INVALID);
+
   if (kind == GEX_MK_HOST) {
     if (address) {
       // Client-allocated segment
