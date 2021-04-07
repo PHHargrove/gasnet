@@ -22,6 +22,7 @@ GASNet-EX ChangeLog
  20XX.YY.ZZ: PENDING
 
 * Notable bugs fixed in this release: (details at https://gasnet-bugs.lbl.gov)
+  - bug4209: ibv: improve ALC with respect to bounce buffer use
   - bug4212: build failure for ibv conduit with "--with-ibv-max-hcas=1"
 
 ----------------------------------------------------------------------
