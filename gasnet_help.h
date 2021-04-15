@@ -1631,7 +1631,7 @@ extern gasnet_nodeinfo_t *gasneti_nodeinfo;
 #endif
 
 /* ------------------------------------------------------------------------------------ */
-/* PSHM support */
+// PSHM support - part 1 of 2
 #if GASNET_PSHM
 
 /* Max number of processes supported per node */
@@ -1722,55 +1722,78 @@ void *gasneti_pshm_jobrank_addr2local(gex_Rank_t _jobrank, const void *_addr) {
                    + (uintptr_t)gasneti_nodeinfo[_jobrank].offset);
 } 
 GASNETI_PUREP(gasneti_pshm_jobrank_addr2local)
+#endif // GASNET_PSHM
 
-// Helper for what follows
+/* ------------------------------------------------------------------------------------ */
+
+// Helper for other queries (both with PSHM and without)
 // Returns a jobrank or GEX_RANK_INVALID depending on whether the local and
-// remote endpoints named by (tm,rank) are both "eligible" for PSHM, exclusive
-// of the check on the jobrank being in-nbrhd.  The eligibility criteria are:
-//   1. Remote endpoint must be primordial (have EP index 0)
+// remote endpoints named by (tm,rank) are both "eligible" to be mapped for
+// load/store access.  This is inclusive of the check on the jobrank being
+// in-nbrhd (PSHM) or local (non-PSHM).
+// The eligibility criteria are:
+//   1a. Remote endpoint must be primordial (have EP index 0)
+//   1b. OR "remote" endpoint is actually local with a host memory segment
 //   2. Local endpoint must be host memory
 // However, checking these efficiently is not as simple as it sounds.
-extern gasneti_Segment_t gasneti_tm_pair_to_segment(gasneti_TM_Pair_t _tm_pair);
-GASNETI_INLINE(gasneti_pshm_jobrank_if_eligible) GASNETI_PURE
-gex_Rank_t gasneti_pshm_jobrank_if_eligible(gex_TM_t _e_tm, gex_Rank_t _rank) {
+extern int gasneti_segments_mappable(gasneti_TM_t _i_tm, gex_EP_Index_t _loc_ep_idx, gex_EP_Index_t _rem_ep_idx);
+GASNETI_INLINE(gasneti_jobrank_if_mappable) GASNETI_PURE
+gex_Rank_t gasneti_jobrank_if_mappable(gex_TM_t _e_tm, gex_Rank_t _rank) {
   gasneti_TM_t _i_tm = gasneti_import_tm(_e_tm);
+  gasneti_check_i_tm_rank(_i_tm, _rank);
+
+#if GASNET_CONDUIT_SMP
+  #define MAPPABLE_JOBRANK_P(jobrank) 1
+#elif GASNET_PSHM
+  #define MAPPABLE_JOBRANK_P(jobrank) gasneti_pshm_jobrank_in_supernode(jobrank)
+#else
+  #define MAPPABLE_JOBRANK_P(jobrank) ((jobrank) == gasneti_mynode)
+#endif
+
   if (gasneti_is_tm0(_i_tm)) {
-    // fast path for TM0
-    return _rank;
+    // fast path for TM0, which can only include primordial segments
+    gasneti_assume(_rank != GEX_RANK_INVALID); // may improve codegen in caller
+    return MAPPABLE_JOBRANK_P(_rank) ? _rank : GEX_RANK_INVALID;
   }
+
   gex_EP_Location_t _loc = gasneti_i_tm_rank_to_location(_i_tm, _rank, 0);
-  if (_loc.gex_ep_index) {
-    // not eligible due to non-primordial remote EP
+  gex_Rank_t _jobrank = _loc.gex_rank;
+  gasneti_assume(_jobrank != GEX_RANK_INVALID); // may improve codegen in caller
+
+  // Check if remote rank is in-nbrhd or local, as appropriate
+  if (! MAPPABLE_JOBRANK_P(_jobrank)) return GEX_RANK_INVALID;
+
+#undef MAPPABLE_JOBRANK_P
+
+  gex_EP_Index_t _rem_ep_idx = _loc.gex_ep_index;
+  if (_rem_ep_idx && (_jobrank != gasneti_mynode)) {
+    // Non-primordial and non-local - never mappable.
     return GEX_RANK_INVALID;
   }
-  // If we've made it this far, the (tm,rank) is eligible only and only if
-  // the local ep is host memory (which can take some work to determine).
-  gex_Rank_t _jobrank = _loc.gex_rank;
-#if !GASNET_HAVE_MK_CLASS_MULTIPLE
-  return _jobrank; // Trivial host memory when no device kinds are supported
-#else
-  gasneti_Segment_t _segment;
-  if (! gasneti_i_tm_is_pair(_i_tm)) {
-    // Full TM object - can check objects directly
-    gasneti_EP_t _ep = _i_tm->_ep;
-    if (_ep->_index == 0) return _jobrank; // EP index 0 is primordial
-    _segment = _i_tm->_ep->_segment;
-  } else {
-    gasneti_TM_Pair_t _tm_pair = gasneti_i_tm_to_pair(_i_tm);
-    gex_EP_Index_t _idx = gasneti_tm_pair_loc_idx(_tm_pair);
-    if (_idx == 0) return _jobrank; // EP index 0 is primordial
-    _segment = gasneti_tm_pair_to_segment(_tm_pair);
-  }
-  return gasneti_i_segment_kind_is_host(_segment) ? _jobrank : GEX_RANK_INVALID;
-#endif
-}
 
-// Same as the three functions above, but taking (tm,rank) in place of jobrank
+#if GASNET_HAVE_MK_CLASS_MULTIPLE
+  gex_EP_Index_t _loc_ep_idx = gasneti_i_tm_to_ep_index(_i_tm);
+  if (_loc_ep_idx || _rem_ep_idx) {
+    // One or both are non-primordial and local - must examine their segments
+    if (!gasneti_segments_mappable(_i_tm, _loc_ep_idx, _rem_ep_idx)) return GEX_RANK_INVALID;
+  }
+#endif
+
+  return _jobrank;
+}
+GASNETI_PUREP(gasneti_jobrank_if_mappable)
+
+/* ------------------------------------------------------------------------------------ */
+// PSHM support - part 2 of 2
+
+#if GASNET_PSHM
+// Same as the three gasneti_pshm_jobrank_* functions in part 1, above, but taking
+// (tm,rank) in place of jobrank
 // All are TM-pair aware, and the first two are multi-EP aware
 
 GASNETI_INLINE(gasneti_pshm_local_rank) GASNETI_PURE
 unsigned int gasneti_pshm_local_rank(gex_TM_t _e_tm, gex_Rank_t _rank) {
-  gex_Rank_t _jobrank = gasneti_pshm_jobrank_if_eligible(_e_tm, _rank);
+  gex_Rank_t _jobrank = gasneti_jobrank_if_mappable(_e_tm, _rank);
   return (_jobrank == GEX_RANK_INVALID)
          ? (unsigned int)(-1)
          : gasneti_pshm_jobrank_to_local_rank(_jobrank);
@@ -1779,8 +1802,7 @@ GASNETI_PUREP(gasneti_pshm_local_rank)
 
 GASNETI_INLINE(gasneti_pshm_in_supernode) GASNETI_PURE
 int gasneti_pshm_in_supernode(gex_TM_t _e_tm, gex_Rank_t _rank) {
-  gex_Rank_t _jobrank = gasneti_pshm_jobrank_if_eligible(_e_tm, _rank);
-  return (_jobrank != GEX_RANK_INVALID) && gasneti_pshm_jobrank_in_supernode(_jobrank);
+  return (GEX_RANK_INVALID != gasneti_jobrank_if_mappable(_e_tm, _rank));
 }
 GASNETI_PUREP(gasneti_pshm_in_supernode)
 
@@ -1790,7 +1812,7 @@ void *gasneti_pshm_addr2local(gex_TM_t _e_tm, gex_Rank_t _rank, const void *_add
   return gasneti_pshm_jobrank_addr2local(_jobrank, _addr);
 } 
 GASNETI_PUREP(gasneti_pshm_addr2local)
-#endif /* GASNET_PSHM */
+#endif // GASNET_PSHM
 
 /* ------------------------------------------------------------------------------------ */
 // Wrappers for memcpy()
