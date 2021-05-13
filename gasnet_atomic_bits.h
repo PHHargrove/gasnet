@@ -212,6 +212,7 @@
      * + gcc: on most platforms (including Linux, Darwin and Solaris) defines __PIC__ when building
      *      position independent code (e.g. -fPIC or -fpic; not passed -mdynamic-no-pic on Darwin).
      * + pathcc: same as gcc
+     * + nvhpc: same as gcc
      * MANUAL WORK AROUND:
      * + pgcc: no distinguishing macro when passed -fPIC, so no automatic work-around available
      * JUST WORKS:
@@ -224,7 +225,7 @@
      * replacing "-fPIC" with your compiler-specific flag(s) as needed.
      */
   #if ((PLATFORM_COMPILER_GNU && !defined(__llvm__)) || \
-       PLATFORM_COMPILER_PATHSCALE || PLATFORM_COMPILER_PGI) && \
+       PLATFORM_COMPILER_PATHSCALE || PLATFORM_COMPILER_PGI || PLATFORM_COMPILER_HVHPC) && \
        ((defined(__PIC__) && !defined(GASNETI_CONFIGURED_PIC)) || defined(GASNETI_FORCE_PIC))
       /* Disable use of %ebx when building PIC, but only on affected compilers. */
       #define GASNETI_USE_X86_EBX 0
@@ -613,6 +614,7 @@
         PLATFORM_COMPILER_PATHSCALE || PLATFORM_COMPILER_PGI || \
         PLATFORM_COMPILER_OPEN64 || \
         PLATFORM_COMPILER_CLANG || \
+        PLATFORM_COMPILER_NVHPC || \
         (PLATFORM_COMPILER_SUN && GASNETI_HAVE_GCC_ASM)
      #if PLATFORM_COMPILER_SUN_C
        #pragma error_messages(off, E_ASM_UNUSED_PARAM)
