@@ -444,17 +444,17 @@ typedef struct {
  * gasnetc_epid_d is node and qp encoded together
  * passing just a node (the default) means any qp to that node
  */
-typedef uint32_t gasnetc_epid_t;
+typedef uint64_t gasnetc_epid_t;
 
-/* The 'epid' type holds 'node' in the low 16 bits.
- * The upper 16 bits holds a qp index (qpi).
+/* The 'epid' type holds 'node' in the low 32 bits.
+ * The upper 32 bits holds a qp index (qpi).
  * A qpi of zero is a wildcard (an 'unbound' epid).
  * Therefore, setting epid=node means "use any qp for that node".
  * Non-zero qpi is 1 + the array index of the desired queue pair.
  */
-#define gasnetc_epid2node(E)	((E)&0xffff)
-#define gasnetc_epid2qpi(E)	((E)>>16)
-#define gasnetc_epid(N,Q)	((N)|(((Q)+1)<<16))
+#define gasnetc_epid2node(E)	GASNETI_LOWORD(E)
+#define gasnetc_epid2qpi(E)	GASNETI_HIWORD(E)
+#define gasnetc_epid(N,Q)	GASNETI_MAKEWORD((Q)+1,(N))
 
 /* Forward decl */
 struct gasnetc_cep_t_;
@@ -538,7 +538,7 @@ struct gasnetc_cep_t_ {
 #if (GASNETC_IB_MAX_HCAS > 1)
   int			hca_index;
 #endif
-  gasnetc_epid_t	epid;		/* == uint32_t */
+  gasnetc_epid_t	epid;		/* == uint64_t */
 #if GASNETC_IBV_SRQ
   struct ibv_srq        *srq;
   uint32_t              rcv_qpn;
