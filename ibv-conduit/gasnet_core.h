@@ -102,8 +102,8 @@ typedef struct {
   ==========================
 */
 
-#define GASNETC_MEDIUM_HDRSZ	(4)
-#define GASNETC_LONG_HDRSZ	(SIZEOF_VOID_P + 4)
+#define GASNETC_MEDIUM_HDRSZ	(8)
+#define GASNETC_LONG_HDRSZ	(SIZEOF_VOID_P + 8)
 
 #define GASNETC_MAX_ARGS_USER	16
 #define GASNETC_MAX_ARGS_EXTRA	1	/* For flow-control info */

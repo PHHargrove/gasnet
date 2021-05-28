@@ -197,11 +197,13 @@ extern gasneti_atomic_t gasnetc_exit_running;
 #define GASNETC_ARGSEND_AUX(s,nargs) gasneti_offsetof(s,args[nargs])
 
 typedef struct {
+  gex_Rank_t    srcrank;
   gex_AM_Arg_t	args[GASNETC_MAX_ARGS];
 } gasnetc_shortmsg_t;
 #define GASNETC_MSG_SHORT_ARGSEND(nargs) GASNETC_ARGSEND_AUX(gasnetc_shortmsg_t,nargs)
 
 typedef struct {
+  gex_Rank_t    srcrank;
   uint32_t		nBytes;	/* 16 bits would be sufficient if we ever need the space */
   gex_AM_Arg_t	args[GASNETC_MAX_ARGS];
 } gasnetc_medmsg_t;
@@ -211,8 +213,9 @@ typedef struct {
 		((void *)((uintptr_t)(msg) + GASNETC_MSG_MED_ARGSEND(nargs)))
 
 typedef struct {
-  uintptr_t		destLoc;
-  int32_t		nBytes;
+  gex_Rank_t    srcrank;
+  int32_t       nBytes;
+  uintptr_t     destLoc;
   gex_AM_Arg_t	args[GASNETC_MAX_ARGS];
 } gasnetc_longmsg_t;
 #define GASNETC_MSG_LONG_ARGSEND(nargs) /* Note 8-byte alignment for payload */ \
@@ -222,6 +225,7 @@ typedef struct {
 
 typedef union {
   uint8_t		raw[GASNETC_BUFSZ];
+  gex_Rank_t            srcrank;
   gasnetc_shortmsg_t	shortmsg;
   gasnetc_medmsg_t	medmsg;
   gasnetc_longmsg_t	longmsg;
@@ -602,6 +606,7 @@ typedef struct gasnetc_rbuf_s {
     #endif
       int                   	needReply;
       uint32_t              	flags;
+      gex_Rank_t                srcrank;
     }				am;
   } u;
 
@@ -618,6 +623,7 @@ typedef struct gasnetc_rbuf_s {
 #endif
 #define rbuf_needReply		u.am.needReply
 #define rbuf_flags		u.am.flags
+#define rbuf_srcrank            u.am.srcrank
 #define rbuf_threadinfo         u.am.threadinfo
 
 #define GASNETC_OP_NEEDS_FENCE 0x1000 // Flag bit
@@ -650,7 +656,7 @@ typedef enum {
  *   8-9: category
  * 10-14: numargs (5 bits, but only 0-GASNETC_MAX_ARGS are legal values)
  *    15: request (0) or reply (1)
- * 16-31: source node // TODO-EX: how to scale out past this limit?
+ * 16-31: unused (was source rank)
  */
 
 #define GASNETC_MSG_HANDLERID(flags)    ((gex_AM_Index_t)(flags))
@@ -658,17 +664,15 @@ typedef enum {
 #define GASNETC_MSG_NUMARGS(flags)      (((flags) >> 10) & 0x1f)
 #define GASNETC_MSG_ISREPLY(flags)      ((flags) & (1<<15))
 #define GASNETC_MSG_ISREQUEST(flags)    (!GASNETC_MSG_ISREPLY(flags))
-#define GASNETC_MSG_SRCIDX(flags)       ((gex_Rank_t)((flags) >> 16) & 0xffff)
 
-#define GASNETC_MSG_GENFLAGS(isreq, cat, nargs, hand, srcidx)   \
- (gasneti_assert(0 == ((srcidx) & ~0xffff)),    \
+#define GASNETC_MSG_GENFLAGS(isreq, cat, nargs, hand, unused)   \
+ (gasneti_assume((unused) == 0),                \
   gasneti_assert(0 == ((nargs)  & ~0x1f)),      \
   gasneti_assert(0 == ((cat)    & ~3)),         \
   gasneti_assert((nargs) <= GASNETC_MAX_ARGS),  \
-  gasneti_assert((srcidx) < gasneti_nodes),     \
   (uint32_t)(  ((nargs)   << 10        )        \
              | ((isreq)   ? 0 : (1<<15))        \
-             | ((srcidx)  << 16        )        \
+             | ((unused)  << 16        )        \
              | ((cat)     << 8         )        \
              | ((hand)                 )))
 

@@ -456,7 +456,7 @@ void gasnetc_processPacket(gasnetc_cep_t *cep, gasnetc_rbuf_t *rbuf, uint32_t fl
   const gex_Token_t token = (gex_Token_t)rbuf;
   gex_AM_Arg_t *args;
 
-  gasneti_assert(!GASNETI_NBRHD_JOBRANK_IS_LOCAL(GASNETC_MSG_SRCIDX(flags)));
+  gasneti_assert(!GASNETI_NBRHD_JOBRANK_IS_LOCAL(buf->srcrank));
   gasneti_assert(cep != NULL);
 
 #if GASNETI_THREADINFO_OPT
@@ -467,6 +467,7 @@ void gasnetc_processPacket(gasnetc_cep_t *cep, gasnetc_rbuf_t *rbuf, uint32_t fl
   rbuf->rbuf_handlerRunning = 1;
 #endif
   rbuf->rbuf_flags = flags;
+  rbuf->rbuf_srcrank = buf->srcrank;
 
   /* Locate arguments */
   switch (category) {
@@ -965,7 +966,8 @@ void gasnetc_rcv_am(const struct ibv_wc *comp, gasnetc_rbuf_t **spare_p GASNETI_
     gasnetc_hca_t *hca = cep->hca;
 
     /* SRQ means rbuf->cep is "inexact", so must reconstruct */
-    cep = GASNETC_NODE2CEP(rbuf->rr_ep, GASNETC_MSG_SRCIDX(flags));
+    gex_Rank_t srcrank = ((gasnetc_buffer_t *)(uintptr_t)(rbuf->rr_sg.addr))->srcrank;
+    cep = GASNETC_NODE2CEP(rbuf->rr_ep, srcrank);
     if (!isrep) {
       cep += gasnetc_num_qps; /* Search top half of table */
     }
@@ -2902,7 +2904,8 @@ gasnetc_sndrcv_quiesce(void) {
       #if GASNET_DEBUG
         rbuf.rbuf_handlerRunning = 1;
       #endif
-        rbuf.rbuf_flags = GASNETC_MSG_GENFLAGS(1, gasneti_Short, 0, fake_hidx, node);
+        rbuf.rbuf_flags = GASNETC_MSG_GENFLAGS(1, gasneti_Short, 0, fake_hidx, 0);
+        rbuf.rbuf_srcrank = node;
         rbuf.rr_ep = ep;
         gasnetc_ReplySysShort((gex_Token_t)&rbuf, NULL, gasneti_handleridx(gasnetc_sys_flush_reph), 1, cr);
       }

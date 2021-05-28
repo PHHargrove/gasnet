@@ -4019,13 +4019,13 @@ gex_Rank_t gasnetc_msgsource(gex_Token_t token) {
     gasneti_assert(rc & GEX_TI_SRCRANK);
     sourceid = info.gex_srcrank;
   } else {
-    uint32_t flags = ((gasnetc_rbuf_t *)token)->rbuf_flags;
+    gasnetc_rbuf_t *rbuf = (gasnetc_rbuf_t *)token;
 
-    if (GASNETC_MSG_HANDLERID(flags) >= GASNETE_HANDLER_BASE) {
+    if (GASNETC_MSG_HANDLERID(rbuf->rbuf_flags) >= GASNETE_HANDLER_BASE) {
       GASNETI_CHECKATTACH();
     }
 
-    sourceid = GASNETC_MSG_SRCIDX(flags);
+    sourceid = rbuf->rbuf_srcrank;
   }
 
   gasneti_assert(sourceid < gasneti_nodes);
@@ -4050,7 +4050,7 @@ extern gex_TI_t gasnetc_Token_Info(
 
   if (GASNETC_MSG_HANDLERID(flags) >= GASNETE_HANDLER_BASE) GASNETI_CHECKATTACH();
 
-  info->gex_srcrank = GASNETC_MSG_SRCIDX(flags);
+  info->gex_srcrank = rbuf->rbuf_srcrank;
   result |= GEX_TI_SRCRANK;
 
 #if GASNETI_STATS_OR_TRACE
@@ -4294,6 +4294,7 @@ void gasnetc_am_commit(   gasnetc_buffer_t *buf, gasnetc_buffer_t *buf_alloc,
     gasneti_assert(!GASNETI_NBRHD_JOBRANK_IS_LOCAL(gasnetc_epid2node(cep->epid)));
 
     // Set header fields and locate arguments
+    buf->srcrank = gasneti_mynode;
     gex_AM_Arg_t *args;
     switch (category) {
     case gasneti_Short:
@@ -4360,8 +4361,7 @@ void gasnetc_am_commit(   gasnetc_buffer_t *buf, gasnetc_buffer_t *buf_alloc,
       gasnetc_sreq_t *sreq;
       int numargs_field = have_flow ? GASNETC_MAX_ARGS : numargs;
 
-      sr_desc->imm_data   = GASNETC_MSG_GENFLAGS(!is_reply, category, numargs_field, handler,
-						 gasneti_mynode);
+      sr_desc->imm_data   = GASNETC_MSG_GENFLAGS(!is_reply, category, numargs_field, handler, 0);
       sr_desc->opcode     = IBV_WR_SEND_WITH_IMM;
       sr_desc->num_sge    = 1;
       sr_desc->sg_list[0].addr   = (uintptr_t)buf;

@@ -43,9 +43,9 @@
 // Size of a buffer to contain any AM with all its header, padding and payload
 #define GASNETC_BUFSZ GASNETC_IBV_MAX_MEDIUM
 
-/* 16K is the limit on the LID space, but we must allow more than 1 proc per node */
-/* 64K corresponds to 16 bits used in the AM Header and 16-bit gex_Rank_t */
-#define GASNET_MAXNODES	65535
+// This corresponds to 28 bits in the dynamic connect protocol.
+// All other paths are believed to support a full 32 bits.
+#define GASNET_MAXNODES        (2<<28)
 
   /* GASNET_PSHM defined 1 if this conduit supports PSHM. leave undefined otherwise. */
 /* As described in bug 3373, ibv_reg_mem() on Solaris only works with SYSV */
