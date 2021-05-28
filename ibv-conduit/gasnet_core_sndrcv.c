@@ -451,8 +451,7 @@ void gasnetc_processPacket(gasnetc_cep_t *cep, gasnetc_rbuf_t *rbuf, uint32_t fl
   const gex_AM_Fn_t handler_fn = handler_entry->gex_fnptr;
   const gasneti_category_t category = GASNETC_MSG_CATEGORY(flags);
   const int isreq = GASNETC_MSG_ISREQUEST(flags);
-  int full_numargs = GASNETC_MSG_NUMARGS(flags);
-  int user_numargs = full_numargs;
+  int numargs = GASNETC_MSG_NUMARGS(flags);
   const gex_Token_t token = (gex_Token_t)rbuf;
   gex_AM_Arg_t *args;
 
@@ -487,21 +486,9 @@ void gasnetc_processPacket(gasnetc_cep_t *cep, gasnetc_rbuf_t *rbuf, uint32_t fl
   }
 
   { /* Process any flow control info */
-    int credits = 0;
-
-    if (full_numargs == GASNETC_MAX_ARGS) {
-      credits = args[0] & 0xff;
-      full_numargs = (args[0] >> 16) & 0x1f;
-      user_numargs = full_numargs - 1;
-
-      gasneti_assert(!gasnetc_use_srq || !credits);
-
-      GASNETI_TRACE_PRINTF(C,("RCV_AM_CREDITS credits=%d\n", credits));
-
-      args += 1;
-    }
-
-    /* Available remotely posted (request) buffers */
+    int credits = GASNETC_MSG_CREDITS(flags);
+    gasneti_assert(!gasnetc_use_srq || !credits);
+    GASNETI_TRACE_PRINTF(C,("RCV_AM_CREDITS credits=%d\n", credits));
     credits += (isreq ^ 1); /* Credit for self if this is a reply */
     if (credits) {
       gasnetc_sema_up_n(&cep->am_rem, credits);
@@ -511,21 +498,21 @@ void gasnetc_processPacket(gasnetc_cep_t *cep, gasnetc_rbuf_t *rbuf, uint32_t fl
   /* Ack? */
   if (!handler_id) return;
 
-  gasneti_amtbl_check(handler_entry, user_numargs, category, isreq);
+  gasneti_amtbl_check(handler_entry, numargs, category, isreq);
 
   /* Run the handler */
   switch (category) {
     case gasneti_Short:
       { 
-        GASNETI_RUN_HANDLER_SHORT(isreq,handler_id,handler_fn,token,args,user_numargs);
+        GASNETI_RUN_HANDLER_SHORT(isreq,handler_id,handler_fn,token,args,numargs);
       }
       break;
 
     case gasneti_Medium:
       {
-        void * data = GASNETC_MSG_MED_DATA(buf, full_numargs);
+        void * data = GASNETC_MSG_MED_DATA(buf, numargs);
         size_t nbytes = buf->medmsg.nBytes;
-        GASNETI_RUN_HANDLER_MEDIUM(isreq,handler_id,handler_fn,token,args,user_numargs,data,nbytes);
+        GASNETI_RUN_HANDLER_MEDIUM(isreq,handler_id,handler_fn,token,args,numargs,data,nbytes);
       }
       break;
 
@@ -535,10 +522,10 @@ void gasnetc_processPacket(gasnetc_cep_t *cep, gasnetc_rbuf_t *rbuf, uint32_t fl
 	size_t nbytes = buf->longmsg.nBytes & 0x7fffffff;
 	if (buf->longmsg.nBytes & 0x80000000) {
 	  /* Must relocate the payload which is packed like a Medium. */
-	  gasneti_assert(nbytes <= GASNETC_MAX_PACKEDLONG_(user_numargs));
-	  GASNETI_MEMCPY(data, GASNETC_MSG_LONG_DATA(buf, full_numargs), (size_t)nbytes);
+	  gasneti_assert(nbytes <= GASNETC_MAX_PACKEDLONG_(numargs));
+	  GASNETI_MEMCPY(data, GASNETC_MSG_LONG_DATA(buf, numargs), (size_t)nbytes);
 	}
-        GASNETI_RUN_HANDLER_LONG(isreq,handler_id,handler_fn,token,args,user_numargs,data,(size_t)nbytes);
+        GASNETI_RUN_HANDLER_LONG(isreq,handler_id,handler_fn,token,args,numargs,data,(size_t)nbytes);
       }
       break;
     default: gasneti_unreachable_error(("Invalid category in gasnetc_processPacket: 0x%x",(int)category));

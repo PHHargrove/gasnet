@@ -4284,7 +4284,7 @@ void gasnetc_am_commit(   gasnetc_buffer_t *buf, gasnetc_buffer_t *buf_alloc,
                           gex_AM_Index_t handler,
                           void *src_addr, size_t nbytes, void *dst_addr,
                           size_t head_len, size_t copy_len, size_t gath_len,
-                          int in_place, const int have_flow, int numargs,
+                          int in_place, int numargs,
                           gasnetc_atomic_val_t *local_cnt,
                           gasnetc_cb_t local_cb,
                           gasnetc_counter_t *counter, va_list argptr
@@ -4305,11 +4305,11 @@ void gasnetc_am_commit(   gasnetc_buffer_t *buf, gasnetc_buffer_t *buf_alloc,
       buf->medmsg.nBytes = nbytes;
       args = buf->medmsg.args;
       if (in_place) {
-        gasneti_assert_ptr(src_addr ,==, GASNETC_MSG_MED_DATA(buf, numargs + have_flow));
+        gasneti_assert_ptr(src_addr ,==, GASNETC_MSG_MED_DATA(buf, numargs));
         gasneti_assert_uint(copy_len ,==, nbytes);
       } else if (copy_len) {
         void *data = (void*)((uintptr_t)buf + head_len);
-        gasneti_assert_ptr(data ,==, GASNETC_MSG_MED_DATA(buf, numargs + have_flow));
+        gasneti_assert_ptr(data ,==, GASNETC_MSG_MED_DATA(buf, numargs));
         gasneti_assert_uint(copy_len ,==, nbytes);
         GASNETI_MEMCPY(data, src_addr, copy_len);
       }
@@ -4322,11 +4322,11 @@ void gasnetc_am_commit(   gasnetc_buffer_t *buf, gasnetc_buffer_t *buf_alloc,
         gasneti_assume(nbytes <= GASNETC_MAX_PACKEDLONG_(numargs));
         buf->longmsg.nBytes |= 0x80000000; /* IDs the packedlong case */
         if (in_place) {
-          gasneti_assert_ptr(src_addr ,==, GASNETC_MSG_LONG_DATA(buf, numargs + have_flow));
+          gasneti_assert_ptr(src_addr ,==, GASNETC_MSG_LONG_DATA(buf, numargs));
           gasneti_assert_uint(copy_len ,==, nbytes);
         } else if (copy_len) {
           void *data = (void*)((uintptr_t)buf + head_len);
-          gasneti_assert_ptr(data ,==, GASNETC_MSG_LONG_DATA(buf, numargs + have_flow));
+          gasneti_assert_ptr(data ,==, GASNETC_MSG_LONG_DATA(buf, numargs));
           gasneti_assert_uint(copy_len ,==, nbytes);
           GASNETI_MEMCPY(data, src_addr, copy_len);
         } else {
@@ -4339,19 +4339,18 @@ void gasnetc_am_commit(   gasnetc_buffer_t *buf, gasnetc_buffer_t *buf_alloc,
     default: gasneti_unreachable_error(("Invalid AM category: 0x%x",(int)category));
     }
    
-    /* Assemble an array of arguments. */
-    if (have_flow) {
-      /* credits travel packed in a "prefixed" argument, remaining args are shifted */
-
+    // piggy-back banked credits, if any
+    uint32_t credits = 0;
+    if (gasnetc_atomic_read(&(cep)->am_flow.credit, 0)) {
       /* "Grab" info w/ atomic load-and-clear: */
-      const uint32_t credits = gasnetc_atomic_swap(&cep->am_flow.credit, 0, 0);
+      credits = gasnetc_atomic_swap(&cep->am_flow.credit, 0, 0);
       gasneti_assume(credits <= 255);
-
-      args[0] = credits | ((numargs + 1) << 16);
 
       GASNETI_TRACE_PRINTF(C,("SND_AM_CREDITS credits=%d\n", credits));
     }
-    for (int i = have_flow; i < (numargs + have_flow); ++i) {
+
+    /* Assemble an array of arguments. */
+    for (int i = 0; i < numargs; ++i) {
       args[i] = va_arg(argptr, gex_AM_Arg_t);
     }
   
@@ -4359,9 +4358,8 @@ void gasnetc_am_commit(   gasnetc_buffer_t *buf, gasnetc_buffer_t *buf_alloc,
     {
       GASNETC_DECL_SR_DESC(sr_desc, 2);
       gasnetc_sreq_t *sreq;
-      int numargs_field = have_flow ? GASNETC_MAX_ARGS : numargs;
 
-      sr_desc->imm_data   = GASNETC_MSG_GENFLAGS(!is_reply, category, numargs_field, handler, 0);
+      sr_desc->imm_data   = GASNETC_MSG_GENFLAGS(!is_reply, category, numargs, handler, credits);
       sr_desc->opcode     = IBV_WR_SEND_WITH_IMM;
       sr_desc->num_sge    = 1;
       sr_desc->sg_list[0].addr   = (uintptr_t)buf;
@@ -4416,13 +4414,6 @@ int gasnetc_ReqRepGeneric(gasnetc_EP_t ep,
     gex_Flags_t immediate = flags & GEX_FLAG_IMMEDIATE;
     int fail_type = GASNETC_FAIL_IMM;
    
-    /* Reserve space for 1 extra argument if we *might* carry flow control
-     * data.  We need to know numargs before we allocate a large enough
-     * buffer, which could block and thus delay the credit update.  So, we
-     * allow a race where we allocate space, but later send only zeros.
-     */
-    const int have_flow = gasnetc_atomic_read(&(cep)->am_flow.credit, 0) ? 1 : 0;
-
     // Figure out lengths so we know if we can use inline or not.
     // Also starts Long payload Put if possible/necessary
     size_t head_len;     // Length of header (padded in case of Medium)
@@ -4430,7 +4421,7 @@ int gasnetc_ReqRepGeneric(gasnetc_EP_t ep,
     size_t gath_len = 0; // Length of payload to be sent using gather-on-send (if any)
     switch (category) {
     case gasneti_Short:
-      head_len = GASNETC_MSG_SHORT_ARGSEND(numargs + have_flow);
+      head_len = GASNETC_MSG_SHORT_ARGSEND(numargs);
 #if !GASNETC_ALLOW_0BYTE_MSG
       if (!head_len) head_len = 4; /* Mellanox bug (zero-length sends) work-around */
 #endif
@@ -4438,7 +4429,7 @@ int gasnetc_ReqRepGeneric(gasnetc_EP_t ep,
 
     case gasneti_Medium:
       /* XXX: When nbytes == 0 GASNETC_MSG_MED_ARGSEND still rounds up to 8-byte boundary */
-      head_len = GASNETC_MSG_MED_ARGSEND(numargs + have_flow);
+      head_len = GASNETC_MSG_MED_ARGSEND(numargs);
       if (gasnetc_am_use_gather(ep, src_addr, nbytes, local_cb)) {
         gath_len = nbytes;
       } else {
@@ -4447,7 +4438,7 @@ int gasnetc_ReqRepGeneric(gasnetc_EP_t ep,
       break;
 
     case gasneti_Long:
-      head_len = GASNETC_MSG_LONG_ARGSEND(numargs + have_flow);
+      head_len = GASNETC_MSG_LONG_ARGSEND(numargs);
       if ((nbytes <= gasnetc_packedlong_limit) || (!GASNETC_PIN_SEGMENT && is_reply)) {
         /* Small enough to send like a Medium (always true of Reply when using remote firehose) */
         if (gasnetc_am_use_gather(ep, src_addr, nbytes, local_cb)) {
@@ -4506,7 +4497,7 @@ int gasnetc_ReqRepGeneric(gasnetc_EP_t ep,
     // Build and send the message
     gasnetc_am_commit(buf, buf_alloc, category, is_reply, ep, cep,
                       handler, src_addr, nbytes, dst_addr,
-                      head_len, copy_len, gath_len, 0, have_flow, numargs,
+                      head_len, copy_len, gath_len, 0, numargs,
                       local_cnt, local_cb, counter, argptr
                       GASNETI_THREAD_PASS);
 
@@ -5070,15 +5061,12 @@ int gasnetc_prepare_common(
                        unsigned int            nargs
                        GASNETI_THREAD_FARG)
 {
-  // See gasnetc_ReqRepGeneric() for details
-  const int have_flow = gasnetc_atomic_read(&(cep)->am_flow.credit, 0) ? 1 : 0;
-
   size_t nbytes, head_len;
   switch (category) {
   #if GASNET_NATIVE_NP_ALLOC_REQ_MEDIUM || GASNET_NATIVE_NP_ALLOC_REP_MEDIUM
     case gasneti_Medium:
       nbytes = MIN(most_payload, GASNETC_MAX_MEDIUM_(nargs));
-      head_len = GASNETC_MSG_MED_ARGSEND(nargs + have_flow);
+      head_len = GASNETC_MSG_MED_ARGSEND(nargs);
       break;
   #endif
 
@@ -5092,7 +5080,7 @@ int gasnetc_prepare_common(
                                 : GASNETC_MAX_PACKEDLONG_(nargs);
     #endif
       nbytes = MIN(most_payload, limit);
-      head_len = GASNETC_MSG_LONG_ARGSEND(nargs + have_flow);
+      head_len = GASNETC_MSG_LONG_ARGSEND(nargs);
       break;
     }
   #endif
@@ -5116,7 +5104,6 @@ int gasnetc_prepare_common(
   sd->_lc_opt = lc_opt;
   sd->_size = nbytes;
   sd->_buf_alloc = buf_alloc;
-  sd->_have_flow = have_flow;
   sd->_head_len = head_len;
   sd->_cep = cep;
   if (client_buf) {
@@ -5221,7 +5208,7 @@ void gasnetc_commit_common(
                      sd->_ep,  sd->_cep,
                      handler, sd->_addr, nbytes, dest_addr,
                      sd->_head_len, copy_len, gath_len,
-                     !is_cbuf, sd->_have_flow, nargs,
+                     !is_cbuf, nargs,
                      local_cnt, local_cb, NULL, argptr
                      GASNETI_THREAD_PASS);
 

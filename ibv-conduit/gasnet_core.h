@@ -105,23 +105,19 @@ typedef struct {
 #define GASNETC_MEDIUM_HDRSZ	(8)
 #define GASNETC_LONG_HDRSZ	(SIZEOF_VOID_P + 8)
 
-#define GASNETC_MAX_ARGS_USER	16
-#define GASNETC_MAX_ARGS_EXTRA	1	/* For flow-control info */
-#define GASNETC_MAX_ARGS	(GASNETC_MAX_ARGS_USER + GASNETC_MAX_ARGS_EXTRA)
+#define GASNETC_MAX_ARGS     	16
 
 #define GASNETC_MAX_MEDIUM_(nargs) \
                (GASNETC_BUFSZ - \
-                GASNETI_ALIGNUP_NOASSERT(GASNETC_MEDIUM_HDRSZ + 4*(GASNETC_MAX_ARGS_EXTRA+(nargs)), \
-                                         8))
-#define GASNETC_MAX_MEDIUM	GASNETC_MAX_MEDIUM_(GASNETC_MAX_ARGS_USER)
+                GASNETI_ALIGNUP_NOASSERT(GASNETC_MEDIUM_HDRSZ + 4*(nargs), 8))
+#define GASNETC_MAX_MEDIUM	GASNETC_MAX_MEDIUM_(GASNETC_MAX_ARGS)
 
 #define GASNETC_MAX_LONG_REQ	(0x7fffffff)
 
 #define GASNETC_MAX_PACKEDLONG_(nargs) \
                (GASNETC_BUFSZ - \
-                GASNETI_ALIGNUP_NOASSERT(GASNETC_LONG_HDRSZ + 4*(GASNETC_MAX_ARGS_EXTRA+(nargs)), \
-                                         8))
-#define GASNETC_MAX_PACKEDLONG  GASNETC_MAX_PACKEDLONG_(GASNETC_MAX_ARGS_USER)
+                GASNETI_ALIGNUP_NOASSERT(GASNETC_LONG_HDRSZ + 4*(nargs), 8))
+#define GASNETC_MAX_PACKEDLONG  GASNETC_MAX_PACKEDLONG_(GASNETC_MAX_ARGS)
 
 #if GASNETC_PIN_SEGMENT
   #define GASNETC_MAX_LONG_REP	GASNETC_MAX_LONG_REQ
@@ -129,7 +125,7 @@ typedef struct {
   #define GASNETC_MAX_LONG_REP	GASNETC_MAX_PACKEDLONG
 #endif
 
-#define gex_AM_MaxArgs()          ((unsigned int)GASNETC_MAX_ARGS_USER)
+#define gex_AM_MaxArgs()          ((unsigned int)GASNETC_MAX_ARGS)
 #define gex_AM_LUBRequestMedium() ((size_t)GASNETC_MAX_MEDIUM)
 #define gex_AM_LUBReplyMedium()   ((size_t)GASNETC_MAX_MEDIUM)
 #define gex_AM_LUBRequestLong()   ((size_t)GASNETC_MAX_LONG_REQ)

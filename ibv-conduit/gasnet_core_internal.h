@@ -656,7 +656,8 @@ typedef enum {
  *   8-9: category
  * 10-14: numargs (5 bits, but only 0-GASNETC_MAX_ARGS are legal values)
  *    15: request (0) or reply (1)
- * 16-31: unused (was source rank)
+ * 16-23: credits (likely needs far fewer bits)
+ * 24-31: unused
  */
 
 #define GASNETC_MSG_HANDLERID(flags)    ((gex_AM_Index_t)(flags))
@@ -664,15 +665,16 @@ typedef enum {
 #define GASNETC_MSG_NUMARGS(flags)      (((flags) >> 10) & 0x1f)
 #define GASNETC_MSG_ISREPLY(flags)      ((flags) & (1<<15))
 #define GASNETC_MSG_ISREQUEST(flags)    (!GASNETC_MSG_ISREPLY(flags))
+#define GASNETC_MSG_CREDITS(flags)      ((flags) >> 16)
 
-#define GASNETC_MSG_GENFLAGS(isreq, cat, nargs, hand, unused)   \
- (gasneti_assume((unused) == 0),                \
+#define GASNETC_MSG_GENFLAGS(isreq, cat, nargs, hand, credits) \
+ (gasneti_assume(0 == ((credits) & ~0xff)),     \
   gasneti_assert(0 == ((nargs)  & ~0x1f)),      \
   gasneti_assert(0 == ((cat)    & ~3)),         \
   gasneti_assert((nargs) <= GASNETC_MAX_ARGS),  \
   (uint32_t)(  ((nargs)   << 10        )        \
              | ((isreq)   ? 0 : (1<<15))        \
-             | ((unused)  << 16        )        \
+             | ((credits) << 16        )        \
              | ((cat)     << 8         )        \
              | ((hand)                 )))
 

@@ -120,7 +120,6 @@
 #endif
 
 #define GASNETI_AM_SRCDESC_EXTRA \
-        int                 _have_flow;         \
         int                 _head_len;          \
         void *              _buf_alloc;         \
         void *              _cep;               \
