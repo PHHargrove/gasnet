@@ -31,6 +31,8 @@ GASNet-EX ChangeLog
 
 * Platform support/portability
   - Improved support for GCC 11 by suppressing spurious warnings.
+  - This release introduces identification of the NVHPC compiler family, as a
+    prerequisite for anticipated support for this compiler in a future release.
 
 * Notable bugs fixed in this release: (details at https://gasnet-bugs.lbl.gov)
   - bug3936: Problems with multi-rail and GASNET_{AM_CREDITS,NETWORKDEPTH}_PP
