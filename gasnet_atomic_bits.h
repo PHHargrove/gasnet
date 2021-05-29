@@ -212,7 +212,6 @@
      * + gcc: on most platforms (including Linux, Darwin and Solaris) defines __PIC__ when building
      *      position independent code (e.g. -fPIC or -fpic; not passed -mdynamic-no-pic on Darwin).
      * + pathcc: same as gcc
-     * + nvhpc: same as gcc
      * MANUAL WORK AROUND:
      * + pgcc: no distinguishing macro when passed -fPIC, so no automatic work-around available
      * JUST WORKS:
@@ -220,12 +219,14 @@
      * + open64: mimics gcc, but is able to schedule %ebx so no work-around is needed
      * + llvm-gcc: mimics gcc, but is able to schedule %ebx so no work-around is needed
      * + Sun cc: use of specials doesn't encounter the problem
+     * NOT APPLICABLE:
+     * + nvhpc: only generates LP64 ABI (PLATFORM_ARCH_64), not ILP32 (PLATFORM_ARCH_32)
      *
      * Bottom line is that we recommend YOUR_PIC_CFLAGS="-fPIC -DGASNETI_FORCE_PIC",
      * replacing "-fPIC" with your compiler-specific flag(s) as needed.
      */
   #if ((PLATFORM_COMPILER_GNU && !defined(__llvm__)) || \
-       PLATFORM_COMPILER_PATHSCALE || PLATFORM_COMPILER_PGI || PLATFORM_COMPILER_HVHPC) && \
+       PLATFORM_COMPILER_PATHSCALE || PLATFORM_COMPILER_PGI) && \
        ((defined(__PIC__) && !defined(GASNETI_CONFIGURED_PIC)) || defined(GASNETI_FORCE_PIC))
       /* Disable use of %ebx when building PIC, but only on affected compilers. */
       #define GASNETI_USE_X86_EBX 0
