@@ -30,7 +30,8 @@ typedef struct my_MK_s {
   hipDevice_t        dev;
 } *my_MK_t;
 
-// TODO: HIP lacks a cuGetErrorName replacement
+// HIP lacks a cuGetErrorName replacement
+// TODO? Is there _anything_ better to offer than the numeric error codes
 #define GASNETI_HIPRESULT_FMT        "%d"
 #define GASNETI_HIPRESULT_ARG(res)   (res)
 
@@ -44,6 +45,90 @@ typedef struct my_MK_s {
     }                                               \
   } while (0)
 
+static gasneti_mk_impl_t *get_impl(void);
+
+//
+// Class-specific MK_Create
+//
+int gasneti_MK_Create_hip(
+            gasneti_MK_t                     *i_memkind_p,
+            gasneti_Client_t                 client,
+            const gex_MK_Create_args_t       *args,
+            gex_Flags_t                      flags)
+{
+  hipDevice_t dev = args->gex_args.gex_class_hip.gex_hipDevice;
+  GASNETI_TRACE_PRINTF(O,("gex_MK_Create: class=HIP gex_hipDevice=%d", dev));
+
+  if (dev < 0) {
+    // This is always treated as programmer error
+    gasneti_fatalerror("gex_MK_Create called with negative hipDevice_t=%i", dev);
+  }
+
+#if PLATFORM_OS_LINUX && GASNET_CONDUIT_IBV
+ #if GASNETI_HIP_PLATFORM_NVCC
+  // Look for NVIDIA GDR support
+  const char *filename = "/sys/kernel/mm/memory_peers/nv_mem/version";
+ #else
+  // Look for AMD GDR support (AMD Kernel Fusion Driver == amdkfd).
+  const char *filename = "/sys/kernel/mm/memory_peers/amdkfd/version";
+ #endif
+  if (access(filename, F_OK)) {
+    // TODO: gracefully fall back to "reference implementation",
+    // once one is available, rather than failing.
+    GASNETI_RETURN_ERRR(BAD_ARG,"GEX_MK_CLASS_HIP: kernel lacks GPUDirect RDMA support");
+  }
+#endif
+
+  // Obtain the primary context for the given device, initializing if needed
+  hipCtx_t ctx;
+  hipError_t res = hipDevicePrimaryCtxRetain(&ctx, dev);
+  if (res == hipErrorNotInitialized) {
+    int initRes = hipInit(0);
+    if (initRes == hipSuccess) {
+      res = hipDevicePrimaryCtxRetain(&ctx, dev);
+    } else if (initRes == hipErrorNoDevice) {
+      GASNETI_RETURN_ERRR(BAD_ARG,"GEX_MK_CLASS_HIP: no HIP devices found");
+    } else {
+      const char *msg = gasneti_dynsprintf("GEX_MK_CLASS_HIP: hipInit() returned %i", initRes);
+      GASNETI_RETURN_ERRR(BAD_ARG,msg);
+    }
+  }
+
+  // Failed to obtain the primary context, try to reason out why
+  // TODO: explicit diagnosis of more failure cases
+  if_pf (res != hipSuccess) {
+    const char *why = "unknown failure";
+    if (res == hipErrorInvalidDevice) {
+      int dev_count;
+      if (hipGetDeviceCount(&dev_count)) {
+        why = "hipGetDeviceCount() failed";
+      } else if (! dev_count) {
+        why = "no HIP devices found";
+      } else {
+        why = gasneti_dynsprintf("invalid hipDevice_t=%i (%d devices found)", dev, dev_count);
+      }
+    } else {
+      why = gasneti_dynsprintf("hipDevicePrimaryCtxRetain() returned %i", res);
+    }
+    const char *msg = gasneti_dynsprintf("GEX_MK_CLASS_HIP: %s", why);
+    GASNETI_RETURN_ERRR(BAD_ARG,msg);
+  }
+
+  my_MK_t result = (my_MK_t) gasneti_alloc_mk(client, get_impl(), flags);
+  result->dev = dev;
+  result->ctx = ctx;
+
+#if 0 // TODO: enable if HIP has equivalent of CU_POINTER_ATTRIBUTE_SYNC_MEMOPS
+  result->use_sync_memops = gasneti_getenv_yesno_withdefault("GASNET_USE_HIP_SYNC_MEMOPS", 1);
+#endif
+
+  *i_memkind_p = (gasneti_MK_t) result;
+  return GASNET_OK;
+}
+
+//
+// Class-specific MK_Destroy
+//
 static void gasneti_MK_Destroy_hip(
             gasneti_MK_t                     i_mk,
             gex_Flags_t                      flags)
@@ -53,6 +138,9 @@ static void gasneti_MK_Destroy_hip(
   gasneti_free_mk(i_mk);
 }
 
+//
+// Class-specific Segment_Create
+//
 static int gasneti_MK_Segment_Create_hip(
             gasneti_Segment_t                *i_segment_p,
             gasneti_MK_t                     i_mk,
@@ -143,82 +231,4 @@ static gasneti_mk_impl_t *get_impl(void) {
   gasneti_assert(result);
   return result;
 }
-
-// Class-specific create
-int gasneti_MK_Create_hip(
-            gasneti_MK_t                     *i_memkind_p,
-            gasneti_Client_t                 client,
-            const gex_MK_Create_args_t       *args,
-            gex_Flags_t                      flags)
-{
-  hipDevice_t dev = args->gex_args.gex_class_hip.gex_hipDevice;
-  GASNETI_TRACE_PRINTF(O,("gex_MK_Create: class=HIP gex_hipDevice=%d", dev));
-
-  if (dev < 0) {
-    // This is always treated as programmer error
-    gasneti_fatalerror("gex_MK_Create called with negative hipDevice_t=%i", dev);
-  }
-
-#if PLATFORM_OS_LINUX && GASNET_CONDUIT_IBV
- #if GASNETI_HIP_PLATFORM_NVCC
-  // Look for NVIDIA GDR support
-  const char *filename = "/sys/kernel/mm/memory_peers/nv_mem/version";
- #else
-  // Look for AMD GDR support (AMD Kernel Fusion Driver == amdkfd).
-  const char *filename = "/sys/kernel/mm/memory_peers/amdkfd/version";
- #endif
-  if (access(filename, F_OK)) {
-    // TODO: gracefully fall back to "reference implementation",
-    // once one is available, rather than failing.
-    GASNETI_RETURN_ERRR(BAD_ARG,"GEX_MK_CLASS_HIP: kernel lacks GPUDirect RDMA support");
-  }
-#endif
-
-  // Obtain the primary context for the given device, initializing if needed
-  hipCtx_t ctx;
-  hipError_t res = hipDevicePrimaryCtxRetain(&ctx, dev);
-  if (res == hipErrorNotInitialized) {
-    int initRes = hipInit(0);
-    if (initRes == hipSuccess) {
-      res = hipDevicePrimaryCtxRetain(&ctx, dev);
-    } else if (initRes == hipErrorNoDevice) {
-      GASNETI_RETURN_ERRR(BAD_ARG,"GEX_MK_CLASS_HIP: no HIP devices found");
-    } else {
-      const char *msg = gasneti_dynsprintf("GEX_MK_CLASS_HIP: hipInit() returned %i", initRes);
-      GASNETI_RETURN_ERRR(BAD_ARG,msg);
-    }
-  }
-
-  // Failed to obtain the primary context, try to reason out why
-  // TODO: explicit diagnosis of more failure cases
-  if_pf (res != hipSuccess) {
-    const char *why = "unknown failure";
-    if (res == hipErrorInvalidDevice) {
-      int dev_count;
-      if (hipGetDeviceCount(&dev_count)) {
-        why = "hipGetDeviceCount() failed";
-      } else if (! dev_count) {
-        why = "no HIP devices found";
-      } else {
-        why = gasneti_dynsprintf("invalid hipDevice_t=%i (%d devices found)", dev, dev_count);
-      }
-    } else {
-      why = gasneti_dynsprintf("hipDevicePrimaryCtxRetain() returned %i", res);
-    }
-    const char *msg = gasneti_dynsprintf("GEX_MK_CLASS_HIP: %s", why);
-    GASNETI_RETURN_ERRR(BAD_ARG,msg);
-  }
-
-  my_MK_t result = (my_MK_t) gasneti_alloc_mk(client, get_impl(), flags);
-  result->dev = dev;
-  result->ctx = ctx;
-
-#if 0 // TODO: enable if HIP has equivalent of CU_POINTER_ATTRIBUTE_SYNC_MEMOPS
-  result->use_sync_memops = gasneti_getenv_yesno_withdefault("GASNET_USE_HIP_SYNC_MEMOPS", 1);
-#endif
-
-  *i_memkind_p = (gasneti_MK_t) result;
-  return GASNET_OK;
-}
-
 #endif
