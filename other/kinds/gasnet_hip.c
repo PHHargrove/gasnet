@@ -92,10 +92,9 @@ static int gasneti_MK_Segment_Create_hip(
     to_free = addr;
   }
 
-#if 0 // TODO: port to HIP or remove
+#if 0
   if (kind->use_sync_memops) {
-    int one = 1;
-    gasneti_check_hipcall(cuPointerSetAttribute(&one, CU_POINTER_ATTRIBUTE_SYNC_MEMOPS, dptr));
+    // TODO: if HIP has equivalent of CU_POINTER_ATTRIBUTE_SYNC_MEMOPS, apply it here
   }
 #endif
 
@@ -137,6 +136,8 @@ static gasneti_mk_impl_t *get_impl(void) {
       result = &the_impl;
     }
     gasneti_mutex_unlock(&lock);
+  } else {
+    gasneti_sync_reads();
   }
 
   gasneti_assert(result);
@@ -212,10 +213,8 @@ int gasneti_MK_Create_hip(
   result->dev = dev;
   result->ctx = ctx;
 
-#if 0 // TODO: port to HIP or remove
-  // TODO: could be a per-device setting?
-  // TODO: is '1' the best default?
-  result->use_sync_memops = gasneti_getenv_yesno_withdefault("GASNET_USE_CUDA_SYNC_MEMOPS", 1);
+#if 0 // TODO: enable if HIP has equivalent of CU_POINTER_ATTRIBUTE_SYNC_MEMOPS
+  result->use_sync_memops = gasneti_getenv_yesno_withdefault("GASNET_USE_HIP_SYNC_MEMOPS", 1);
 #endif
 
   *i_memkind_p = (gasneti_MK_t) result;
