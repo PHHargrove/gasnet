@@ -4735,6 +4735,20 @@ GASNET_IF_ENABLED(memory-kinds,
         [Prototype support for memory kinds (transfers to/from device memory).  Enables default auto-detection of all device type applicable to the target platform.  Individual --enable-kind-* options have precedence.],
         [enable_mk_default=probe], [enable_mk_default=no])
 
+# This is potentially used CUDA_UVA and by HIP
+# So we'll factor it to avoid repeats in ouptut
+unset checked_pkg_cuda
+AC_DEFUN([CHECK_PKG_CUDA],[
+  if test "${checked_pkg_cuda-unset}" = unset; then
+    checked_pkg_cuda=y
+    GASNET_PACKAGE_HOME(CUDA, [CUDA toolkit], [nvcc], [/usr/local/cuda], [include/cuda.h])
+    GASNET_PACKAGE_CFLAGS(CUDA)
+    GASNET_ENV_DEFAULT(CUDA_LIBS, -lcuda)
+    GASNET_PACKAGE_LDFLAGS(CUDA, cuda)
+    GASNET_SPLIT_LINKER_OPTS(CUDA_LDFLAGS,CUDA_LIBS)
+  fi
+])
+
 # GEX_MK_CLASS_CUDA_UVA
 GASNET_IF_ENABLED_WITH_AUTO(kind-cuda-uva,
         [Support for memory kinds on UVA-capable CUDA devices (auto-detected with --enable-memory-kinds, otherwise disabled)],
@@ -4770,11 +4784,7 @@ if test "$enable_mk_cuda_uva" != "no"; then
 
   if test "$have_mk_cuda_uva" != "no"; then
     # TODO: Can/should we scrape nvcc as UPC++ does?
-    GASNET_PACKAGE_HOME(CUDA, [CUDA toolkit], [nvcc], [/usr/local/cuda], [include/cuda.h])
-    GASNET_PACKAGE_CFLAGS(CUDA)
-    GASNET_ENV_DEFAULT(CUDA_LIBS, -lcuda)
-    GASNET_PACKAGE_LDFLAGS(CUDA, cuda)
-    GASNET_SPLIT_LINKER_OPTS(CUDA_LDFLAGS,CUDA_LIBS)
+    CHECK_PKG_CUDA()
 
     # Try to compile and link a basic program using the CUDA Driver API
     GASNET_PUSHVAR(CFLAGS,"$CFLAGS $CUDA_CFLAGS")
@@ -4873,8 +4883,8 @@ if test "$enable_mk_hip" != "no"; then
     GASNET_ENV_DEFAULT(HIP_LIBS, -lamdhip64)
     GASNET_PACKAGE_LDFLAGS(HIP, amdhip64)
 
-    # UNDOCUMENTED option to enable use of HIP over CUDA *by GASNet developers*.
-    # TODO:  REMOVE or DOCUMENT
+    # UNDOCUMENTED option to enable use of HIP over CUDA *by GASNet maintainers*.
+    # TODO:  Eventually we should REMOVE or DOCUMENT
     hip_platform=hcc
     GASNET_WITH_NOHELP(hip-platform, [
       case "$withval" in
@@ -4885,10 +4895,13 @@ if test "$enable_mk_hip" != "no"; then
     case "$hip_platform" in
       hcc)  AC_DEFINE(GASNETI_HIP_PLATFORM_HCC)
             ;;
-      nvcc) GASNET_PACKAGE_HOME(CUDA, [CUDA toolkit], [nvcc], [/usr/local/cuda], [include/cuda.h])
-            HIP_LIBS="$HIP_LIBS -lcudart -lcuda"
-            HIP_LDFLAGS="$HIP_LDFLAGS -L${CUDA_HOME}/lib64"
-            HIP_CFLAGS="$HIP_CFLAGS -I${CUDA_HOME}/include"
+      nvcc) CHECK_PKG_CUDA()
+            GASNET_TRY_WNO_FLAG([C],[-Wno-deprecated-declarations],
+                                [HIP_NVCC_WARNFLAGS="-Wno-deprecated-declarations"],
+                                [unset HIP_NVCC_WARNFLAGS])
+            HIP_LIBS="$HIP_LIBS -lcudart $CUDA_LIBS"
+            HIP_LDFLAGS="$HIP_LDFLAGS $CUDA_LDFLAGS"
+            HIP_CFLAGS="$HIP_CFLAGS $CUDA_CFLAGS $HIP_NVCC_WARNFLAGS"
             AC_DEFINE(GASNETI_HIP_PLATFORM_NVCC)
             ;;
     esac
