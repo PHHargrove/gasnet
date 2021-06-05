@@ -155,11 +155,10 @@ int main(int argc, char **argv)
       hipCtx_t ctx;
       check_hipcall( hipDevicePrimaryCtxRetain(&ctx, 0) );
 
-      hipDeviceptr_t dptr;
       uint8_t *client_gpu = NULL;
       if (client_segment) {
-        check_hipcall( hipMalloc(&dptr, TEST_SEGSZ_REQUEST) );
-        client_gpu = (uint8_t *) dptr;
+        check_hipcall( hipMalloc((void**) &client_gpu, TEST_SEGSZ_REQUEST) );
+        assert_always(client_gpu != NULL);
       }
 
       GASNET_Safe( gex_MK_Create(&kind, myclient, &args, 0) );
@@ -190,10 +189,10 @@ int main(int argc, char **argv)
 // Case 1. Put - local host to remote gpu
       gex_RMA_PutBlocking(LH_RG, peer, rem_gpu, array1, len, 0);
       BARRIER();
-      hipMemcpyDtoH(tmp, loc_gpu, len);
+      hipMemcpyDtoH(tmp, (hipDeviceptr_t)loc_gpu, len);
       if (memcmp(tmp, array1, len)) {
          ERR("Case 1 verification failed");
-         hipMemcpyHtoD(loc_gpu, array1, len);
+         hipMemcpyHtoD((hipDeviceptr_t)loc_gpu, array1, len);
       } else {
          MSG("Case 1 verification passed");
       }
@@ -211,22 +210,22 @@ int main(int argc, char **argv)
 // Case 3. Put - local gpu to remote gpu
       gex_RMA_PutBlocking(LG_RG, peer, rem_gpu+len, loc_gpu, len, 0);
       BARRIER();
-      hipMemcpyDtoH(tmp, loc_gpu+len, len);
+      hipMemcpyDtoH(tmp, (hipDeviceptr_t)(loc_gpu+len), len);
       if (memcmp(tmp, array1, len)) {
          ERR("Case 3 verification failed");
-         hipMemcpyHtoD(loc_gpu+len, array1, len);
+         hipMemcpyHtoD((hipDeviceptr_t)(loc_gpu+len), array1, len);
       } else {
          MSG("Case 3 verification passed");
       }
 
 // Case 4. Get - remote gpu to local gpu
-      hipMemcpyHtoD(loc_gpu, array2, len);
+      hipMemcpyHtoD((hipDeviceptr_t)loc_gpu, array2, len);
       BARRIER();
       gex_RMA_GetBlocking(LG_RG, loc_gpu+len, peer, rem_gpu, len, 0);
-      hipMemcpyDtoH(tmp, loc_gpu+len, len);
+      hipMemcpyDtoH(tmp, (hipDeviceptr_t)(loc_gpu+len), len);
       if (memcmp(tmp, array2, len)) {
          ERR("Case 4 verification failed");
-         hipMemcpyHtoD(loc_gpu+len, array2, len);
+         hipMemcpyHtoD((hipDeviceptr_t)(loc_gpu+len), array2, len);
       } else {
          MSG("Case 4 verification passed");
       }
