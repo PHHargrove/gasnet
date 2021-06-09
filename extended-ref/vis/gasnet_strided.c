@@ -8,6 +8,11 @@
   #error This file not meant to be compiled directly - included by gasnet_refvis.c
 #endif
 
+#if PLATFORM_COMPILER_NVHPC && GASNET_NDEBUG && 0
+  // Optimization at -O2 or above yields multiple errors
+  #pragma global opt 1
+#endif
+
 /*---------------------------------------------------------------------------------*/
 /* *** GASNet-EX Strided Implementation *** */
 /*---------------------------------------------------------------------------------*
@@ -50,6 +55,11 @@
   #pragma clang diagnostic push
   #pragma clang diagnostic ignored "-Wconstant-logical-operand"
 #endif
+
+static void GASNETE_CHECK_PACK(gex_AM_Arg_t hiword, gex_AM_Arg_t loword) {
+  gasneti_assert_always(hiword != 0);
+  gasneti_assert_always(hiword != -1);
+}
 
 /* helper macros */
 /* increment the values in init[0..(stridelevels-1)] by incval chunks, 
@@ -786,6 +796,8 @@ gex_Event_t gasnete_puts_AMPipeline(gasneti_vis_smd_t * const smd,
     // send packet
     gasneti_assert_uint(stridelevels ,==, (size_t)(uint32_t)(gex_AM_Arg_t)stridelevels);
     gasneti_assert_uint(chunksz ,==,      (size_t)(uint32_t)(gex_AM_Arg_t)chunksz);
+    gasneti_boundscheck(tm,rank,dstaddr,chunksz);
+    GASNETE_CHECK_PACK(PACK(dstaddr));
     #define ARGS PACK(op), PACK(dstaddr), stridelevels, chunksz
     #if GASNETE_VIS_NPAM == 0
       gex_AM_RequestMedium(tm, rank, gasneti_handleridx(gasnete_puts_AMPipeline1_reqh),
@@ -896,6 +908,8 @@ gex_Event_t gasnete_puts_AMPipeline(gasneti_vis_smd_t * const smd,
     gasneti_assert_uint(stridelevels ,==, (size_t)(uint32_t)(gex_AM_Arg_t)stridelevels);
     gasneti_assert_uint(chunksz ,==,      (size_t)(uint32_t)(gex_AM_Arg_t)chunksz);
     gasneti_assert_uint(packetchunks ,==, (size_t)(uint32_t)(gex_AM_Arg_t)packetchunks);
+    gasneti_boundscheck(tm,rank,dstaddr,chunksz);
+    GASNETE_CHECK_PACK(PACK(dstaddr));
     #define ARGS PACK(iop), PACK(dstaddr), stridelevels, chunksz, packetchunks
     #if GASNETE_VIS_NPAM == 0
       gex_AM_RequestMedium(tm, rank, gasneti_handleridx(gasnete_puts_AMPipeline_reqh),
@@ -925,6 +939,12 @@ void gasnete_puts_AMPipeline1_reqh_inner(gex_Token_t token,
   ptrdiff_t const * const packetstrides = (ptrdiff_t*)(packetcount + stridelevels);
   void const      * const packedbuf =     packetstrides + stridelevels;
 
+  int32_t hiword = GASNETI_HIWORD(dstaddr);
+  gasneti_assert_always(hiword != 0);
+  gasneti_assert_always(hiword != -1);
+  gasneti_boundscheck(gasneti_THUNK_TM,gasneti_mynode,dstaddr,chunksz);
+  gasneti_assert_always_uint(stridelevels ,>, 0); gasneti_assert_always_uint(stridelevels ,<, 20);
+
   // unpack data into destination
   uint8_t const * psrc = packedbuf;
   #if GASNET_DEBUG
@@ -934,6 +954,9 @@ void gasnete_puts_AMPipeline1_reqh_inner(gex_Token_t token,
     gasneti_assert_uint(psrc - (uint8_t*)addr + packetchunks * chunksz ,==, nbytes);
   #endif
   #define GASNETE_STRIDED_HELPER_LOOPBODY(p1,p2) do { \
+     gasneti_boundscheck(gasneti_THUNK_TM,gasneti_mynode,p1,chunksz); \
+     gasneti_assert_always_ptr(psrc ,>=, packedbuf); \
+     gasneti_assert_ptr(psrc ,<,  (uint8_t*)packedbuf + packetchunks * chunksz); \
      GASNETI_MEMCPY(p1, psrc, chunksz); psrc += chunksz; \
   } while (0)
     GASNETE_1STRIDED_HELPER(stridelevels, SITER_ARRAY(packetcount),
@@ -977,10 +1000,19 @@ void gasnete_puts_AMPipeline_reqh_inner(gex_Token_t token,
   ptrdiff_t const * const packetstrides = (ptrdiff_t*)(packetcount + stridelevels);
   void const      * const packedbuf =     packetstrides + stridelevels;
 
+  int32_t hiword = GASNETI_HIWORD(dstaddr);
+  gasneti_assert_always(hiword != 0);
+  gasneti_assert_always(hiword != -1);
+  gasneti_boundscheck(gasneti_THUNK_TM,gasneti_mynode,dstaddr,chunksz);
+  gasneti_assert_always_uint(stridelevels ,>, 0); gasneti_assert_always_uint(stridelevels ,<, 20);
+
   // unpack data into destination
   uint8_t const * psrc = packedbuf;
   gasneti_assert_uint(psrc - (uint8_t*)addr + packetchunks * chunksz ,==, nbytes);
   #define GASNETE_STRIDED_HELPER_LOOPBODY(p1,p2) do { \
+     gasneti_boundscheck(gasneti_THUNK_TM,gasneti_mynode,p1,chunksz); \
+     gasneti_assert_always_ptr(psrc ,>=, packedbuf); \
+     gasneti_assert_always_ptr(psrc ,<,  (uint8_t*)packedbuf + packetchunks * chunksz); \
      GASNETI_MEMCPY(p1, psrc, chunksz); psrc += chunksz; \
   } while (0)
     GASNETE_STRIDED_HELPER_DECLARE_PARTIAL(packetchunks, packetinit, 0, 0);
@@ -1117,6 +1149,8 @@ gex_Event_t gasnete_gets_AMPipeline(gasneti_vis_smd_t * const smd,
   if (smd->totalsz <= maxpayload) { // optimized single-packet case
     gasneti_weakatomic_set(&(visop->packetcnt), 1, GASNETI_ATOMIC_WMB_POST);
 
+    gasneti_boundscheck(tm,rank,srcaddr,chunksz);
+    GASNETE_CHECK_PACK(PACK(srcaddr));
     gex_AM_RequestMedium(tm, rank, gasneti_handleridx(gasnete_gets_AMPipeline_reqh),
                       header, headersz, GEX_EVENT_NOW, 0,
                       PACK(visop), PACK(srcaddr), PACK((uintptr_t)0), stridelevels, chunksz, totalchunks);
@@ -1133,6 +1167,8 @@ gex_Event_t gasnete_gets_AMPipeline(gasneti_vis_smd_t * const smd,
       size_t const remaining = totalchunks - initchunk;
       size_t const packetchunks = MIN(chunksperpacket, remaining);
       gasneti_assert_uint(packetchunks ,==, (size_t)(uint32_t)(gex_AM_Arg_t)packetchunks);
+      gasneti_boundscheck(tm,rank,srcaddr,chunksz);
+      GASNETE_CHECK_PACK(PACK(srcaddr));
       gex_AM_RequestMedium(tm, rank, gasneti_handleridx(gasnete_gets_AMPipeline_reqh),
                       header, headersz, GEX_EVENT_GROUP, 0,
                       PACK(visop), PACK(srcaddr), PACK((uintptr_t)initchunk), stridelevels, chunksz, packetchunks);
@@ -1172,6 +1208,12 @@ void gasnete_gets_AMPipeline_reqh_inner(gex_Token_t token,
   size_t  * const packetinit = replybase;
   uint8_t * const packedbuf = (uint8_t*)(packetinit + stridelevels);
 
+  int32_t hiword = GASNETI_HIWORD(srcaddr);
+  gasneti_assert_always(hiword != 0);
+  gasneti_assert_always(hiword != -1);
+  gasneti_boundscheck(gasneti_THUNK_TM,gasneti_mynode,srcaddr,chunksz);
+  gasneti_assert_always_uint(stridelevels ,>, 0); gasneti_assert_always_uint(stridelevels ,<, 20);
+
   // compute starting position
   memset(packetinit, 0, stridelevels*sizeof(size_t));
   GASNETE_STRIDED_VECTOR_INC(packetinit, initchunk, SITER_ARRAY(packetcount), stridelevels);
@@ -1179,6 +1221,9 @@ void gasnete_gets_AMPipeline_reqh_inner(gex_Token_t token,
   // gather data payload from source into packet
   uint8_t *pbuf = packedbuf;
   #define GASNETE_STRIDED_HELPER_LOOPBODY(p1,p2) do { \
+     gasneti_boundscheck(gasneti_THUNK_TM,gasneti_mynode,p1,chunksz); \
+     gasneti_assert_always_ptr(pbuf ,>=, packedbuf); \
+     gasneti_assert_always_ptr(pbuf ,<,  packedbuf + packetchunks * chunksz); \
      GASNETI_MEMCPY(pbuf, p1, chunksz); pbuf += chunksz; \
   } while (0)
       GASNETE_STRIDED_HELPER_DECLARE_PARTIAL(packetchunks, packetinit, 0, 0);
