@@ -415,6 +415,23 @@ void gasnetc_counter_wait(gasnetc_counter_t *counter, int handler_context GASNET
 #define GASNETC_USE_SEND_SIGNALLED GASNETC_USE_FENCED_PUTS
 
 /* ------------------------------------------------------------------------------------ */
+// Optional per-cq serialization of calls to ibv_poll_cq()
+
+#ifndef GASNETC_SERIALIZE_POLL_CQ
+  #define GASNETC_SERIALIZE_POLL_CQ GASNETC_ANY_PAR
+#endif
+#if GASNETC_SERIALIZE_POLL_CQ
+  #define GASNETC_POLL_CQ_UP(hca,sndrcv) \
+          gasnetc_atomic_set(&((hca)->poll_cq_semas.sndrcv),0,0)
+  #define GASNETC_POLL_CQ_TRYDOWN(hca,sndrcv) \
+          (gasnetc_atomic_read(&((hca)->poll_cq_semas.sndrcv),0) || \
+           !gasnetc_atomic_compare_and_swap(&((hca)->poll_cq_semas.sndrcv),0,1,0))
+#else
+  #define GASNETC_POLL_CQ_UP(hca,sndrcv)    do {} while (0)
+  #define GASNETC_POLL_CQ_TRYDOWN(hca,sndrcv)   (0)
+#endif
+
+/* ------------------------------------------------------------------------------------ */
 
 /* Description of a pre-pinned memory region */
 typedef struct {
@@ -505,6 +522,16 @@ typedef struct {
  #if GASNETI_THREADINFO_OPT
   gasnet_threadinfo_t       rcv_threadinfo;
  #endif
+#endif
+
+#if GASNETC_SERIALIZE_POLL_CQ
+  struct {
+    char pad0[GASNETI_CACHE_LINE_BYTES];
+    gasnetc_atomic_t snd;
+    char pad1[GASNETI_CACHE_LINE_BYTES - sizeof(gasnetc_atomic_t)];
+    gasnetc_atomic_t rcv;
+    char pad2[GASNETI_CACHE_LINE_BYTES - sizeof(gasnetc_atomic_t)];
+  } poll_cq_semas;
 #endif
 } gasnetc_hca_t;
 
