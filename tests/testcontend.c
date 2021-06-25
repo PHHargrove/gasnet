@@ -275,6 +275,7 @@ threadcnt_t *tcount;
 void *workerthread(void *args) {
   int fnidx;
   int mythread = ARG2THREAD(args);
+  gasnett_set_affinity(mythread);
   for (fnidx = 0; fnidx < NUM_FUNC; fnidx++) {
     int tcountpos;
 
@@ -360,11 +361,11 @@ int main(int argc, char **argv) {
         if (myrank == 0) {
           MSG("Running testcontend with 1..%i threads and %i iterations", maxthreads, iters);
         }
-        tcountentries = 3 * maxthreads;
+        tcountentries = maxthreads;
         tcount = test_malloc(tcountentries * sizeof(threadcnt_t));
         ptcount = tcount;
-        for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = i; ptcount->passivecnt = 1; ptcount++; }
-        for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = 1; ptcount->passivecnt = i; ptcount++; }
+        //for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = i; ptcount->passivecnt = 1; ptcount++; }
+        //for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = 1; ptcount->passivecnt = i; ptcount++; }
         for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = i; ptcount->passivecnt = i; ptcount++; }
         peer = (myrank + 1) % numranks;
         amactive = (myrank % 2 == 0);
