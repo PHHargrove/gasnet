@@ -646,14 +646,13 @@ static int gasnete_ibdbarrier_wait(gasnete_coll_team_t team, int id, int flags) 
     /* completed asynchronously before wait (via progressfns or try) */
     GASNETI_TRACE_EVENT_TIME(B,BARRIER_ASYNC_COMPLETION,GASNETI_TICKS_NOW_IFENABLED(B)-gasnete_barrier_notifytime);
   } else {
-    /* kick once, and if still necessary, wait for a response */
-    gasnete_ibdbarrier_kick(team);
-    /* cannot BLOCKUNTIL since progess may occur on non-AM events */
-    while (barrier_data->barrier_state < barrier_data->barrier_goal) {
-      GASNETI_WAITHOOK();
-      GASNETI_SAFE(gasneti_AMPoll());
-      gasnete_ibdbarrier_kick(team);
-    }
+    // kick once (eliding AMPoll), and if still necessary, wait for a response
+    goto first;
+    GASNETC_SPIN_WHILE_INNER(
+        (barrier_data->barrier_state < barrier_data->barrier_goal),
+        { GASNETI_SAFE(gasneti_AMPoll());
+          first: gasnete_ibdbarrier_kick(team);
+        });
   }
   gasneti_sync_reads(); /* ensure correct barrier_flags will be read */
 

@@ -194,6 +194,47 @@ extern gasneti_atomic_t gasnetc_exit_running;
 
 /* ------------------------------------------------------------------------------------ */
 
+// For use following an initial check of 'cond'
+#define GASNETC_SPIN_WHILE_INNER(cond, body) \
+  while (1) {                      \
+     body;                         \
+     if (!(cond)) break;           \
+     GASNETI_WAITHOOK();           \
+  }
+
+// General purpose, includes peeling off the initial check of `cond`
+#define GASNETC_SPIN_WHILE(cond, body) \
+  do {                                      \
+    if (cond) {                             \
+      GASNETC_SPIN_WHILE_INNER(cond, body); \
+    }                                       \
+  } while (0)
+
+// General pupose case, plus tracing of a stalled time
+#if GASNETI_STATS_OR_TRACE
+  #define GASNETC_SPIN_WHILE_TRACE(cond, type, name, body) \
+    do {                                                                    \
+      if (cond) {                                                           \
+        gasneti_tick_t _waitstart = GASNETI_TICKS_NOW_IFENABLED(type);      \
+        GASNETC_SPIN_WHILE_INNER(cond, body);                               \
+        GASNETI_TRACE_EVENT_TIME(type,name,gasneti_ticks_now()-_waitstart); \
+      }                                                                     \
+    } while (0)
+#else
+  #define GASNETC_SPIN_WHILE_TRACE(cond, type, name, body) \
+          GASNETC_SPIN_WHILE(cond, body)
+#endif
+
+// As above, but negating the condition
+#define GASNETC_SPIN_UNTIL_INNER(cond, body) \
+        GASNETC_SPIN_WHILE_INNER(!(cond), body)
+#define GASNETC_SPIN_UNTIL(cond, body) \
+        GASNETC_SPIN_WHILE(!(cond), body)
+#define GASNETC_SPIN_UNTIL_TRACE(cond, type, name, body) \
+        GASNETC_SPIN_WHILE_TRACE(!(cond), type, name, body)
+
+/* ------------------------------------------------------------------------------------ */
+
 #define GASNETC_ARGSEND_AUX(s,nargs) gasneti_offsetof(s,args[nargs])
 
 typedef struct {
