@@ -348,8 +348,10 @@ static int gasnete_conduit_rdmabarrier(const char *barrier, gasneti_auxseg_reque
 
 typedef struct {
   // Read/write data (note that struct is allocated cache-aligned)
-#if GASNETC_ANY_PAR
+#if GASNETI_THREADS
   gasnete_rmdbarrier_lock_t barrier_lock;
+#endif
+#if GASNETC_ANY_PAR
   char _pad0[GASNETI_CACHE_PAD(sizeof(gasnete_rmdbarrier_lock_t))];
 #endif
   int volatile barrier_state; /*  (step << 1) | phase, where step is 1-based (0 is pshm notify) */
