@@ -707,9 +707,9 @@ static int gasnetc_snd_reap(int limit) {
   gasneti_assert(limit <= GASNETC_SND_REAP_LIMIT);
 
   for (count = 0; count < limit; ++count) {
-    if (GASNETC_POLL_CQ_TRYDOWN(hca, snd)) break;
+    if (GASNETC_POLL_CQ_TRYDOWN_SND(hca)) break;
     int rc = ibv_poll_cq(hca->snd_cq, 1, &comp);
-    GASNETC_POLL_CQ_UP(hca, snd);
+    GASNETC_POLL_CQ_UP_SND(hca);
     if_pt (rc == 0) {
       /* CQ empty - we are done */
       break;
@@ -1071,9 +1071,9 @@ static int gasnetc_rcv_reap(gasnetc_hca_t *hca, const int limit, gasnetc_rbuf_t 
   int count;
 
   for (count = 0; count < limit; ++count) {
-    if (GASNETC_POLL_CQ_TRYDOWN(hca, rcv)) break;
+    if (GASNETC_POLL_CQ_TRYDOWN_RCV(hca)) break;
     int rc = ibv_poll_cq(hca->rcv_cq, 1, &comp);
-    GASNETC_POLL_CQ_UP(hca, rcv);
+    GASNETC_POLL_CQ_UP_RCV(hca);
     if_pt (rc == 0) {
       /* CQ empty - we are done */
       break;

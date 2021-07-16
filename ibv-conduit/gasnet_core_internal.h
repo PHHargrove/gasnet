@@ -421,15 +421,19 @@ void gasnetc_counter_wait(gasnetc_counter_t *counter, int handler_context GASNET
   #define GASNETC_SERIALIZE_POLL_CQ GASNETC_ANY_PAR
 #endif
 #if GASNETC_SERIALIZE_POLL_CQ
-  #define GASNETC_POLL_CQ_UP(hca,sndrcv) \
-          gasnetc_atomic_set(&((hca)->poll_cq_semas.sndrcv),0,0)
-  #define GASNETC_POLL_CQ_TRYDOWN(hca,sndrcv) \
-          (gasnetc_atomic_read(&((hca)->poll_cq_semas.sndrcv),0) || \
-           !gasnetc_atomic_compare_and_swap(&((hca)->poll_cq_semas.sndrcv),0,1,0))
+  #define GASNETC_POLL_CQ_UP(sema_p) \
+          gasnetc_atomic_set((sema_p),0,0)
+  #define GASNETC_POLL_CQ_TRYDOWN(sema_p) \
+          (gasnetc_atomic_read((sema_p),0) || \
+           !gasnetc_atomic_compare_and_swap((sema_p),0,1,0))
 #else
-  #define GASNETC_POLL_CQ_UP(hca,sndrcv)    do {} while (0)
-  #define GASNETC_POLL_CQ_TRYDOWN(hca,sndrcv)   (0)
+  #define GASNETC_POLL_CQ_UP(sema_p)        do {} while (0)
+  #define GASNETC_POLL_CQ_TRYDOWN(sema_p)   (0)
 #endif
+#define GASNETC_POLL_CQ_UP_SND(hca)      GASNETC_POLL_CQ_UP(&((hca)->poll_cq_semas.snd))
+#define GASNETC_POLL_CQ_UP_RCV(hca)      GASNETC_POLL_CQ_UP(&((hca)->poll_cq_semas.rcv))
+#define GASNETC_POLL_CQ_TRYDOWN_SND(hca) GASNETC_POLL_CQ_TRYDOWN(&((hca)->poll_cq_semas.snd))
+#define GASNETC_POLL_CQ_TRYDOWN_RCV(hca) GASNETC_POLL_CQ_TRYDOWN(&((hca)->poll_cq_semas.rcv))
 
 /* ------------------------------------------------------------------------------------ */
 
