@@ -426,6 +426,11 @@ void gasnetc_counter_wait(gasnetc_counter_t *counter, int handler_context GASNET
   #define GASNETC_POLL_CQ_TRYDOWN(sema_p) \
           (gasnetc_atomic_read((sema_p),0) || \
            !gasnetc_atomic_compare_and_swap((sema_p),0,1,0))
+
+  #if GASNETC_USE_RCV_THREAD
+    extern int gasnetc_rcv_thread_poll_serialize;
+    extern int gasnetc_rcv_thread_poll_exclusive;
+  #endif
 #else
   #define GASNETC_POLL_CQ_UP(sema_p)        do {} while (0)
   #define GASNETC_POLL_CQ_TRYDOWN(sema_p)   (0)
@@ -456,6 +461,9 @@ typedef struct {
     /* Initialized by client: */
     void                    (*fn)(struct ibv_wc *, void *);
     void                    *fn_arg;
+  #if GASNETC_SERIALIZE_POLL_CQ
+    gasnetc_atomic_t        *serialize_poll;
+  #endif
   } gasnetc_progress_thread_t;
 #else
   typedef void gasnetc_progress_thread_t;

@@ -63,6 +63,10 @@ int					gasnetc_am_credits_slack;
 int					gasnetc_am_credits_slack_orig;
 int					gasnetc_alloc_qps;
 int					gasnetc_num_qps;
+#if GASNETC_USE_RCV_THREAD && GASNETC_SERIALIZE_POLL_CQ
+int                                     gasnetc_rcv_thread_poll_serialize = 1;
+int                                     gasnetc_rcv_thread_poll_exclusive = 0;
+#endif
 
 #if GASNETC_PIN_SEGMENT
   // Rkeys for non-primordial remote EPs
@@ -3038,6 +3042,14 @@ extern void gasnetc_sndrcv_start_thread(void) {
       if (rcv_max_rate > 0) {
         hca->rcv_thread.min_ns = ((uint64_t)1E9) / rcv_max_rate;
       }
+    #if GASNETC_SERIALIZE_POLL_CQ
+      gasneti_assert(!gasnetc_rcv_thread_poll_exclusive || !gasnetc_rcv_thread_poll_serialize);
+      if (gasnetc_rcv_thread_poll_exclusive) {
+        gasneti_waitwhile( GASNETC_POLL_CQ_TRYDOWN_RCV(hca) );
+      } else if (gasnetc_rcv_thread_poll_serialize) {
+        hca->rcv_thread.serialize_poll = &hca->poll_cq_semas.rcv;
+      }
+    #endif
     #if GASNETI_THREADINFO_OPT
       hca->rcv_threadinfo = NULL;
     #endif
@@ -3054,6 +3066,11 @@ extern void gasnetc_sndrcv_stop_thread(int block) {
       /* stop the RCV thread if we have started it */
       if (hca->rcv_thread.fn == gasnetc_rcv_thread) {
         gasnetc_stop_progress_thread(&hca->rcv_thread, block);
+      #if GASNETC_SERIALIZE_POLL_CQ
+        if (gasnetc_rcv_thread_poll_exclusive) {
+          GASNETC_POLL_CQ_UP_RCV(hca);
+        }
+      #endif
       }
     }
   }

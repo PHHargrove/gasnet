@@ -57,6 +57,9 @@ static void * gasnetc_progress_thread(void *arg)
   void (* const fn)(struct ibv_wc *, void *)= pthr_p->fn;
   void * const fn_arg                       = pthr_p->fn_arg;
   const uint64_t min_ns                     = pthr_p->min_ns;
+#if GASNETC_SERIALIZE_POLL_CQ
+  gasnetc_atomic_t * serialize_poll         = pthr_p->serialize_poll;
+#endif
   int fd = compl_hndl->fd;
   fd_set readfds;
 
@@ -77,7 +80,19 @@ static void * gasnetc_progress_thread(void *arg)
     struct ibv_wc comp;
     int rc;
 
-    rc = ibv_poll_cq(cq_hndl, 1, &comp);
+  #if GASNETC_SERIALIZE_POLL_CQ
+    if (serialize_poll) {
+      if (GASNETC_POLL_CQ_TRYDOWN(serialize_poll)) {
+        GASNETI_WAITHOOK();
+        continue;
+      }
+      rc = ibv_poll_cq(cq_hndl, 1, &comp);
+      GASNETC_POLL_CQ_UP(serialize_poll);
+    } else
+  #endif
+    {
+      rc = ibv_poll_cq(cq_hndl, 1, &comp);
+    }
     if (rc == 1) {
       gasneti_assert((comp.opcode == IBV_WC_RECV) ||
 		     (comp.status != IBV_WC_SUCCESS));
