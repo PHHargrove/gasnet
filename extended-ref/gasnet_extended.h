@@ -204,6 +204,7 @@ void _gex_Event_WaitAll(gex_Event_t *_pevent, size_t _numevents, gex_Flags_t _fl
   GASNETI_TRACE_WAITSYNC_BEGIN();
   gasnete_wait_all(_pevent, _numevents GASNETI_THREAD_PASS);
   GASNETI_TRACE_WAITSYNC_END(WAIT_SYNCNB_ALL);
+gasneti_local_rmb();
 }
 #define gex_Event_WaitAll(pevent, numevents, flags) \
        _gex_Event_WaitAll(pevent, numevents, flags GASNETI_THREAD_GET)

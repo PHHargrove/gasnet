@@ -144,8 +144,10 @@ extern gasnete_coll_eop_t gasnete_coll_eop_create(GASNETI_THREAD_FARG_ALONE) {
 extern void gasnete_coll_eop_signal(gasnete_coll_eop_t eop GASNETI_THREAD_FARG) {
   gasneti_assert(eop != NULL);
   gasneti_mutex_assertlocked(&gasnete_coll_active_lock);
-#if GASNET_PAR
+#if GASNETI_THREADS
   gasneti_sync_writes();
+#endif
+#if GASNET_PAR
   for (gasnete_coll_eop_t curr = eop; ; curr = curr->next) {
     gasneti_eop_markdone(GASNETE_COLL_REAL_EOP(curr));
     if (! curr->next) {
@@ -230,7 +232,7 @@ void gasnete_coll_sync_saved_events(GASNETI_THREAD_FARG_ALONE) {
  * So, we retain a mutex in (only) DEBUG buils to avoid bit-rot in callers.
  */
 
-#if GASNET_PAR && GASNET_DEBUG
+#if GASNETI_THREADS && GASNET_DEBUG
   void gasnete_coll_threads_lock(gasnete_coll_team_t team, int flags GASNETI_THREAD_FARG) {
     gasneti_mutex_lock(&team->threads_mutex);
   }
@@ -1343,6 +1345,7 @@ gasnete_coll_op_generic_init_with_scratch(gasnete_coll_team_t team, int flags,
     op->num_coll_params = num_params;
     GASNETI_MEMCPY_SAFE_EMPTY(op->param_list, param_list, sizeof(uint32_t)*num_params);
 
+gasneti_sync_writes();
     gasnete_coll_op_submit(op, result GASNETI_THREAD_PASS);
     return GASNETE_COLL_EOP_TO_EVENT(result);
 }
@@ -2296,6 +2299,8 @@ gasnete_tm_generic_reduce_nb(gex_TM_t tm, gex_Rank_t root, void *dst, const void
   gasnet_team_handle_t team = gasneti_import_tm_nonpair(tm)->_coll_team;
   gex_Event_t result;
 
+gasneti_local_wmb();
+
   gasnete_coll_threads_lock(team, coll_flags GASNETI_THREAD_PASS);
 
   gasnete_coll_generic_data_t *data = gasnete_coll_generic_alloc(GASNETI_THREAD_PASS_ALONE);
@@ -2404,9 +2409,11 @@ gasnete_tm_reduce_nb_default(
     const gex_Rank_t max_radix = geom->max_radix;
     if ((nbytes * max_radix <= smallest_scratch) && (nbytes <= gex_AM_LUBRequestLong())) {
       alg = &gasnete_tm_reduce_TreePut;
-    } else if ((dt_sz * (max_radix + 1) <= smallest_scratch) && (dt_sz <= gex_AM_LUBRequestLong())) {
+    } else
+    if ((dt_sz * (max_radix + 1) <= smallest_scratch) && (dt_sz <= gex_AM_LUBRequestLong())) {
       alg = &gasnete_tm_reduce_TreePutSeg;
-    } else if ((dt_sz * binomial_root_radix <= team->p2p_eager_buffersz) &&
+    } else
+    if ((dt_sz * binomial_root_radix <= team->p2p_eager_buffersz) &&
                (dt_sz <= gex_AM_LUBRequestMedium())) {
       alg = &gasnete_tm_reduce_BinomialEagerSeg;
     } else {
@@ -2447,6 +2454,8 @@ gasnete_tm_generic_reduce_all_nb(
 {
   gasnet_team_handle_t team = gasneti_import_tm_nonpair(tm)->_coll_team;
   gex_Event_t result;
+
+gasneti_local_wmb();
 
   gasnete_coll_threads_lock(team, coll_flags GASNETI_THREAD_PASS);
 

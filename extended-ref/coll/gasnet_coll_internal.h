@@ -312,7 +312,7 @@ struct gasnete_coll_team_t_ {
   // Count of collectives on NO_SCRATCH teams
   int no_scratch_count;
 
-#if GASNET_PAR && GASNET_DEBUG
+#if GASNETI_THREADS && GASNET_DEBUG
   gasneti_mutex_t threads_mutex;
 #endif
   
@@ -1012,7 +1012,7 @@ gasnete_coll_op_generic_init_with_scratch(gasnete_coll_team_t team, int flags,
 extern int gasnete_coll_generic_syncnb(gasnete_coll_generic_data_t *data);
 
 // TODO-EX: to be replaced with multi-EP equivalents:
-#if GASNET_PAR && GASNET_DEBUG
+#if GASNETI_THREADS && GASNET_DEBUG
   extern void gasnete_coll_threads_lock(gasnete_coll_team_t team, int flags GASNETI_THREAD_FARG);
   extern void gasnete_coll_threads_unlock(gasnete_coll_team_t team GASNETI_THREAD_FARG);
 #else

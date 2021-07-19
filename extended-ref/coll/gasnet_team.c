@@ -132,7 +132,7 @@ static void initialize_team_fields(
   }
   team->myscratch = team->scratch_size ? (void *)gasnete_coll_scratch_base(team, team->myrank) : NULL;
 
-#if GASNET_PAR && GASNET_DEBUG
+#if GASNETI_THREADS && GASNET_DEBUG
   gasneti_mutex_init(&team->threads_mutex);
 #endif
 #if GASNET_DEBUG

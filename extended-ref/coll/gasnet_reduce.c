@@ -115,6 +115,7 @@ void *local_reduce_helper(
                         gex_Rank_t child_cnt,
                         const void *src, void *buffer)
 {
+gasneti_sync_reads();
   gex_Coll_ReduceFn_t const op_fnptr = args->op_fnptr;
   void * const op_cdata = args->op_cdata;
   const void *prev = src;
@@ -125,6 +126,7 @@ void *local_reduce_helper(
     curr = (void*)(stride + (uintptr_t)curr);
   }
   gasneti_assert(!child_cnt || prev == gasnete_coll_scale_ptr(buffer, child_cnt-1, stride));
+gasneti_sync_writes();
   return (/*non const*/ void*)prev;
 }
 
@@ -172,6 +174,7 @@ static int gasnete_coll_pf_tm_reduce_BinomialEager(gasnete_coll_op_t *op GASNETI
       // Data movement, either local or first try to parent
       if (! rel_rank) { // I am root
         GASNETI_MEMCPY(args->dst, payload, nbytes);
+gasneti_sync_writes();
         goto done;
       }
       flags = GEX_FLAG_IMMEDIATE;
@@ -325,6 +328,7 @@ static int gasnete_coll_pf_tm_reduce_BinomialEagerSeg(gasnete_coll_op_t *op GASN
       if (! pdata->rel_rank) { // I am root
         void *dst = (void *)(pdata->offset + (uintptr_t)args->dst);
         GASNETI_MEMCPY(dst, pdata->payload, pdata->curr_len);
+gasneti_sync_writes();
       } else {
         // Stall for parent's clear-to-send
         if (p2p->state[pdata->width] != pdata->phase) break;
@@ -438,7 +442,7 @@ GASNETE_TM_DECLARE_REDUCE_ALG(BinomialEagerSeg)
 /*---------------------------------------------------------------------------------*/
 
 // GEX Reduce-to-one via Long AMs into scratch space on a tree
-static int gasnete_coll_pf_tm_reduce_TreePut(gasnete_coll_op_t *op GASNETI_THREAD_FARG) {
+static int gasnete_coll_pf_tm_reduce_TreePut(gasnete_coll_op_t *op GASNETI_THREAD_FARG) { //QQQ
   gex_TM_t const tm = op->e_tm;
   gasnete_coll_generic_data_t *data = op->data;
   const gasnete_tm_reduce_args_t *args = GASNETE_COLL_GENERIC_ARGS(data, tm_reduce);
@@ -446,6 +450,14 @@ static int gasnete_coll_pf_tm_reduce_TreePut(gasnete_coll_op_t *op GASNETI_THREA
   gex_Flags_t flags = 0; // TODO-EX: GEX_FLAG_SELF_SEG_SOME (scratch resides in client or aux seg)
   void *payload;
   int result = 0;
+gasneti_sync_reads();
+
+static void *prev=NULL;
+void *curr = (void*)pthread_self();
+if (curr != prev) {
+  gasneti_console_message("PF","th %p st %d",curr,data->state);
+  prev = curr;
+}
 
   gasneti_assert(p2p != NULL);
   gasneti_assert(p2p->state != NULL);
@@ -459,6 +471,7 @@ static int gasnete_coll_pf_tm_reduce_TreePut(gasnete_coll_op_t *op GASNETI_THREA
   switch (data->state) {
     case 0:     // Wait for scratch allocation
       if (!gasnete_coll_scratch_alloc_nb(op GASNETI_THREAD_PASS)) {
+//gasneti_console_message("PF", "%d: break 0", op->sequence);
         break;
       }
       data->state = 1; GASNETI_FALLTHROUGH
@@ -466,6 +479,7 @@ static int gasnete_coll_pf_tm_reduce_TreePut(gasnete_coll_op_t *op GASNETI_THREA
     case 1: {   // Wait for arrival of data from children, if any
       volatile uint32_t *state = p2p->state;
       for (gex_Rank_t r = 0; r < child_cnt; ++r) {
+//gasneti_console_message("PF", "%d: break 1:%d/%d", op->sequence, r, child_cnt);
         if (! state[r]) return 0; // At least one child has not contributed their value
       } 
       gasneti_sync_reads();
@@ -486,6 +500,7 @@ static int gasnete_coll_pf_tm_reduce_TreePut(gasnete_coll_op_t *op GASNETI_THREA
       // Data movement, either local or first try to parent
       if (myrank == args->root) {
         GASNETI_MEMCPY(args->dst, payload, nbytes);
+gasneti_sync_writes();
         goto done;
       }
       flags |= GEX_FLAG_IMMEDIATE;
@@ -505,6 +520,7 @@ static int gasnete_coll_pf_tm_reduce_TreePut(gasnete_coll_op_t *op GASNETI_THREA
                                         destaddr, payload, nbytes,
                                         GEX_EVENT_NOW, flags, offset, 1
                                         GASNETI_THREAD_PASS)) {
+//gasneti_console_message("PF", "%d: break 3", op->sequence);
         break; // back pressure
       }
     }
@@ -514,6 +530,7 @@ static int gasnete_coll_pf_tm_reduce_TreePut(gasnete_coll_op_t *op GASNETI_THREA
       gasnete_coll_free_scratch(op);
       gasnete_coll_generic_free(team, data GASNETI_THREAD_PASS);
       result = (GASNETE_COLL_OP_COMPLETE | GASNETE_COLL_OP_INACTIVE);
+gasneti_sync_writes();
       break;
 
     default: gasneti_unreachable();
@@ -709,6 +726,7 @@ static int gasnete_coll_pf_tm_reduce_TreePutSeg(gasnete_coll_op_t *op GASNETI_TH
       if (parent == GEX_RANK_INVALID) {
         void *dst = (void *)(pdata->offset + (uintptr_t)args->dst);
         GASNETI_MEMCPY(dst, pdata->put_src, pdata->curr_len);
+gasneti_sync_writes();
       } else {
         // Wait for parent's clear-to-send and sync of previous parent send
         gex_Rank_t dest_slot = p2p->state[0];

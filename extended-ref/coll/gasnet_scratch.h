@@ -65,6 +65,10 @@ struct gasnete_coll_scratch_req_t_ {
 GASNETI_INLINE(gasnete_coll_scratch_alloc_req) GASNETI_MALLOC
 gasnete_coll_scratch_req_t *gasnete_coll_scratch_alloc_req(gasnete_coll_team_t team)
 {
+#if 1
+  gasnete_coll_scratch_req_t *scratch_req = gasneti_calloc(1,sizeof(gasnete_coll_scratch_req_t));
+  scratch_req->team = team;
+#else
   gasnete_coll_scratch_req_t *scratch_req = gasneti_lifo_pop(&team->scratch_free_list);
   if_pf (! scratch_req) {
     scratch_req = gasneti_calloc(1,sizeof(gasnete_coll_scratch_req_t));
@@ -72,13 +76,18 @@ gasnete_coll_scratch_req_t *gasnete_coll_scratch_alloc_req(gasnete_coll_team_t t
   } else {
     gasneti_assert(scratch_req->team == team);
   }
+#endif
   return scratch_req;
 }
 GASNETI_INLINE(gasnete_coll_scratch_free_req)
 void gasnete_coll_scratch_free_req(gasnete_coll_scratch_req_t *scratch_req)
 {
+#if 1
+  gasneti_free(scratch_req);
+#else
   gasnete_coll_team_t team = scratch_req->team;
   gasneti_lifo_push(&team->scratch_free_list, scratch_req);
+#endif
 }
 
 void gasnete_coll_scratch_req_purge(gasnete_coll_team_t team);
