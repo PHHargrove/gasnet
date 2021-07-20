@@ -117,6 +117,19 @@ int main(int argc, char **argv)
   MSG0("Running HIP non-local xfer tests with size %lu, PRNG seed %d, and %s-allocated GPU segment",
        (unsigned long)len, seed, client_segment ? "client" : "GASNet");
 
+  const char *hvd = getenv("HIP_VISIBLE_DEVICES"); // Intentionally NOT gasnet_getenv()
+  if (hvd) {
+    MSG("HIP_VISIBLE_DEVICES='%s'", hvd);
+  } else {
+    MSG("HIP_VISIBLE_DEVICES is unset");
+  }
+  const char *rvd = getenv("ROCR_VISIBLE_DEVICES"); // Intentionally NOT gasnet_getenv()
+  if (rvd) {
+    MSG("ROCR_VISIBLE_DEVICES='%s'", rvd);
+  } else {
+    MSG("ROCR_VISIBLE_DEVICES is unset");
+  }
+
   TEST_BCAST(&seed, 0, &seed, sizeof(seed));
   TEST_SRAND(seed);
   for (size_t i = 0; i < len; ++i) {
@@ -152,6 +165,7 @@ int main(int argc, char **argv)
       GASNET_Safe( gex_EP_PublishBoundSegment(myteam, NULL, 0, 0) );
       for (int i = 0; i < 4; ++i) BARRIER(); // currently exactly one per case
     } else {
+      MSG("hipGetDeviceCount reports %d devices", count);
       hipCtx_t ctx;
       check_hipcall( hipDevicePrimaryCtxRetain(&ctx, 0) );
 
