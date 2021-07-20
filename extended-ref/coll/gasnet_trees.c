@@ -903,7 +903,7 @@ gasnete_coll_local_tree_geom_t *gasnete_coll_local_tree_geom_fetch(gasnete_coll_
       team->tree_geom_cache_tail = curr_geom;
     } else {
       curr_geom->prev = NULL; /* new head */
-      curr_geom->next = team->geom_cache_head;
+      curr_geom->next = geom_cache_head;
       geom_cache_head->prev = curr_geom;
       team->tree_geom_cache_head = curr_geom;
     }
