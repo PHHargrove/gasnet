@@ -16,7 +16,7 @@
 *************************************************************/
 
 #include <gasnetex.h>
-#if GASNET_HAVE_MK_CLASS_CUDA_UVA || GASNET_HAVE_MK_CLASS_HIP
+#if GASNET_HAVE_MK_CLASS_MULTIPLE
   #include <gasnet_mk.h>
 #endif
 
@@ -341,12 +341,14 @@ int main(int argc, char **argv)
       // UNDOCUMENTED
       } else if (!strcmp(argv[arg], "-cuda-uva")) {
         use_cuda_uva = 1;
+        use_hip = 0;
         ++arg;
 #endif
 #if GASNET_HAVE_MK_CLASS_HIP
       // UNDOCUMENTED
       } else if (!strcmp(argv[arg], "-hip")) {
         use_hip = 1;
+        use_cuda_uva = 0;
         ++arg;
 #endif
       } else if (argv[arg][0] == '-') {
@@ -425,7 +427,7 @@ int main(int argc, char **argv)
     tgtmem = (numprocs > 1) ? TEST_SEG(peerproc)
                             : (void*)(alignup(maxsz,PAGESZ) + (uintptr_t)myseg);
 
-#if GASNET_HAVE_MK_CLASS_CUDA_UVA || GASNET_HAVE_MK_CLASS_HIP
+#if GASNET_HAVE_MK_CLASS_MULTIPLE
     gex_EP_t gpu_ep;
     gex_MK_t kind;
     gex_Segment_t d_segment = GEX_SEGMENT_INVALID;
@@ -433,22 +435,18 @@ int main(int argc, char **argv)
     args.gex_flags = 0;
     int use_device = 0;
 
-  #if GASNET_HAVE_MK_CLASS_CUDA_UVA
     if (use_cuda_uva) {
       MSG0("***NOTICE***: Using EXPERIMENTAL support for CUDA UVA remote memory");
       args.gex_class = GEX_MK_CLASS_CUDA_UVA;
       args.gex_args.gex_class_cuda_uva.gex_CUdevice = 0;
       use_device = 1;
     }
-  #endif
-  #if GASNET_HAVE_MK_CLASS_HIP
     if (use_hip) {
       MSG0("***NOTICE***: Using EXPERIMENTAL support for HIP remote memory");
       args.gex_class = GEX_MK_CLASS_HIP;
       args.gex_args.gex_class_hip.gex_hipDevice = 0;
       use_device = 1;
     }
-  #endif
 
     if (use_device) {
       test_static_assert(GASNET_MAXEPS >= 2);
