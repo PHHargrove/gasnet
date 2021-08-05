@@ -4846,7 +4846,7 @@ AM_CONDITIONAL(HAVE_MK_CLASS_CUDA_UVA, test "$have_mk_cuda_uva" = "yes")
 
 # GEX_MK_CLASS_HIP
 GASNET_IF_ENABLED_WITH_AUTO(kind-hip,
-        [support for memory kinds on HIP-compatible devices with unified addressing (auto-detected with --enable-memory-kinds, otherwise disabled)],
+        [support for memory kinds on HIP-compatible devices (auto-detected with --enable-memory-kinds, otherwise disabled)],
         [enable_mk_hip="yes"; force_mk_hip="yes"],
         [enable_mk_hip="no"], [
          if test "x$enable_kind_hip" = 'xprobe'; then
@@ -4867,7 +4867,7 @@ if test "$enable_mk_hip" != "no"; then
     have_mk_hip=no
     case "$target_cpu:$target_os" in
       x86_64:linux*)    have_mk_hip='yes';;
-      powerpc*:linux*)  if test "$WORDS_BIGENDIAN" = '0'; then have_mk_hip='maybe'; fi;;
+      powerpc*:linux*)  have_mk_hip='maybe';;
       aarch64:linux*)   have_mk_hip='maybe';;
     esac
     if test "$have_mk_hip" = 'no'; then
