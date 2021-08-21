@@ -20,6 +20,12 @@
 #define GASNET_CONDUIT_NAME_STR  _STRINGIFY(GASNET_CONDUIT_NAME)
 #define GASNET_CONDUIT_UCX 1
 
+#if defined(GASNET_SEGMENT_FAST) || defined(GASNET_SEGMENT_LARGE)
+#define GASNETC_PIN_SEGMENT 1
+#else
+#define GASNETC_PIN_SEGMENT 0
+#endif
+
 #define GASNETC_MAX_MED             4096
 #define GASNETC_MAX_MEDIUM_NBRHD    GASNETC_MAX_MED
 
@@ -129,8 +135,10 @@
 //#define GASNETC_TM_FINI_HOOK(i_tm) (###)
 //#define GASNETC_SIZEOF_TM_T() (###)
 
-//#define GASNETC_EP_EXTRA_DECLS (###)
-//#define GASNETC_EP_INIT_HOOK(i_ep) (###)
+#define GASNETC_EP_EXTRA_DECLS \
+  extern int gasnetc_ep_init_hook(gasneti_EP_t);
+#define GASNETC_EP_INIT_HOOK(i_ep) \
+  gasnetc_ep_init_hook(i_ep)
 //#define GASNETC_EP_FINI_HOOK(i_ep) (###)
 //#define GASNETC_SIZEOF_EP_T() (###)
 
@@ -145,7 +153,7 @@
 // of all other settings (appropriate for conduits without multi-ep support).
 // If set, GASNETC_MAXEPS_MAX it is used to limit a user's --with-maxeps (and a
 // global default limit is used otherwise).
-//#define GASNETC_MAXEPS_DFLT ### // default num endpoints this conduit supports, undef means no multi-ep support
+#define GASNETC_MAXEPS_DFLT 33 // Initial (limited) multi-EP support
 //#define GASNETC_MAXEPS_MAX ### // leave unset for default
 
   /* this can be used to add conduit-specific 
