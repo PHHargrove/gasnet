@@ -306,123 +306,162 @@ gasnetc_segment_register(void *seg_start, size_t segsize)
   return mem_info;
 }
 
-// TBD: hoist this *into* gasneti_blockingExchange()?
-static void
-gasnetc_segment_exchange_helper(gex_TM_t tm, void *src, size_t len, void *dst)
-{
-  if (tm) {
-    gasneti_blockingExchange(tm, src, len, dst);
-  } else {
-    gasneti_bootstrapExchange(src, len, dst);
-  }
-}
-
-// TODO: multi-ep generalizations
+// Exchange client segment info
 static int
-gasnetc_segment_exchange(gasnetc_mem_info_t* mem_info, gex_TM_t tm)
+gasnetc_segment_exchange(gex_TM_t tm, gex_EP_t *eps, size_t num_eps)
 {
-  gex_Rank_t team_size = (tm != GEX_TM_INVALID) ? gex_TM_QuerySize(tm) : gasneti_nodes;
-
-  // identify max rkey size
-  // TODO: reduce-to-all in O(log(N)) time and O(1) storage
-  size_t rkey_max_size = mem_info ? mem_info->bsize : 0;
-  size_t *rkey_sizes = gasneti_calloc(team_size, sizeof(size_t));
-  gasnetc_segment_exchange_helper(tm, &rkey_max_size, sizeof(rkey_max_size), rkey_sizes);
-  for (gex_Rank_t i = 0; i < team_size; i++) {
-    rkey_max_size = MAX(rkey_max_size, rkey_sizes[i]);
+  // Count/allocate local space
+  size_t local_bytes = 0;
+  for (gex_Rank_t i = 0; i < num_eps; ++i) {
+    gasnetc_Segment_t segment = (gasnetc_Segment_t) gasneti_import_ep(eps[i])->_segment;
+    if (!segment) continue;
+    gasnetc_mem_info_t* mem_info = segment->mem_info;
+    gasneti_assert(mem_info);
+    gasneti_assert(mem_info->bsize < UINT16_MAX);
+    if (!mem_info->length) continue;
+    local_bytes += sizeof(gex_EP_Location_t)   // (jobrank,ep_index)
+                 + sizeof(uint16_t)            // bsize
+                 + mem_info->bsize;            // buffer
   }
-  gasneti_free(rkey_sizes);
+  void *local = gasneti_malloc(local_bytes);
 
-  /* pack my mem map info */
-  size_t mem_info_len =
-      /* len */ sizeof(uint64_t)
-      + /* addr */ sizeof(void *)
-      + /* rkey size */ sizeof(uint64_t) // TODO: cannot imagine multi-GB rkeys!
-      + /* rkey buf */ rkey_max_size;
-  void * mem_info_buf = gasneti_calloc(1, mem_info_len);
-  size_t info_offset = 0;
-
-  if (mem_info) {
-    gasneti_mem_pack(mem_info_buf, &mem_info->length, sizeof(uint64_t),
-                     0, info_offset);
-    gasneti_mem_pack(mem_info_buf, &mem_info->addr, sizeof(void *),
-                     0, info_offset);
-    gasneti_mem_pack(mem_info_buf, &mem_info->bsize, sizeof(uint64_t),
-                     0, info_offset);
-    gasneti_mem_pack(mem_info_buf, mem_info->buffer, mem_info->bsize,
-                     rkey_max_size, info_offset);
+  // Pack
+  size_t offset = 0;
+  for (gex_Rank_t i = 0; i < num_eps; ++i) {
+    gasnetc_Segment_t segment = (gasnetc_Segment_t) gasneti_import_ep(eps[i])->_segment;
+    if (! segment) continue;
+    gasnetc_mem_info_t* mem_info = segment->mem_info;
+    gasneti_assert(mem_info);
+    uint16_t bsize = mem_info->bsize;
+    if (!bsize) continue;
+    gex_EP_Location_t loc;
+    loc.gex_rank = gasneti_mynode;
+    loc.gex_ep_index = gex_EP_QueryIndex(eps[i]);
+    gasneti_mem_pack(local, &loc,              sizeof(loc),     0, offset);
+    gasneti_mem_pack(local, &bsize,            sizeof(bsize),   0, offset);
+    gasneti_mem_pack(local, mem_info->buffer,  mem_info->bsize, 0, offset);
   }
 
-  char * recv_buf = gasneti_malloc(mem_info_len * team_size);
+  // Exchange
+  void *global;
+  size_t total_bytes = gasneti_blockingRotatedExchangeV(tm, local, local_bytes, &global, NULL);
+  gasneti_free(local);
 
-  /* TODO:
-  * + When using PSHM we could store rkeys just once per supernode
-  * + When not fully connected, we could utilize sparse storage
-  */
-  gasnetc_segment_exchange_helper(tm, mem_info_buf, mem_info_len, recv_buf);
+  // Unpack
+  offset = 0;
+  while (offset < total_bytes) {
+    gex_EP_Location_t loc;
+    gasneti_mem_unpack(&loc, global, sizeof(loc), 0, offset);
 
-  info_offset = 0;
-  for (gex_Rank_t i = 0; i < team_size; i++) {
-    gex_Rank_t jobrank;
-    if (tm) {
-      gex_EP_Location_t loc = gasneti_e_tm_rank_to_location(tm, i, 0);
-      if (loc.gex_ep_index) { // TODO: multi-ep support
-        gasneti_unreachable_error(("gex_EP_PublishBoundSegment does not yet handle non-primordial EPs"));
-      }
-      jobrank = loc.gex_rank;
-    } else {
-      jobrank = i;
-    }
+    uint16_t bsize;
+    gasneti_mem_unpack(&bsize, global, sizeof(bsize), 0, offset);
+    gasneti_assert(bsize);
 
-    if (jobrank == gasneti_mynode) {
-      info_offset += mem_info_len;
+    gex_Rank_t jobrank = loc.gex_rank;
+    if (jobrank == gasneti_mynode) { // self
+      offset += bsize;
       continue;
     }
 
-    uint64_t length;
-    gasneti_mem_unpack(&length, recv_buf,
-                       sizeof(uint64_t), 0, info_offset);
-    if (!length) { // GEX_SEGENT_INVALID
-      info_offset += mem_info_len - sizeof(length);
-      continue;
-    }
-
-    void * addr;
-    gasneti_mem_unpack(&addr, recv_buf,
-                       sizeof(void *), 0, info_offset);
-    uint64_t bsize;
-    gasneti_mem_unpack(&bsize, recv_buf,
-                       sizeof(uint64_t), 0, info_offset);
     char * buffer = gasneti_calloc(1, bsize);
-    gasneti_mem_unpack(buffer, recv_buf,
-                       bsize, rkey_max_size,
-                       info_offset);
+    gasneti_mem_unpack(buffer, global, bsize, 0, offset);
+
+    // TODO-EX: when comms merged w/ conduit-indep, this will be avail in the exchanged data
+    gasneti_assert(gasneti_seginfo_tbl[loc.gex_ep_index]);
+    gasnet_seginfo_t *si = gasneti_seginfo_tbl[loc.gex_ep_index] + jobrank;
+    void *addr = si->addr;
+    uintptr_t length = si->size;
 
     gasnet_ep_info_t * ep_info = &gasneti_ucx_module.ep_tbl[jobrank];
 
     // Multiple calls to Publish must not create duplicate entries
     // TODO: thread safety in list traversal?
     {
+      gasnetc_mem_info_t* mem_info;
       int found = 0;
       GASNETI_LIST_FOREACH(mem_info, &ep_info->mem_tbl, gasnetc_mem_info_t) {
-        if ((mem_info->addr   == addr  ) &&
-            (mem_info->length == length) &&
-            (mem_info->bsize  == bsize ) &&
-            !memcmp(mem_info->buffer, buffer, bsize)) {
-          gasneti_free(buffer);
-          found = 1;
-          break;
-        }
+        found = ((mem_info->addr   == addr  ) &&
+                 (mem_info->length == length) &&
+                 (mem_info->bsize  == bsize ) &&
+                 !memcmp(mem_info->buffer, buffer, bsize));
+        if (found) break;
       }
       if (found) {
+        gasneti_free(buffer);
         continue;
       }
     }
 
+    gasnetc_mem_info_t* new_mem_info;
+    GASNETI_LIST_ITEM_ALLOC(new_mem_info, gasnetc_mem_info_t, gasnetc_minfo_reset);
+
+    new_mem_info->addr   = addr;
+    new_mem_info->length = length;
+    new_mem_info->bsize  = bsize;
+    new_mem_info->buffer = buffer;
+
+    ucp_ep_h ep = GASNETC_UCX_GET_EP(jobrank);
+    gasneti_rkey_unpack(ep, buffer, &new_mem_info->rkey);
+
+    gasneti_list_enq(&ep_info->mem_tbl, new_mem_info); // TODO: thread safety?
+  }
+
+  gasneti_free(global);
+
+  return 0;
+}
+
+// Exchange aux segment info
+static int
+gasnetc_segment_exchange_aux(gasnetc_mem_info_t* mem_info)
+{
+  gasneti_assert(mem_info->bsize <= UINT16_MAX);
+  uint16_t bsize = mem_info->bsize;
+
+  // identify max rkey size
+  // TODO: bootstrap reduction?
+  uint16_t rkey_max_size = bsize;
+  uint16_t *rkey_sizes = gasneti_calloc(gasneti_nodes, sizeof(rkey_max_size));
+  gasneti_bootstrapExchange(&rkey_max_size, sizeof(rkey_max_size), rkey_sizes);
+  for (gex_Rank_t i = 0; i < gasneti_nodes; i++) {
+    rkey_max_size = MAX(rkey_max_size, rkey_sizes[i]);
+  }
+  gasneti_free(rkey_sizes);
+
+  /* pack my mem map info */
+  size_t mem_info_len = sizeof(bsize) + rkey_max_size;
+  void * mem_info_buf = gasneti_calloc(1, mem_info_len);
+  size_t info_offset = 0;
+
+  gasneti_mem_pack(mem_info_buf, &bsize,           sizeof(bsize), 0, info_offset);
+  gasneti_mem_pack(mem_info_buf, mem_info->buffer, bsize, rkey_max_size, info_offset);
+
+  char * recv_buf = gasneti_malloc(mem_info_len * gasneti_nodes);
+  gasneti_bootstrapExchange(mem_info_buf, mem_info_len, recv_buf);
+  gasneti_free(mem_info_buf);
+
+  /* TODO:
+  * + When using PSHM we could store rkeys just once per supernode
+  * + When not fully connected, we could utilize sparse storage
+  */
+
+  info_offset = 0;
+  for (gex_Rank_t jobrank = 0; jobrank < gasneti_nodes; jobrank++) {
+    if (jobrank == gasneti_mynode) {
+      info_offset += mem_info_len;
+      continue;
+    }
+
+    gasneti_mem_unpack(&bsize, recv_buf, sizeof(bsize), 0, info_offset);
+    char * buffer = gasneti_calloc(1, bsize);
+    gasneti_mem_unpack(buffer, recv_buf, bsize, rkey_max_size, info_offset);
+
+    gasnet_ep_info_t * ep_info = &gasneti_ucx_module.ep_tbl[jobrank];
+
     GASNETI_LIST_ITEM_ALLOC(mem_info, gasnetc_mem_info_t, gasnetc_minfo_reset);
 
-    mem_info->addr   = addr;
-    mem_info->length = length;
+    mem_info->addr   = gasneti_seginfo_aux[jobrank].addr;
+    mem_info->length = gasneti_seginfo_aux[jobrank].size;
     mem_info->bsize  = bsize;
     mem_info->buffer = buffer;
 
@@ -431,9 +470,8 @@ gasnetc_segment_exchange(gasnetc_mem_info_t* mem_info, gex_TM_t tm)
 
     gasneti_list_enq(&ep_info->mem_tbl, mem_info); // TODO: thread safety?
   }
-  gasneti_assert(info_offset == mem_info_len * team_size);
+  gasneti_assert(info_offset == mem_info_len * gasneti_nodes);
 
-  gasneti_free(mem_info_buf);
   gasneti_free(recv_buf);
 
   return GASNET_OK;
@@ -696,7 +734,7 @@ static int gasnetc_init(gex_Client_t *client_p, gex_EP_t *ep_p,
 #if GASNETC_PIN_SEGMENT
   /* pin the aux segment and exchange the RKeys */
   gasnetc_mem_info_t *mem_info = gasnetc_segment_register(auxbase, auxsize);
-  gasnetc_segment_exchange(mem_info, GEX_TM_INVALID);
+  gasnetc_segment_exchange_aux(mem_info);
 #endif
 
   if (0 == gasneti_mynode) {
@@ -772,8 +810,8 @@ int gasnetc_segment_attach_hook(gex_Segment_t e_segment, gex_TM_t e_tm)
 
 #if GASNETC_PIN_SEGMENT
   // Exchange the RKeys
-  gasnetc_Segment_t segment = (gasnetc_Segment_t) gasneti_import_segment(e_segment);
-  gasnetc_segment_exchange(segment->mem_info, e_tm);
+  gex_EP_t e_ep = gex_TM_QueryEP(e_tm);
+  gasnetc_segment_exchange(e_tm, &e_ep, 1);
 #endif
 
   return GASNET_OK;
@@ -845,10 +883,7 @@ extern int gasnetc_ep_publishboundsegment_hook(
 #if GASNETC_PIN_SEGMENT
   // Conduit-dependent parts
   // TODO: merge comms into gasneti_EP_PublishBoundSegment().
-  // TODO: generalize for multi-ep
-  gasnetc_Segment_t segment;
-  segment = num_eps ? (gasnetc_Segment_t) gasneti_import_ep(eps[0])->_segment : NULL;
-  gasnetc_segment_exchange(segment ? segment->mem_info : NULL, tm);
+  gasnetc_segment_exchange(tm, eps, num_eps);
 #endif
 
   // Avoid race in which AMRequestLong triggers AMRepyLong before exchange completes remotely
