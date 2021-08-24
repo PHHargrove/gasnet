@@ -1731,11 +1731,11 @@ GASNETI_PUREP(gasneti_pshm_jobrank_addr2local)
 /* ------------------------------------------------------------------------------------ */
 
 #if GASNET_CONDUIT_SMP
-  #define MAPPABLE_JOBRANK_P(jobrank) 1
+  #define GASNETI_MAPPABLE_JOBRANK_P(jobrank) 1
 #elif GASNET_PSHM
-  #define MAPPABLE_JOBRANK_P(jobrank) gasneti_pshm_jobrank_in_supernode(jobrank)
+  #define GASNETI_MAPPABLE_JOBRANK_P(jobrank) gasneti_pshm_jobrank_in_supernode(jobrank)
 #else
-  #define MAPPABLE_JOBRANK_P(jobrank) ((jobrank) == gasneti_mynode)
+  #define GASNETI_MAPPABLE_JOBRANK_P(jobrank) ((jobrank) == gasneti_mynode)
 #endif
 
 // Helper for other queries (both with PSHM and without)
@@ -1751,14 +1751,14 @@ gex_Rank_t gasneti_nbrhd_mapped_helper(gex_TM_t _e_tm, gex_Rank_t _rank) {
   if (gasneti_is_tm0(_i_tm)) {
     // fast path for TM0, which can only include primordial segments
     gasneti_assume(_rank != GEX_RANK_INVALID); // may improve codegen in caller
-    return MAPPABLE_JOBRANK_P(_rank) ? _rank : GEX_RANK_INVALID;
+    return GASNETI_MAPPABLE_JOBRANK_P(_rank) ? _rank : GEX_RANK_INVALID;
   }
 
   gex_EP_Location_t _loc = gasneti_i_tm_rank_to_location(_i_tm, _rank, 0);
   gex_Rank_t _jobrank = _loc.gex_rank;
 
   // Fail if remote rank is in-nbrhd or local, as appropriate
-  if (! MAPPABLE_JOBRANK_P(_jobrank)) return GEX_RANK_INVALID;
+  if (! GASNETI_MAPPABLE_JOBRANK_P(_jobrank)) return GEX_RANK_INVALID;
 
   // Fail if remote ep is primordial
   if (_loc.gex_ep_index != 0) return GEX_RANK_INVALID;
@@ -1792,7 +1792,7 @@ gex_Rank_t gasneti_jobrank_if_mappable(gex_TM_t _e_tm, gex_Rank_t _rank) {
   if (gasneti_is_tm0(_i_tm)) {
     // fast path for TM0, which can only include primordial segments
     gasneti_assume(_rank != GEX_RANK_INVALID); // may improve codegen in caller
-    return MAPPABLE_JOBRANK_P(_rank) ? _rank : GEX_RANK_INVALID;
+    return GASNETI_MAPPABLE_JOBRANK_P(_rank) ? _rank : GEX_RANK_INVALID;
   }
 
   gex_EP_Location_t _loc = gasneti_i_tm_rank_to_location(_i_tm, _rank, 0);
@@ -1800,7 +1800,7 @@ gex_Rank_t gasneti_jobrank_if_mappable(gex_TM_t _e_tm, gex_Rank_t _rank) {
   gasneti_assume(_jobrank != GEX_RANK_INVALID); // may improve codegen in caller
 
   // Check if remote rank is in-nbrhd or local, as appropriate
-  if (! MAPPABLE_JOBRANK_P(_jobrank)) return GEX_RANK_INVALID;
+  if (! GASNETI_MAPPABLE_JOBRANK_P(_jobrank)) return GEX_RANK_INVALID;
 
   gex_EP_Index_t _rem_ep_idx = _loc.gex_ep_index;
   if (_rem_ep_idx && (_jobrank != gasneti_mynode)) {
@@ -1820,7 +1820,7 @@ gex_Rank_t gasneti_jobrank_if_mappable(gex_TM_t _e_tm, gex_Rank_t _rank) {
 }
 GASNETI_PUREP(gasneti_jobrank_if_mappable)
 
-#undef MAPPABLE_JOBRANK_P
+#undef GASNETI_MAPPABLE_JOBRANK_P
 
 /* ------------------------------------------------------------------------------------ */
 // PSHM support - part 2 of 2
