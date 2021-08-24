@@ -20,6 +20,7 @@ void gasnete_coll_put_nb(gasnete_coll_generic_data_t *data,
 {
   void *local_dst = GASNETI_NBRHD_MAPPED_ADDR_OR_NULL(tm, rank, dst);
   if (local_dst) {
+    gasneti_assert(data->handle == GEX_EVENT_INVALID);
     GASNETI_MEMCPY(local_dst, src, nbytes);
   } else {
     data->handle = gasnete_put_nb(tm, rank, dst, (void*)src, nbytes, GEX_EVENT_DEFER, 0 GASNETI_THREAD_PASS);
@@ -46,6 +47,7 @@ void gasnete_coll_get_nb(gasnete_coll_generic_data_t *data,
 {
   void *local_src = GASNETI_NBRHD_MAPPED_ADDR_OR_NULL(tm, rank, src);
   if (local_src) {
+    gasneti_assert(data->handle == GEX_EVENT_INVALID);
     GASNETI_MEMCPY(dst, local_src, nbytes);
   } else {
     data->handle = gasnete_get_nb(tm, dst, rank, src, nbytes, 0 GASNETI_THREAD_PASS);
