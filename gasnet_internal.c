@@ -936,6 +936,8 @@ GASNETI_INLINE(gasneti_one_segment_mappable)
 int gasneti_one_segment_mappable(gasneti_Client_t i_client, gex_EP_Index_t ep_idx)
 {
   if (!ep_idx) return 0; // Primordial is always host memory
+  // gasneti_jobrank_if_mappable() ruled out (non-primordial + not-self).
+  // So (since ep_idx != 0) we *must* be examining a self endpoint
   gasneti_assert_int(ep_idx ,<, GASNET_MAXEPS);
   gasneti_assert_int(ep_idx ,<, gasneti_weakatomic32_read(&i_client->_next_ep_index, 0));
   gasneti_EP_t i_ep = i_client->_ep_tbl[ep_idx];
@@ -943,9 +945,10 @@ int gasneti_one_segment_mappable(gasneti_Client_t i_client, gex_EP_Index_t ep_id
   return gasneti_i_segment_kind_is_host(i_ep->_segment);
 }
 
-// One or both of the EPs passed to gasneti_jobrank_if_mappable()
-// are local, but non-primordial.  This helper checks if they are
-// both host memory.
+// One or both of the EPs passed to gasneti_jobrank_if_mappable() need to be
+// checked to determine if they are host memory.
+// Since caller ensures that (is_primordial(ep) || is_self(ep)), we can make
+// our determination based on the two endpoint indices alone.
 int gasneti_segments_mappable(
                         gasneti_TM_t i_tm,
                         gex_EP_Index_t loc_ep_idx,

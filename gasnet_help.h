@@ -1739,7 +1739,7 @@ GASNETI_PUREP(gasneti_pshm_jobrank_addr2local)
 #endif
 
 // Helper for other queries (both with PSHM and without)
-// Returns a jobrank or GEX_RANK_INVALID depending on whether the remote
+// Returns a jobrank or GEX_RANK_INVALID depending on whether the target
 // endpoint named by (tm,rank) is a cross-mapped primordial segment.
 // Erroneous to call for a (tm,rank) naming an endpoint which does not
 // exist or has no a bound segment.
@@ -1757,13 +1757,13 @@ gex_Rank_t gasneti_nbrhd_mapped_helper(gex_TM_t _e_tm, gex_Rank_t _rank) {
   gex_EP_Location_t _loc = gasneti_i_tm_rank_to_location(_i_tm, _rank, 0);
   gex_Rank_t _jobrank = _loc.gex_rank;
 
-  // Fail if remote rank is in-nbrhd or local, as appropriate
+  // Fail unless target rank is in-nbrhd or self, as appropriate
   if (! GASNETI_MAPPABLE_JOBRANK_P(_jobrank)) return GEX_RANK_INVALID;
 
-  // Fail if remote ep is primordial
+  // Fail unless target ep is primordial
   if (_loc.gex_ep_index != 0) return GEX_RANK_INVALID;
 
-  // Check that remote segment exists
+  // Check that target segment exists
   // TODO-EX: update if/when scalable storage replaces gasneti_seginfo[]
   // TODO-EX: update if/when it is possible to have a promordial segment which is NOT cross-mapped
   gasneti_assert(gasneti_seginfo[_jobrank].addr);
@@ -1774,14 +1774,14 @@ gex_Rank_t gasneti_nbrhd_mapped_helper(gex_TM_t _e_tm, gex_Rank_t _rank) {
 GASNETI_PUREP(gasneti_nbrhd_mapped_helper)
 
 // Helper for other queries (both with PSHM and without)
-// Returns a jobrank or GEX_RANK_INVALID depending on whether the local and
-// remote endpoints named by (tm,rank) are both "eligible" to be mapped for
+// Returns a jobrank or GEX_RANK_INVALID depending on whether the initiator and
+// target endpoints named by (tm,rank) are both "eligible" to be mapped for
 // load/store access.  This is inclusive of the check on the jobrank being
-// in-nbrhd (PSHM) or local (non-PSHM).
+// in-nbrhd (PSHM) or self (non-PSHM).
 // The eligibility criteria are:
-//   1a. Remote endpoint must be primordial (have EP index 0)
-//   1b. OR "remote" endpoint is actually local with a host memory segment
-//   2. Local endpoint must be host memory
+//   1a. Target endpoint must be primordial (have EP index 0)
+//   1b. OR target endpoint is actually self with a host memory segment
+//   2. Initiator endpoint must be host memory (but need not be primordial)
 // However, checking these efficiently is not as simple as it sounds.
 extern int gasneti_segments_mappable(gasneti_TM_t _i_tm, gex_EP_Index_t _loc_ep_idx, gex_EP_Index_t _rem_ep_idx);
 GASNETI_INLINE(gasneti_jobrank_if_mappable) GASNETI_PURE
@@ -1799,19 +1799,24 @@ gex_Rank_t gasneti_jobrank_if_mappable(gex_TM_t _e_tm, gex_Rank_t _rank) {
   gex_Rank_t _jobrank = _loc.gex_rank;
   gasneti_assume(_jobrank != GEX_RANK_INVALID); // may improve codegen in caller
 
-  // Check if remote rank is in-nbrhd or local, as appropriate
+  // Fail unless target rank is in-nbrhd or self, as appropriate
   if (! GASNETI_MAPPABLE_JOBRANK_P(_jobrank)) return GEX_RANK_INVALID;
 
   gex_EP_Index_t _rem_ep_idx = _loc.gex_ep_index;
   if (_rem_ep_idx && (_jobrank != gasneti_mynode)) {
-    // Non-primordial and non-local - never mappable.
+    // Fail if target is non-primordial and not self - currently never mappable.
     return GEX_RANK_INVALID;
   }
 
 #if GASNET_HAVE_MK_CLASS_MULTIPLE
+  // If we get this far then the target is either
+  // + primordial and in-nbrhd (including self)
+  // + self (need not be primordial)
   gex_EP_Index_t _loc_ep_idx = gasneti_i_tm_to_ep_index(_i_tm);
   if (_loc_ep_idx || _rem_ep_idx) {
-    // One or both are non-primordial and local - must examine their segments
+    // One or both are non-primordial
+    // Non-primordial/non-self has already been excluded
+    // So check the segments kinds of the non-primordial endpoints (which *must* be self)
     if (!gasneti_segments_mappable(_i_tm, _loc_ep_idx, _rem_ep_idx)) return GEX_RANK_INVALID;
   }
 #endif
