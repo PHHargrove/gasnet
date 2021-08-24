@@ -383,7 +383,7 @@ gex_Event_t gasnete_get_nb(
                      size_t nbytes,
                      gex_Flags_t flags GASNETI_THREAD_FARG)
 {
-    gasneti_assert(! gasnete_mapped_at(tm,rank,src)); // else PSHM
+    gasneti_assert(! gasnete_mapped_at(tm,rank,src)); // else PSHM/loopback
     int imm;
     gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
     gasnete_eop_t *eop = gasnete_eop_new_cnt(mythread);
@@ -410,7 +410,7 @@ gex_Event_t gasnete_put_nb(
                      size_t nbytes, gex_Event_t *lc_opt,
                      gex_Flags_t flags GASNETI_THREAD_FARG)
 {
-  gasneti_assert(! gasnete_mapped_at(tm,rank,dest)); // else PSHM
+  gasneti_assert(! gasnete_mapped_at(tm,rank,dest)); // else PSHM/loopback
 
   gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
   gasnete_eop_t *eop = gasnete_eop_new_cnt(mythread);
@@ -475,7 +475,7 @@ int gasnete_get_nbi( gex_TM_t tm,
                      size_t nbytes,
                      gex_Flags_t flags GASNETI_THREAD_FARG)
 {
-    gasneti_assert(! gasnete_mapped_at(tm,rank,src)); // else PSHM
+    gasneti_assert(! gasnete_mapped_at(tm,rank,src)); // else PSHM/loopback
     int imm;
     gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
     gasnete_iop_t * const iop = mythread->current_iop;
@@ -498,7 +498,7 @@ int gasnete_put_nbi( gex_TM_t tm,
                      size_t nbytes, gex_Event_t *lc_opt,
                      gex_Flags_t flags GASNETI_THREAD_FARG)
 {
-  gasneti_assert(! gasnete_mapped_at(tm,rank,dest)); // else PSHM
+  gasneti_assert(! gasnete_mapped_at(tm,rank,dest)); // else PSHM/loopback
 
   gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
   gasnete_iop_t * const iop = mythread->current_iop;
@@ -555,7 +555,7 @@ extern int gasnete_put_val(
                 size_t nbytes, gex_Flags_t flags
                 GASNETI_THREAD_FARG)
 {
-    gasneti_assert(! gasnete_mapped_at(tm,rank,dest)); // else PSHM
+    gasneti_assert(! gasnete_mapped_at(tm,rank,dest)); // else PSHM/loopback
     GASNETC_DIDX_POST(GASNETI_MYTHREAD->domain_idx);
     gasnetc_post_descriptor_t *gpd;
     volatile int done = 0;
@@ -600,7 +600,7 @@ extern gex_Event_t gasnete_put_nb_val(
                 size_t nbytes, gex_Flags_t flags
                 GASNETI_THREAD_FARG)
 {
-    gasneti_assert(! gasnete_mapped_at(tm,rank,dest)); // else PSHM
+    gasneti_assert(! gasnete_mapped_at(tm,rank,dest)); // else PSHM/loopback
 
     gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
     GASNETC_DIDX_POST(mythread->domain_idx);
@@ -622,7 +622,7 @@ extern int gasnete_put_nbi_val(
                 size_t nbytes, gex_Flags_t flags
                 GASNETI_THREAD_FARG)
 {
-    gasneti_assert(! gasnete_mapped_at(tm,rank,dest)); // else PSHM
+    gasneti_assert(! gasnete_mapped_at(tm,rank,dest)); // else PSHM/loopback
 
     gasneti_threaddata_t * const mythread = GASNETI_MYTHREAD;
     GASNETC_DIDX_POST(mythread->domain_idx);
@@ -656,7 +656,7 @@ extern gex_RMA_Value_t gasnete_get_val(
                 size_t nbytes, gex_Flags_t flags
                 GASNETI_THREAD_FARG)
 {
-    gasneti_assert(! gasnete_mapped_at(tm,rank,src)); // else PSHM
+    gasneti_assert(! gasnete_mapped_at(tm,rank,src)); // else PSHM/loopback
     gex_RMA_Value_t result;
     GASNETC_DIDX_POST(GASNETI_MYTHREAD->domain_idx);
     gasnetc_post_descriptor_t *gpd;
