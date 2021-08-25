@@ -1785,7 +1785,7 @@ GASNETI_PUREP(gasneti_nbrhd_mapped_helper)
 //   1b. OR target endpoint is actually self with a host memory segment
 //   2. Initiator endpoint must be host memory (but need not be primordial)
 // However, checking these efficiently is not as simple as it sounds.
-extern int gasneti_segments_mappable(gasneti_TM_t _i_tm, gex_EP_Index_t _loc_ep_idx, gex_EP_Index_t _rem_ep_idx);
+extern gasneti_Segment_t gasneti_epidx_to_segment(gasneti_TM_t i_tm, gex_EP_Index_t ep_idx);
 GASNETI_INLINE(gasneti_jobrank_if_mappable) GASNETI_PURE
 gex_Rank_t gasneti_jobrank_if_mappable(gex_TM_t _e_tm, gex_Rank_t _rank) {
   gasneti_TM_t _i_tm = gasneti_import_tm(_e_tm);
@@ -1804,24 +1804,43 @@ gex_Rank_t gasneti_jobrank_if_mappable(gex_TM_t _e_tm, gex_Rank_t _rank) {
   // Fail unless target rank is in-nbrhd or self, as appropriate
   if (! GASNETI_MAPPABLE_JOBRANK_P(_jobrank)) return GEX_RANK_INVALID;
 
-  gex_EP_Index_t _rem_ep_idx = _loc.gex_ep_index;
-  if (_rem_ep_idx && (_jobrank != gasneti_mynode)) {
-    // Fail if target is non-primordial and not self - currently never mappable.
-    return GEX_RANK_INVALID;
-  }
+  // If we get this far then the target process is one that *could*.
+  // be mapped.  Further checks on the two endpoints may be needed.
 
+  // Check that initiator ep is host memory.
+  //
+  // Trivial true if !GASNET_HAVE_MK_CLASS_MULTIPLE
+  // Also true if primordial (ep_idx == 0)
+  // Otherwise requires checking the segment
 #if GASNET_HAVE_MK_CLASS_MULTIPLE
-  // If we get this far then the target is either
-  // + primordial and in-nbrhd (including self)
-  // + self (need not be primordial)
-  gex_EP_Index_t _loc_ep_idx = gasneti_i_tm_to_ep_index(_i_tm);
-  if (_loc_ep_idx || _rem_ep_idx) {
-    // One or both are non-primordial
-    // Non-primordial/non-self has already been excluded
-    // So check the segments kinds of the non-primordial endpoints (which *must* be self)
-    if (!gasneti_segments_mappable(_i_tm, _loc_ep_idx, _rem_ep_idx)) return GEX_RANK_INVALID;
+  gex_EP_Index_t _init_ep_idx = gasneti_i_tm_to_ep_index(_i_tm);
+  if (_init_ep_idx) { // non-primordial initiator ep
+    // Fail unless segment is host memory
+    gasneti_Segment_t _seg = gasneti_epidx_to_segment(_i_tm, _init_ep_idx);
+    if (!gasneti_i_segment_kind_is_host(_seg)) return GEX_RANK_INVALID;
   }
 #endif
+
+  // Check that target ep is host memory and mappable.
+  //
+  // A primordial endpoint's segment is (currently) guaranteed to be
+  // both cross-mapped and host-memory.
+  // If non-primordial and target==self, then we can accept any
+  // host memory segment.
+  gex_EP_Index_t _targ_ep_idx = _loc.gex_ep_index;
+  if (_targ_ep_idx) { // non-primordial target ep
+#if GASNET_PSHM
+    // Fail unless the target is "self"
+    if (_jobrank != gasneti_mynode) return GEX_RANK_INVALID;
+#else
+    gasneti_assert(_jobrank == gasneti_mynode);
+#endif
+#if GASNET_HAVE_MK_CLASS_MULTIPLE
+    // Target ep is self.  So fail unless segment is host memory
+    gasneti_Segment_t _seg = gasneti_epidx_to_segment(_i_tm, _targ_ep_idx);
+    if (!gasneti_i_segment_kind_is_host(_seg)) return GEX_RANK_INVALID;
+#endif
+  }
 
   return _jobrank;
 }

@@ -930,38 +930,19 @@ gex_TM_t gasneti_export_tm_pair(gasneti_TM_Pair_t tm_pair) {
 }
 #endif
 
-#if GASNET_HAVE_MK_CLASS_MULTIPLE
-// Helper for gasneti_segments_mappable()
-GASNETI_INLINE(gasneti_one_segment_mappable)
-int gasneti_one_segment_mappable(gasneti_Client_t i_client, gex_EP_Index_t ep_idx)
-{
-  if (!ep_idx) return 0; // Primordial is always host memory
-  // gasneti_jobrank_if_mappable() ruled out (non-primordial + not-self).
-  // So (since ep_idx != 0) we *must* be examining a self endpoint
-  gasneti_assert_int(ep_idx ,<, GASNET_MAXEPS);
-  gasneti_assert_int(ep_idx ,<, gasneti_weakatomic32_read(&i_client->_next_ep_index, 0));
-  gasneti_EP_t i_ep = i_client->_ep_tbl[ep_idx];
-  gasneti_assert(i_ep);
-  return gasneti_i_segment_kind_is_host(i_ep->_segment);
-}
+// Helper for "mappable" queries
+// return the bound segment for local ep_idx
+// i_tm is provided only to retrieve the Client
+gasneti_Segment_t gasneti_epidx_to_segment(gasneti_TM_t i_tm, gex_EP_Index_t ep_idx) {
+   // TODO: multi-client would extract from i_tm OR signature may change to take client
+   gasneti_Client_t i_client = gasneti_import_client(gasneti_THUNK_CLIENT);
 
-// One or both of the EPs passed to gasneti_jobrank_if_mappable() need to be
-// checked to determine if they are host memory.
-// Since caller ensures that (is_primordial(ep) || is_self(ep)), we can make
-// our determination based on the two endpoint indices alone.
-int gasneti_segments_mappable(
-                        gasneti_TM_t i_tm,
-                        gex_EP_Index_t loc_ep_idx,
-                        gex_EP_Index_t rem_ep_idx)
-{
-  // TODO: multi-client would extract from i_tm
-  gasneti_Client_t i_client = gasneti_import_client(gasneti_THUNK_CLIENT);
-
-  gasneti_assume(loc_ep_idx || rem_ep_idx); // caller should have checked
-  return gasneti_one_segment_mappable(i_client, rem_ep_idx) &&
-         gasneti_one_segment_mappable(i_client, loc_ep_idx);
+   gasneti_assert_int(ep_idx ,<, GASNET_MAXEPS);
+   gasneti_assert_int(ep_idx ,<, gasneti_weakatomic32_read(&i_client->_next_ep_index, 0));
+   gasneti_EP_t i_ep = i_client->_ep_tbl[ep_idx];   
+   gasneti_assert(i_ep);
+   return i_ep->_segment;
 }
-#endif
 
 /* ------------------------------------------------------------------------------------ */
 
