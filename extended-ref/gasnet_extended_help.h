@@ -322,9 +322,13 @@ typedef union {
 //
 // Queries on cross-mapped client segments
 //
+// + For all three of the following GASNETI_NBRHD_MAPPED* macros, it is required
+//   that the EP exists and has a bound segment. If either of these requirements
+//   is not satisfied, then the behavior of the call is undefined.
+//
 // + GASNETI_NBRHD_MAPPED(e_tm,rank)
-//     This Boolean query determines if the target EP's bound segment (if any)
-//     is cross-mapped into the calling process. This notably does NOT query
+//     This Boolean query determines if the target EP's bound segment is
+//     cross-mapped into the calling process. This notably does NOT query
 //     anything about the local EP such as whether it has a bound host-memory
 //     segment.
 //
