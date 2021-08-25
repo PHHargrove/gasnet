@@ -375,8 +375,11 @@ typedef union {
     #define _GASNETI_NBRHD_LOCAL(e_tm,rank)             (gasneti_e_tm_rank_to_jobrank(e_tm,rank) == gasneti_mynode)
     #define _GASNETI_NBRHD_JOBRANK_IS_LOCAL(jobrank)    ((jobrank) == gasneti_mynode)
   #endif
-  #define _GASNETI_NBRHD_MAPPED_ADDR(e_tm,rank,addr)             (addr)
-  #define _GASNETI_NBRHD_AUXSEG_ADDR(e_tm,rank,addr)             (addr)
+  #define _GASNETI_NBRHD_MAPPED_ADDR(e_tm,rank,addr) \
+          (gasneti_assert(gasneti_in_local_clientsegment(gasneti_e_tm_to_i_ep(e_tm),(void*)(addr),1)), (addr))
+  #define _GASNETI_NBRHD_AUXSEG_ADDR(e_tm,rank,addr) \
+          (gasneti_assert(gasneti_in_local_auxsegment(gasneti_e_tm_to_i_ep(e_tm),(void*)(addr),1)), (addr))
+  // TODO: bounds check addr passed to _GASNETI_NBRHD_JOBRANK_LOCAL_ADDR(), possibly in the caller
   #define _GASNETI_NBRHD_JOBRANK_LOCAL_ADDR(jobrank,addr,isaux)  (addr)
 #endif
 
