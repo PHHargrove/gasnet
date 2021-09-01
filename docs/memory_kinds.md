@@ -366,9 +366,10 @@ process, inclusive of the primordial endpoint created by `gex_Client_Init()`.
 Any call to `gex_EP_Create()` which would exceed this limit will fail with
 a return of GASNET_ERR_RESOURCE.
 
-Currently, only ibv-conduit in FAST segment mode has a value of `GASNET_MAXEPS`
-larger than 1 (it is currently 33).  Additionally, ibv-conduit only supports the
-`GEX_EP_CAPABILITY_RMA` capability for non-primordial endpoints.
+Currently, only ibv-conduit (in FAST segment mode) and ucx-conduit (in any
+segment mode) have values of `GASNET_MAXEPS` larger than 1 (each currently 33).
+Additionally, these conduits support only the `GEX_EP_CAPABILITY_RMA`
+capability for non-primordial endpoints.
 
 The `GEX_FLAG_HINT_ACCEL_*` values are currently defined, but ignored.
 
