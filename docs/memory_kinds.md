@@ -402,8 +402,8 @@ This API is believed to be fully implemented in all conduits and accepted by
 all APIs required to do so by the API Proposal (notably the `gex_RMA_*()`,
 `gex_AM_*()` and `gex_VIS_*() API families).
 
-Since multi-EP support is currently exclusive to ibv-conduit in FAST segment
-mode, the use in other conduits is effectively limited to aliasing of the
+Since multi-EP support is currently exclusive to ibv and ucx conduits (and only in
+some segment modes), the use in other conduits is effectively limited to aliasing of the
 primordial team.
 
 ## `gex_TM_Create()`
