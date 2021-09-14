@@ -26,6 +26,10 @@ GASNet-EX ChangeLog
     "efa" provider. Operation with this provider remains untuned and is not
     yet officially supported.
 
+* Notable bugs fixed in this release: (details at https://gasnet-bugs.lbl.gov)
+  - bug4165: ucx: AMMediumRequest bandwidth problems
+  - bug4280: ucx: investigate use of is_sync in AM injection
+
 ----------------------------------------------------------------------
 2023-03-31: GASNet-EX 2023.3.0
 
