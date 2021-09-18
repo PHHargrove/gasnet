@@ -21,6 +21,13 @@ GASNet-EX ChangeLog
 ----------------------------------------------------------------------
 20XX-YY-ZZ: PENDING
 
+* Unified Communication X framework (details in ucx-conduit README) [EXPERIMENTAL]
+  - A new environment variable `GASNET_UCX_MAX_MEDIUM` enables setting the
+    size of AM Medium buffers at job launch, and a new configure option
+    `--with-ucx-max-medium` can be used to set the default value.
+  - The default `gex_AM_LUB{Request,Reply}Medium()` is now 8KiB minus tens
+    of bytes for internal use (up from 4KiB minus internal overheads).
+
 * Notable bugs fixed in this release: (details at https://gasnet-bugs.lbl.gov)
   - bug4165: ucx: AMMediumRequest bandwidth problems
   - bug4280: ucx: investigate use of is_sync in AM injection
