@@ -858,10 +858,25 @@ void gasnetc_recv_post(gasnetc_ucx_request_t *req) {
 }
 
 #if GASNETC_PIN_SEGMENT
+void gasnetc_recv_fill(void)
+{
+  // TODO: See comment preceding gasnetc_send_init regarding bug 4334
+  for (int i = 0; i < GASNETC_UCX_RCV_REAP_MAX; i++) {
+    void *ucx_req = gasneti_malloc(gasneti_ucx_module.request_size +
+                                   sizeof(gasnetc_ucx_request_t));
+    gasnetc_ucx_request_t *req = (gasnetc_ucx_request_t*)
+        (((char*) ucx_req) + gasneti_ucx_module.request_size);
+
+    gasnetc_req_init(req);
+    req->buffer.data = gasneti_malloc_aligned(GASNETI_MEDBUF_ALIGNMENT,
+                                              gasnetc_ammed_bufsz);
+    gasneti_list_enq(&gasneti_ucx_module.recv_queue, req);
+    gasnetc_recv_post(req);
+  }
+}
+
 int gasnetc_recv_init(void)
 {
-  int i;
-  gasnetc_ucx_request_t *req;
   ucp_context_attr_t attr;
   ucs_status_t status;
 
@@ -871,19 +886,7 @@ int gasnetc_recv_init(void)
   status = ucp_context_query(gasneti_ucx_module.ucp_context, &attr);
   gasneti_ucx_module.request_size = attr.request_size;
 
-  // TODO: See comment preceding gasnetc_send_init regarding bug 4334
-  for (i = 0; i < GASNETC_UCX_RCV_REAP_MAX; i++) {
-    void *ucx_req = gasneti_malloc(gasneti_ucx_module.request_size +
-                                   sizeof(gasnetc_ucx_request_t));
-    req = (gasnetc_ucx_request_t*)
-        (((char*) ucx_req) + gasneti_ucx_module.request_size);
-
-    gasnetc_req_init(req);
-    req->buffer.data = gasneti_malloc_aligned(GASNETI_MEDBUF_ALIGNMENT,
-                                              gasnetc_ammed_bufsz);
-    gasneti_list_enq(&gasneti_ucx_module.recv_queue, req);
-    gasnetc_recv_post(req);
-  }
+  gasnetc_recv_fill();
 
   return GASNET_OK;
 }
@@ -903,16 +906,11 @@ void gasnetc_recv_fini(void)
 }
 
 #else
-int gasnetc_recv_init(void)
+void gasnetc_recv_fill(void)
 {
-  int i;
-  gasnetc_am_req_t *rreq;
-
-  gasneti_list_init(&gasneti_ucx_module.recv_queue);
-  gasneti_list_init(&gasneti_ucx_module.rreq_free);
-
   // TODO: See comment preceding gasnetc_send_init regarding bug 4334
-  for (i = 0; i < GASNETC_UCX_RCV_REAP_MAX; i++) {
+  for (int i = 0; i < GASNETC_UCX_RCV_REAP_MAX; i++) {
+    gasnetc_am_req_t *rreq;
     GASNETI_LIST_ITEM_ALLOC(rreq, gasnetc_am_req_t, gasnetc_am_req_reset);
     rreq->buffer.data = gasneti_malloc_aligned(GASNETI_MEDBUF_ALIGNMENT,
                                                gasnetc_ammed_bufsz);
@@ -920,7 +918,13 @@ int gasnetc_recv_init(void)
     GASNETC_BUF_RESET(rreq->buffer);
     gasneti_list_enq(&gasneti_ucx_module.rreq_free, rreq);
   }
+}
 
+int gasnetc_recv_init(void)
+{
+  gasneti_list_init(&gasneti_ucx_module.recv_queue);
+  gasneti_list_init(&gasneti_ucx_module.rreq_free);
+  gasnetc_recv_fill();
   return GASNET_OK;
 }
 
@@ -990,6 +994,13 @@ void gasnetc_poll_snd(gasnetc_lock_mode_t lmode GASNETI_THREAD_FARG)
 {
   GASNETC_LOCK_ACQUIRE(lmode);
   gasnetc_ucx_progress();
+  gasnetc_ucx_request_t *req = gasneti_list_tail(&gasneti_ucx_module.recv_queue);
+  if (!req || ucp_request_is_completed(req)) {
+    // No free recv requests remain.
+    // Since we cannot process receives here to recycle,
+    // we must post more to prevent deadlock.
+    gasnetc_recv_fill();
+  }
   GASNETC_LOCK_RELEASE(lmode);
 #if GASNET_PSHM
   if (lmode == GASNETC_LOCK_REGULAR) {
@@ -1085,6 +1096,13 @@ void gasnetc_poll_snd(gasnetc_lock_mode_t lmode GASNETI_THREAD_FARG)
       continue;
     }
     request->status = GASNETC_UCX_ACTIVE;
+  }
+  gasnetc_ucx_request_t *req = gasneti_list_tail(&gasneti_ucx_module.recv_queue);
+  if (!req || ucp_request_is_completed(req)) {
+    // No free recv requests remain.
+    // Since we cannot process receives here to recycle,
+    // we must post more to prevent deadlock.
+    gasnetc_recv_fill();
   }
   GASNETC_LOCK_RELEASE(lmode);
 }
