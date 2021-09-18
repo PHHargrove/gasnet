@@ -547,6 +547,19 @@ void *gasneti_list_head(gasneti_list_t *list)
   return list->head->next;
 }
 
+GASNETI_INLINE(gasneti_list_tail)
+void *gasneti_list_tail(gasneti_list_t *list)
+{
+  gasneti_assert(list);
+  gasneti_assert(list->tail->prev);
+  gasneti_assert(list->head->next);
+  if_pf (!list->count) {
+    return NULL;
+  }
+  GASNETI_DBG_LIST_ITEM_CHECK(list->tail->prev);
+  return list->tail->prev;
+}
+
 GASNETI_INLINE(gasneti_list_size)
 size_t gasneti_list_size(gasneti_list_t *list)
 {
