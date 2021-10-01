@@ -167,9 +167,10 @@ void gasnetc_send_init(void)
   gasnetc_am_req_t *am_req;
 
   gasneti_list_init(&gasneti_ucx_module.send_queue);
-  gasneti_list_init(&gasneti_ucx_module.sreq_free);
+  gasneti_list_init(&gasneti_ucx_module.sreq_free_req);
+  gasneti_list_init(&gasneti_ucx_module.sreq_free_rep);
 
-  for (int i = 0; i < GASNETC_UCX_REQ_POOL_SIZE; i++) {
+  for (int i = 0; i < 2 * GASNETC_UCX_REQ_POOL_SIZE; i++) {
     GASNETI_LIST_ITEM_ALLOC(am_req, gasnetc_am_req_t, gasnetc_am_req_reset);
     am_req->buffer.data = gasneti_malloc_aligned(GASNETI_MEDBUF_ALIGNMENT,
                                                  GASNETC_MAX_MED);
@@ -177,7 +178,9 @@ void gasnetc_send_init(void)
 #if !GASNETC_PIN_SEGMENT
     am_req->buffer.long_data_ptr = NULL;
 #endif
-    gasneti_list_enq(&gasneti_ucx_module.sreq_free, am_req);
+    am_req->list = (i%2) ? &gasneti_ucx_module.sreq_free_req
+                         : &gasneti_ucx_module.sreq_free_rep;
+    gasneti_list_enq(am_req->list, am_req);
   }
 
   { // AM Long logic may assume in-order if nbhrd contains all proc on this host.
@@ -212,13 +215,19 @@ void gasnetc_send_fini(void)
   }
   gasneti_list_fini(&gasneti_ucx_module.send_queue);
 
-  /* release pool of send requests */
+  /* release pools of send requests */
   while(NULL != (am_req = GASNETI_LIST_POP(
-                   &gasneti_ucx_module.sreq_free, gasnetc_am_req_t))){
+                   &gasneti_ucx_module.sreq_free_req, gasnetc_am_req_t))){
     gasneti_free_aligned(am_req->buffer.data);
     gasneti_free(am_req);
   }
-  gasneti_list_fini(&gasneti_ucx_module.sreq_free);
+  gasneti_list_fini(&gasneti_ucx_module.sreq_free_req);
+  while(NULL != (am_req = GASNETI_LIST_POP(
+                   &gasneti_ucx_module.sreq_free_rep, gasnetc_am_req_t))){
+    gasneti_free_aligned(am_req->buffer.data);
+    gasneti_free(am_req);
+  }
+  gasneti_list_fini(&gasneti_ucx_module.sreq_free_rep);
 }
 
 GASNETI_INLINE(gasnetc_am_req_get)
@@ -228,11 +237,11 @@ gasnetc_am_req_t *gasnetc_am_req_get(int is_request GASNETI_THREAD_FARG)
 
   gasnetc_ucx_progress();
   if (is_request) {
-    GASNETI_SPIN_UNTIL((am_req = GASNETI_LIST_POP(&gasneti_ucx_module.sreq_free,
+    GASNETI_SPIN_UNTIL((am_req = GASNETI_LIST_POP(&gasneti_ucx_module.sreq_free_req,
                                                   gasnetc_am_req_t)),
                        gasnetc_poll_sndrcv(GASNETC_LOCK_INLINE GASNETI_THREAD_PASS));
   } else {
-    GASNETI_SPIN_UNTIL((am_req = GASNETI_LIST_POP(&gasneti_ucx_module.sreq_free,
+    GASNETI_SPIN_UNTIL((am_req = GASNETI_LIST_POP(&gasneti_ucx_module.sreq_free_rep,
                                                   gasnetc_am_req_t)),
                        gasnetc_poll_snd(GASNETC_LOCK_INLINE GASNETI_THREAD_PASS));
   }
@@ -263,7 +272,7 @@ void gasnetc_am_req_release(gasnetc_am_req_t *am_req)
   }
 #endif
   gasnetc_am_req_reset(am_req);
-  gasneti_list_enq(&gasneti_ucx_module.sreq_free, am_req);
+  gasneti_list_enq(am_req->list, am_req);
 }
 
 /*
