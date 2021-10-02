@@ -259,12 +259,14 @@ static int gasnetc_init(int *argc, char ***argv, gex_Flags_t flags) {
         gasneti_mynode, gasneti_nodes); fflush(stderr);
     #endif
 
-    if (gasneti_getenv("GASNET_USE_GETHOSTID")) { // DEPRECATED = no trace if unset
+    // Note intentional lack of env var tracing when just check for deprecated use
+    if (gasneti_getenv("GASNET_USE_GETHOSTID") && !gasneti_getenv("GASNET_HOST_DETECT")) {
+      // Legacy behavior: GASNET_USE_GETHOSTID demands use of gasneti_gethostid(),
+      // but we ignore GASNET_USE_GETHOSTID if GASNET_HOST_DETECT is set.
       if (!gasneti_mynode) {
         gasneti_console_message("WARNING","GASNET_USE_GETHOSTID is deprecated.  "
                                           "Use GASNET_HOST_DETECT instead.");
       }
-      // Legacy behavior: GASNET_USE_GETHOSTID demands use of gasneti_gethostid()
       if (gasneti_getenv_yesno_withdefault("GASNET_USE_GETHOSTID", 0)) {
         gasneti_setenv("GASNET_HOST_DETECT", "gethostid");
       }
