@@ -747,7 +747,7 @@ static void bootstrapSNodeBroadcast(void *src, size_t len, void *dest, int rootn
         int rc = PMI_Get_numpes_on_smp(&their_count);
         gasneti_assert_always(PMI_SUCCESS == rc);
         if (our_count != their_count) {
-            gasneti_fatalerror("GASNet and PMI do not agree on the number of procsses on "
+            gasneti_fatalerror("GASNet and PMI do not agree on the number of processes on "
                                "this host, seeing %d and %d, respectively.  "
                                "Please see documentation on GASNET_HOST_DETECT in README and "
                                "consider setting its value to 'hostname' or reconfiguring using "
