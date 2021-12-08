@@ -184,6 +184,13 @@ gasnetc_am_req_t *gasnetc_sreq_alloc(gasneti_list_t *list) {
   return am_req;
 }
 
+// TODO: bug 4334:
+// Code below allocates distinct small objects for each individual send buffer
+// and its associated gasnetc_am_req_t, without any attention to cache-line
+// alignment or allocator overheads. This should be refactored to use large
+// allocations that are divided into cache-line-aligned chunks.  Ideally the
+// region holding buffers can also be preemptively registered with UCX to
+// reduce time/space registration overheads and improve TLB utilization.
 void gasnetc_send_init(void)
 {
   gasneti_list_init(&gasneti_ucx_module.send_queue);
@@ -894,6 +901,7 @@ int gasnetc_recv_init(void)
   status = ucp_context_query(gasneti_ucx_module.ucp_context, &attr);
   gasneti_ucx_module.request_size = attr.request_size;
 
+  // TODO: See comment preceding gasnetc_send_init regarding bug 4334
   for (i = 0; i < GASNETC_UCX_RCV_REAP_MAX; i++) {
     void *ucx_req = gasneti_malloc(gasneti_ucx_module.request_size +
                                    sizeof(gasnetc_ucx_request_t));
@@ -933,6 +941,7 @@ int gasnetc_recv_init(void)
   gasneti_list_init(&gasneti_ucx_module.recv_queue);
   gasneti_list_init(&gasneti_ucx_module.rreq_free);
 
+  // TODO: See comment preceding gasnetc_send_init regarding bug 4334
   for (i = 0; i < GASNETC_UCX_RCV_REAP_MAX; i++) {
     GASNETI_LIST_ITEM_ALLOC(rreq, gasnetc_am_req_t, gasnetc_am_req_reset);
     rreq->buffer.data = gasneti_malloc_aligned(GASNETI_MEDBUF_ALIGNMENT,
