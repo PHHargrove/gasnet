@@ -1294,11 +1294,11 @@ static void gasnetc_exit_body(void) {
     GASNETC_EXIT_STATE("flushing ucx requests: waiting for recvs completions");
     while(gasnetc_poll_sndrcv(GASNETC_LOCK_REGULAR GASNETI_THREAD_PASS));
 
-    alarm(20);
+    alarm(10);
     GASNETC_EXIT_STATE("in gasneti_bootstrapFini()");
     gasneti_bootstrapFini();
 
-    alarm(30);
+    alarm(10);
     GASNETC_EXIT_STATE("ucx finalization");
     gasnetc_ucx_fini();
   }
