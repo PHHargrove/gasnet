@@ -74,6 +74,11 @@ void init_ranks(void) {
 
   if (seq_type == SEQUENCE_RANDOM) {
     // permute the array on *every* call
+    // TODO: Currently this is used to shuffle the array once every "round".
+    // However, there are alternatives which would provide greater randomness,
+    // and could even create a bias that favors consecutive sends to the same
+    // peer or to peers on the same node.  Use of the same space to count AMs
+    // sent to each peer should be sufficient for that purpose.
     for (gex_Rank_t r = 0; r < numranks-1; ++r) {
       gex_Rank_t p = TEST_RAND(r, numranks - 1);
       gex_Rank_t tmp = rank_array[r];
@@ -138,15 +143,13 @@ int main(int argc, char **argv) {
              "      -hotspot: each process sends round-robin starting with process 0\n");
   if (help || argc > argi) test_usage();
 
-  { int rounds = (iters + numranks - 1) / numranks;
-    iters = rounds * numranks;
-  }
-
-  void *payload = test_calloc(med_sz,1);
+  int rounds = (iters + numranks - 1) / numranks;
+  iters = rounds * numranks;
   int tick = iters/10;
 
+  void *payload = test_calloc(med_sz,1);
+
   gasnett_atomic_set(&reply_counter,0,0);
-  init_ranks();
 
   fflush(stdout); fflush(stderr); sleep(1);
   BARRIER();
@@ -154,10 +157,13 @@ int main(int argc, char **argv) {
   MSG0("Running %d iterations", iters);
 
   MSG0("Starting Short0 test");
-  for (int i = 0; i < iters; ++i) {
-    gex_AM_RequestShort0(myteam, rank_array[i % numranks], hidx_ping_shorthandler, 0);
-    if (progress && !((iters-(i+1)) % tick)) {
-      MSG0("Sent %d of %d (%d received)", (i+1), iters, (int)gasnett_atomic_read(&reply_counter,0));
+  for (int r = 0, sent = 1; r < rounds; ++r) {
+    init_ranks();
+    for (gex_Rank_t i = 0; i < numranks; ++i, ++sent) {
+      gex_AM_RequestShort0(myteam, rank_array[i], hidx_ping_shorthandler, 0);
+      if (progress && !((iters-sent) % tick)) {
+        MSG0("Sent %d of %d (%d received)", sent, iters, (int)gasnett_atomic_read(&reply_counter,0));
+      }
     }
   }
 
@@ -166,10 +172,13 @@ int main(int argc, char **argv) {
   BARRIER();
 
   MSG0("Starting Medium0 test (payload = %"PRIuSZ")", med_sz);
-  for (int i = 0; i < iters; ++i) {
-    gex_AM_RequestMedium0(myteam, rank_array[i % numranks], hidx_ping_medhandler, payload, med_sz, GEX_EVENT_GROUP, 0);
-    if (progress && !((iters-(i+1)) % tick)) {
-      MSG0("Sent %d of %d (%d received)", (i+1), iters, (int)gasnett_atomic_read(&reply_counter,0));
+  for (int r = 0, sent = 1; r < rounds; ++r) {
+    init_ranks();
+    for (gex_Rank_t i = 0; i < numranks; ++i, ++sent) {
+      gex_AM_RequestMedium0(myteam, rank_array[i], hidx_ping_medhandler, payload, med_sz, GEX_EVENT_GROUP, 0);
+      if (progress && !((iters-sent) % tick)) {
+        MSG0("Sent %d of %d (%d received)", sent, iters, (int)gasnett_atomic_read(&reply_counter,0));
+      }
     }
   }
   gex_NBI_Wait(GEX_EC_AM,0);
