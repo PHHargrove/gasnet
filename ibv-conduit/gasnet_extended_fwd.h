@@ -56,11 +56,6 @@
 
 /* Configure use of AM-based implementation of get/put */
 /* NOTE: Barriers, Collectives, VIS may use GASNETE_USING_REF_* in algorithm selection */
-// We want to call the amref versions for out-of-segment cases
-#define GASNETE_BUILD_AMREF_GET_HANDLERS 1
-#define GASNETE_BUILD_AMREF_GET 1
-#define GASNETE_BUILD_AMREF_PUT_HANDLERS 1
-#define GASNETE_BUILD_AMREF_PUT 1
 
 #if !defined(GASNET_DISABLE_MUNMAP_DEFAULT) && PLATFORM_ARCH_64
  // default to disabling munmap due to bug 955 (firhose correctness) and bug 4164 (odp performance)
