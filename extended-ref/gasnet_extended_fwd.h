@@ -22,9 +22,7 @@
      progress functions, then define GASNETE_CONDUIT_THREADS_USING_TD to the
      maximum COUNT of such threads to allocate space for their threaddata
    */
-#if 0
-  #define GASNETE_CONDUIT_THREADS_USING_TD ###
-#endif
+//#define GASNETE_CONDUIT_THREADS_USING_TD ###
 
   /* this can be used to add statistical collection values 
      specific to the extended API implementation (see gasnet_help.h) */
@@ -69,19 +67,26 @@
  *   set: conduit provides own gasnete_get_val() as an inline
  */
 
-/* Configure use of AM-based implementation of get/put */
-/* NOTE: Barriers, Collectives, VIS may use GASNETE_USING_REF_* in algorithm selection */
+// Configure use of AM-based implementation of get/put
+// NOTE: Barriers, Collectives, VIS may use GASNETE_USING_REF_* in algorithm selection
+// See comments in extended-ref/gasnet_extended_amref.c for details
+
+// 1) Course-grained knobs:
 #define GASNETE_USING_REF_EXTENDED_GET      1
 #define GASNETE_USING_REF_EXTENDED_PUT      1
+// 2) Fine-grained knobs (implied by course-grained GET and PUT):
+// #define GASNETE_BUILD_AMREF_GET_HANDLERS 1
+// #define GASNETE_BUILD_AMREF_GET 1
+// #define GASNETE_BUILD_AMREF_PUT_HANDLERS 1
+// #define GASNETE_BUILD_AMREF_PUT 1
 
-/* These are the default tuning parameters for the AM-based get/put.
- * Conduits cloning this file may want to override these: */
-#if 0
-#define GASNETE_GETPUT_MEDIUM_LONG_THRESHOLD   gex_AM_LUBRequestMedium()
-#define GASNETE_USE_LONG_GETS 1
-#endif
+// 3) These are the default tuning parameters for the AM-based get/put.
+// Conduits using the AM-based get/put may want to override these:
+//#define GASNETE_GETPUT_MEDIUM_LONG_THRESHOLD   gex_AM_LUBRequestMedium()
+//#define GASNETE_USE_LONG_GETS 1
 
-/* Implement all "base" operations directly via amref: */
+// 4) Implement all "base" operations directly via amref:
+// Conduits with native get/put should remove these.
 #define gasnete_amref_get_nb        gasnete_get_nb
 #define gasnete_amref_put_nb        gasnete_put_nb
 #define gasnete_amref_get_nbi       gasnete_get_nbi

@@ -27,9 +27,7 @@
      progress functions, then define GASNETE_CONDUIT_THREADS_USING_TD to the
      maximum COUNT of such threads to allocate space for their threaddata
    */
-#if 0
-  #define GASNETE_CONDUIT_THREADS_USING_TD ###
-#endif
+//#define GASNETE_CONDUIT_THREADS_USING_TD ###
 
   /* this can be used to add statistical collection values 
      specific to the extended API implementation (see gasnet_help.h) */
@@ -75,8 +73,11 @@
  */
 
 
-/* Configure use of AM-based implementation of get/put */
-/* NOTE: Barriers, Collectives, VIS may use GASNETE_USING_REF_* in algorithm selection */
+// Configure use of AM-based implementation of get/put
+// NOTE: Barriers, Collectives, VIS may use GASNETE_USING_REF_* in algorithm selection
+// See comments in extended-ref/gasnet_extended_amref.c for details
+// AMREF get/put are unused in this conduit.
+
 
 #if defined(GASNET_PAR) && GASNETC_GNI_MULTI_DOMAIN
 #  define GASNETE_TD_DOMAIN_IDX int domain_idx;

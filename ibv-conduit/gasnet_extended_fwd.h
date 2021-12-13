@@ -54,8 +54,10 @@
 #define GASNETI_DIRECT_BLOCKING_GET 1
 #define GASNETI_DIRECT_BLOCKING_PUT 1
 
-/* Configure use of AM-based implementation of get/put */
-/* NOTE: Barriers, Collectives, VIS may use GASNETE_USING_REF_* in algorithm selection */
+// Configure use of AM-based implementation of get/put
+// NOTE: Barriers, Collectives, VIS may use GASNETE_USING_REF_* in algorithm selection
+// See comments in extended-ref/gasnet_extended_amref.c for details
+// AMREF get/put are unused in this conduit.
 
 #if !defined(GASNET_DISABLE_MUNMAP_DEFAULT) && PLATFORM_ARCH_64
  // default to disabling munmap due to bug 955 (firhose correctness) and bug 4164 (odp performance)

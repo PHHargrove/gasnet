@@ -20,14 +20,14 @@
 
 #define GASNETI_EOP_IS_HANDLE 1
 
-/* Configure use of AM-based implementation of get/put */
-/* NOTE: Barriers, Collectives, VIS may use GASNETE_USING_REF_* in algorithm selection */
-#if defined(GASNET_SEGMENT_FAST) || defined(GASNET_SEGMENT_LARGE)
-#define GASNETE_USING_REF_EXTENDED_GET      0
-#define GASNETE_USING_REF_EXTENDED_PUT      0
-#else
-#define GASNETE_USING_REF_EXTENDED_GET      1
-#define GASNETE_USING_REF_EXTENDED_PUT      1
+
+// Configure use of AM-based implementation of get/put
+// NOTE: Barriers, Collectives, VIS may use GASNETE_USING_REF_* in algorithm selection
+// See comments in extended-ref/gasnet_extended_amref.c for details
+// AMREF get/put are used only in EVERYTHING segment mode
+#if defined(GASNET_SEGMENT_EVERYTHING)
+  #define GASNETE_USING_REF_EXTENDED_GET      1
+  #define GASNETE_USING_REF_EXTENDED_PUT      1
 #endif
 
 /* this can be used to add statistical collection values

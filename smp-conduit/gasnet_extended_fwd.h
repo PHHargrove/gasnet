@@ -22,9 +22,7 @@
      progress functions, then define GASNETE_CONDUIT_THREADS_USING_TD to the
      maximum COUNT of such threads to allocate space for their threaddata
    */
-#if 0
-  #define GASNETE_CONDUIT_THREADS_USING_TD ###
-#endif
+//#define GASNETE_CONDUIT_THREADS_USING_TD ###
 
 #if GASNET_PSHM
 #define GASNETE_COLL_CONDUIT_BARRIERS GASNETE_COLL_BARRIER_PSHM
@@ -52,9 +50,11 @@
     extern gasneti_auxseg_request_t gasnete_barr_auxseg_alloc(gasnet_seginfo_t *auxseg_info);
 #define GASNETE_AUXSEG_FNS() gasnete_barr_auxseg_alloc, 
 
-/* NOT using the AM-based implementation of get/put */
-#define GASNETE_USING_REF_EXTENDED_GET      0
-#define GASNETE_USING_REF_EXTENDED_PUT      0
+
+// Configure use of AM-based implementation of get/put
+// NOTE: Barriers, Collectives, VIS may use GASNETE_USING_REF_* in algorithm selection
+// See comments in extended-ref/gasnet_extended_amref.c for details
+// AMREF get/put are unused in this conduit.
 
 /* Compile out VIS algorithms that should never be used in shared memory */
 #define GASNETE_USE_AMPIPELINE 0
