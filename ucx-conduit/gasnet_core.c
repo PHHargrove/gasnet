@@ -5,6 +5,7 @@
  * Terms of use are as specified in license.txt
  */
 
+#define GASNETI_NEED_GASNET_MK_H 1
 #include <gasnet_internal.h>
 #include <gasnet_core_internal.h>
 #include <gasnet_ucx_req.h>
@@ -260,7 +261,7 @@ static int gasnetc_ucx_worker_flush(void)
 }
 
 #if GASNETC_PIN_SEGMENT
-static int gasnetc_mem_map(void* addr, size_t size, gasnetc_mem_info_t *reg)
+static int gasnetc_mem_map(void* addr, size_t size, gasnetc_mem_info_t *reg, gex_MK_Class_t mk_class)
 {
   ucp_mem_map_params_t mem_params;
   ucs_status_t status;
@@ -270,6 +271,36 @@ static int gasnetc_mem_map(void* addr, size_t size, gasnetc_mem_info_t *reg)
                           UCP_MEM_MAP_PARAM_FIELD_LENGTH;
   mem_params.length = size;
   mem_params.address = addr;
+
+#if GASNET_HAVE_MK_CLASS_MULTIPLE && HAVE_UCP_MEM_MAP_TYPE
+  // If ucp_mem_map() supports specifying a type, then do so.
+  // This removes dynamic checks from critical paths, as well as eliminating
+  // dependence on (fragile?) device allocator hooks.
+  // NOTE: all UCS_MEMORY_TYPE_{UNKNOWN,HOST,CUDA,ROCM} have been defined (as
+  // enum values) since several releases before their use in memory registration.
+  // TODO: check library capability at init once able to fallback to reference.
+  switch (mk_class) {
+    case GEX_MK_CLASS_HOST:
+      mem_params.memory_type = UCS_MEMORY_TYPE_HOST;
+      break;
+
+    #if GASNET_HAVE_MK_CLASS_CUDA_UVA
+    case GEX_MK_CLASS_CUDA_UVA:
+      mem_params.memory_type = UCS_MEMORY_TYPE_CUDA;
+      break;
+    #endif
+
+    #if GASNET_HAVE_MK_CLASS_HIP
+    case GEX_MK_CLASS_HIP:
+      mem_params.memory_type = UCS_MEMORY_TYPE_ROCM;
+      break;
+    #endif
+
+    default:
+      mem_params.memory_type = UCS_MEMORY_TYPE_UNKNOWN;
+  }
+  mem_params.field_mask |= UCP_MEM_MAP_PARAM_FIELD_MEMORY_TYPE;
+#endif
 
   status = ucp_mem_map(gasneti_ucx_module.ucp_context, &mem_params, &reg->mem_h);
   if (status != UCS_OK) {
@@ -287,7 +318,7 @@ static void gasnetc_minfo_reset(gasnetc_mem_info_t *minfo)
 }
 
 static gasnetc_mem_info_t*
-gasnetc_segment_register(void *seg_start, size_t segsize)
+gasnetc_segment_register(void *seg_start, size_t segsize, gex_MK_Class_t mk_class)
 {
   ucs_status_t status;
   gasnet_ep_info_t * my_ep_info = &gasneti_ucx_module.ep_tbl[gasneti_mynode];
@@ -298,7 +329,7 @@ gasnetc_segment_register(void *seg_start, size_t segsize)
   GASNETI_LIST_ITEM_ALLOC(mem_info, gasnetc_mem_info_t, gasnetc_minfo_reset);
   gasneti_list_enq(&mem_info_list, mem_info);
 
-  status = gasnetc_mem_map((void *)seg_start, segsize, mem_info);
+  status = gasnetc_mem_map((void *)seg_start, segsize, mem_info, mk_class);
   if (status != UCS_OK) {
     gasneti_fatalerror("Memory map failed: %s",
                        ucs_status_string(UCS_PTR_STATUS(status)));
@@ -755,7 +786,7 @@ static int gasnetc_init(gex_Client_t *client_p, gex_EP_t *ep_p,
 
 #if GASNETC_PIN_SEGMENT
   /* pin the aux segment and exchange the RKeys */
-  gasnetc_mem_info_t *mem_info = gasnetc_segment_register(auxbase, auxsize);
+  gasnetc_mem_info_t *mem_info = gasnetc_segment_register(auxbase, auxsize, GEX_MK_CLASS_HOST);
   gasnetc_segment_exchange_aux(mem_info);
 #endif
 
@@ -821,7 +852,10 @@ int gasnetc_segment_create_hook(gex_Segment_t e_segment)
 #if GASNETC_PIN_SEGMENT
   // Register the segment
   gasnetc_Segment_t segment = (gasnetc_Segment_t) gasneti_import_segment(e_segment);
-  segment->mem_info = gasnetc_segment_register(segment->_addr, segment->_size);
+  gex_MK_Class_t mk_class = (segment->_kind == GEX_MK_HOST)
+                            ? GEX_MK_CLASS_HOST
+                            : gex_MK_QueryClass(segment->_kind);
+  segment->mem_info = gasnetc_segment_register(segment->_addr, segment->_size, mk_class);
   if (! segment->mem_info) {
     // TODO: non-fatal error handling:
     // Once gasnetc_segment_register() can return NULL on error, either it or

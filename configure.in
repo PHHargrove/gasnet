@@ -3673,16 +3673,30 @@ else
     CONDUIT_LDFLAGS(ucp)
     GASNET_SPLIT_LINKER_OPTS(UCX_LDFLAGS,UCX_LIBS)
 
-    # Try to compile and link a basic UCX program
     GASNET_PUSHVAR(CFLAGS,"$CFLAGS $UCX_CFLAGS")
     GASNET_PUSHVAR(LDFLAGS,"$LDFLAGS $UCX_LDFLAGS")
     GASNET_PUSHVAR(LIBS,"$LIBS $UCX_LIBS")
+      # Try to compile and link a basic UCX program
       GASNET_TRY_CACHE_LINK(for working UCX configuration, ucx_works, [
             #include <ucp/api/ucp.h>
         ], [{
                unsigned major_version, minor_version, release_number;
                ucp_get_version(&major_version, &minor_version, &release_number);
             }], [ : ], [ have_ucx=no; GASNET_ERR_SAVE() ] )
+
+      # Check(s) for API features
+      if test $have_ucx = yes; then
+        GASNET_TRY_CACHE_LINK(for memory type support in ucp_mem_map(), ucp_mem_map_type, [
+            #include <ucp/api/ucp.h>
+          ], [
+            ucp_mem_map_params_t mem_params;
+            mem_params.memory_type = UCS_MEMORY_TYPE_HOST;
+            mem_params.memory_type = UCS_MEMORY_TYPE_CUDA;
+            mem_params.memory_type = UCS_MEMORY_TYPE_ROCM;
+            mem_params.memory_type = UCS_MEMORY_TYPE_UNKNOWN;
+            mem_params.field_mask = UCP_MEM_MAP_PARAM_FIELD_MEMORY_TYPE;
+          ], [ AC_DEFINE(HAVE_UCP_MEM_MAP_TYPE) ])
+      fi
     GASNET_POPVAR(CFLAGS)
     GASNET_POPVAR(LDFLAGS)
     GASNET_POPVAR(LIBS)

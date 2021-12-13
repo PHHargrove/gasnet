@@ -502,6 +502,9 @@
 #undef GASNETC_IBV_FENCED_PUTS_CONFIGURE
 #undef GASNETC_IBV_SERIALIZE_POLL_CQ_CONFIGURE
 
+/* GASNet ucx-conduit features and bug work-arounds */
+#undef HAVE_UCP_MEM_MAP_TYPE
+
 /* GASNet bug1389 detection/work-around */
 #undef GASNETI_BUG1389_WORKAROUND
 
