@@ -200,12 +200,6 @@ Additional environment variables:
   That bug report describes the problem in more detail, and lists the best
   known recommended work-around(s).
 
-+ Bug 4165
-  The implementation of AM Mediums is known to have anomalous performance
-  for payloads above about 1KiB on multiple systems.
-  The most up-to-date information on this bug is maintained at:
-    https://gasnet-bugs.lbl.gov/bugzilla/show_bug.cgi?id=4165
-
 + Bug 4301
   As descried in the "Runtime Configuration" section, UCX versions 1.9 and
   newer use prefix of "GASNET_UCX" for private (per client of UCX)
