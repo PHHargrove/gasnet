@@ -1647,13 +1647,6 @@ time spent blocked in the shutdown code.  While there is the risk that
 this alarm might go off "too soon" if the shutdown has lots of work to
 do, we can be certain that the correct exit code is still generated.
 
-An additional step to address signal context is the definition of
-GASNETC_FATALSIGNAL_CALLBACK in ibv-conduit/gasnet_core_fwd.h, which
-gives ibv-conduit the chance to set gasnetc_exit_in_signal=1 just before
-the conduit-independent signal-handling code can reach the exit path.
-If this variable is non-zero then certain operations known to be
-especially risky in signal-handler context are skipped.
-
 After signal handlers are established, _body calls gasnetc_disable_AMs()
 to zero the table of client-registered AM handlers (though preserving
 the internal ones).  This helps avoid interference.

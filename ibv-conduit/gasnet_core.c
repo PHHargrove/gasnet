@@ -156,8 +156,6 @@ int gasnetc_qp_timeout, gasnetc_qp_retry_count;
   #define PCI_DEVICE_ID_MELLANOX_TAVOR    0x5a44
 #endif
 
-static int gasnetc_exit_in_signal = 0;  // to avoid certain things in signal context
-
 /* ------------------------------------------------------------------------------------ */
 
 /* conduit-specific firehose region parameters
@@ -2143,7 +2141,7 @@ static void gasnetc_odp_dereg(gasnetc_hca_t *hca) {
 // So, we *must* do this for both normal and abnormal exits.
 static void gasnetc_odp_shutdown(void) {
   if (gasnetc_use_odp) {
-    if (gasnetc_exit_in_signal) {
+    if (gasneti_quit_signal_rcvd || gasneti_fatal_signal_rcvd) {
       static const char msg[] = "WARNING: ODP shutdown in signal context\n";
       (void) write(STDERR_FILENO, msg, sizeof(msg) - 1);
       (void) fsync(STDERR_FILENO);
@@ -3247,10 +3245,6 @@ static gasneti_atomic_t gasnetc_exit_reps = gasneti_atomic_init(0);	/* count of 
 static gasneti_atomic_t gasnetc_exit_done = gasneti_atomic_init(0);	/* flag to show exit coordination done */
 static gasnetc_counter_t gasnetc_exit_repl_oust = GASNETC_COUNTER_INITIALIZER; /* track send of our AM reply */
 
-extern void gasnetc_fatalsignal_callback(int sig) {
-  gasnetc_exit_in_signal = 1;
-}
-
 #define GASNETC_ROOT_NODE 0
 
 enum {
@@ -3575,7 +3569,7 @@ static void gasnetc_exit_tail(void) {
 static void gasnetc_exit_sighandler(int sig) {
   int exitcode = (int)gasneti_atomic_read(&gasnetc_exit_code, GASNETI_ATOMIC_RMB_PRE);
   static gasneti_atomic_t once = gasneti_atomic_init(1);
-  gasnetc_exit_in_signal = 1;
+  gasneti_fatal_signal_rcvd = 1;
 
 #if GASNET_DEBUG || GASNETC_IBV_ODP
   // protect until we reach reentrance check
@@ -3860,7 +3854,7 @@ static void gasnetc_exit_body(void) {
  }
 
   // Note we skip clean shutdown on non-collective exit or exit via signal
-  if (graceful && !gasnetc_exit_in_signal) {
+  if (graceful && !(gasneti_quit_signal_rcvd || gasneti_fatal_signal_rcvd)) {
   #if GASNETC_IBV_SHUTDOWN
     GASNETC_EXIT_STATE("ibv quiesce");
     gasnetc_sndrcv_quiesce();

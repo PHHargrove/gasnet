@@ -52,11 +52,6 @@ static const char * volatile gasnetc_exit_state = "UNKNOWN STATE";
 
 int gasnetc_exit_running = 0;		/* boolean used to identify that exit process is started */
 
-static int gasnetc_exit_in_signal = 0;  /* to avoid certain things in signal context */
-extern void gasnetc_fatalsignal_callback(int sig) {
-  gasnetc_exit_in_signal = 1;
-}
-
 /* gasnete_threadidx_t used to identify what thread an exit process was started */
 gasnete_threadidx_t gasnetc_exit_thread  = 0 ;
 
@@ -1333,7 +1328,7 @@ static void gasnetc_exit_body(void) {
   }
 
   // Note we skip cleanly shutdown on non-collective exit or exit via signal
-  if (graceful && !gasnetc_exit_in_signal) {
+  if (graceful && !(gasneti_quit_signal_rcvd || gasneti_fatal_signal_rcvd)) {
     GASNETC_EXIT_STATE("flushing ucx requests: waiting for sends completions");
     gasnetc_send_list_wait(GASNETC_LOCK_REGULAR GASNETI_THREAD_PASS);
     gasneti_bootstrapBarrier();
