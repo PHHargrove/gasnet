@@ -2310,9 +2310,13 @@ extern int  gasnetc_hsl_trylock(gex_HSL_t *hsl) {
 #endif
 
 /* ------------------------------------------------------------------------------------ */
-/*
-  Exit handling code
-*/
+// Exit handling
+
+// use reference implementation of exit handling
+#define GASNETI_GASNET_REFEXIT_C 1
+#include "gasnet_refexit.c"
+#undef GASNETI_GASNET_REFEXIT_C
+
 #ifndef GASNETI_HAVE_ATOMIC_CAS
 #error "required atomic compare-and-swap is not yet implemented for your CPU/OS/compiler"
 #endif

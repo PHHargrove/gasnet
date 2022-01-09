@@ -267,7 +267,15 @@ extern int gasnetc_ep_publishboundsegment_hook(
 
   return GASNET_OK;
 }
+
 /* ------------------------------------------------------------------------------------ */
+// Exit handling
+
+// use reference implementation of exit handling
+#define GASNETI_GASNET_REFEXIT_C 1
+#include "gasnet_refexit.c"
+#undef GASNETI_GASNET_REFEXIT_C
+
 int gasnetc_exit_in_progress = 0;
 
 static gasneti_atomic_t gasnetc_exit_code = gasneti_atomic_init(0);     /* value to _exit() with */

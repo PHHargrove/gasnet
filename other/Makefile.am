@@ -19,6 +19,7 @@ CONDUITMODE_SUBDIRS = \
 	valgrind
 
 CONDUITMODE_EXTRADIST = \
+	gasnet_refexit.c \
 	amx         \
 	hwloc       \
 	ssh-spawner \
