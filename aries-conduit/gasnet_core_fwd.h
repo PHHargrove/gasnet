@@ -179,9 +179,6 @@ extern int gasnetc_pthread_create(gasnetc_pthread_create_fn_t *_create_fn, pthre
         CNT(C, AMPOLL_INS, late notifies) \
         /* blank */
 
-extern void gasnetc_fatalsignal_callback(int _sig);
-#define GASNETC_FATALSIGNAL_CALLBACK(sig) gasnetc_fatalsignal_callback(sig)
-
 extern void gasnetc_stats_dump(int _reset);
 #define GASNETC_STATS_DUMP(reset) gasnetc_stats_dump(reset)
 
