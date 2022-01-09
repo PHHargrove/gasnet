@@ -893,10 +893,6 @@ extern int gasnetc_ep_publishboundsegment_hook(
   return GASNET_OK;
 }
 /* ------------------------------------------------------------------------------------ */
-static int gasnetc_exit_in_signal = 0;  /* to avoid certain things in signal context */
-extern void gasnetc_fatalsignal_callback(int sig) {
-  gasnetc_exit_in_signal = 1;
-}
 
 static int gasnetc_remoteShutdown = 0;
 
