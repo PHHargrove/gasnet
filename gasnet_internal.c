@@ -1008,6 +1008,9 @@ gasneti_Segment_t gasneti_epidx_to_segment(gasneti_TM_t i_tm, gex_EP_Index_t ep_
 #define GASNETC_FATALSIGNAL_CLEANUP_CALLBACK(sig)
 #endif
 
+volatile int gasneti_quit_signal_rcvd = 0;
+volatile int gasneti_fatal_signal_rcvd = 0;
+
 void gasneti_defaultSignalHandler(int sig) {
   gasneti_sighandlerfn_t oldsigpipe = NULL;
   const char *signame =  gasnett_signame_fromval(sig);
@@ -1017,6 +1020,7 @@ void gasneti_defaultSignalHandler(int sig) {
   switch (sig) {
     case SIGQUIT:
       /* client didn't register a SIGQUIT handler, so just exit */
+      gasneti_quit_signal_rcvd = 1;
       gasnet_exit(1);
       break;
     case SIGABRT:
@@ -1024,6 +1028,8 @@ void gasneti_defaultSignalHandler(int sig) {
     case SIGSEGV:
     case SIGBUS:
     case SIGFPE: {
+      gasneti_fatal_signal_rcvd = 1;
+
       oldsigpipe = gasneti_reghandler(SIGPIPE, SIG_IGN);
 
       GASNETC_FATALSIGNAL_CALLBACK(sig); /* give conduit first crack at it */

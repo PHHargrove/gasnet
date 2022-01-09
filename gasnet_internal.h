@@ -59,6 +59,9 @@ GASNETI_BEGIN_NOWARN
 extern int gasneti_init_done; /*  true after init */
 extern int gasneti_attach_done; /*  true after attach */
 
+extern volatile int gasneti_quit_signal_rcvd;  // true if default signal handler has run for SIGQUIT
+extern volatile int gasneti_fatal_signal_rcvd; // true if default signal handler has run for a fatal signal
+
 extern char gasneti_exename[PATH_MAX];
 
 /* conduit-independent sanity checks */
