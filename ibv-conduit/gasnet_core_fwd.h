@@ -246,9 +246,6 @@
 	VAL(C, FIREHOSE_PIN, pages)               \
 	VAL(C, FIREHOSE_UNPIN, pages)
 
-#define GASNETC_FATALSIGNAL_CALLBACK(sig) gasnetc_fatalsignal_callback(sig)
-	extern void gasnetc_fatalsignal_callback(int _sig);
-
 #if GASNETC_IBV_ODP
   #define GASNETC_FATALSIGNAL_CLEANUP_CALLBACK(sig) gasnetc_fatalsignal_cleanup_callback(sig)
   extern void gasnetc_fatalsignal_cleanup_callback(int _sig);
