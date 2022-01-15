@@ -1371,6 +1371,10 @@ void gasnetc_ofi_am_recv_poll(int is_request)
         gasnetc_ofi_handle_am(re.buf, is_request, re.len, re.data);
     }
 
+#if GASNETC_OFI_RETRY_RECVMSG
+    static gasnetc_ofi_ctxt_t *buffs_to_retry[2] = { NULL, NULL };
+#endif
+
     /* The atomic here ensures that the buffer is not reposted while an AM handler is
      * still running. */
     uint64_t tmp = gasnetc_paratomic_add(&header->consumed_cntr, 1, GASNETI_ATOMIC_ACQ);
@@ -1379,9 +1383,48 @@ void gasnetc_ofi_am_recv_poll(int is_request)
         struct fi_msg* am_buff_msg = &metadata->am_buff_msg;
         GASNETC_OFI_LOCK(&gasnetc_ofi_locks.am_rx);
         post_ret = fi_recvmsg(ep, am_buff_msg, FI_MULTI_RECV);
+#if GASNETC_OFI_RETRY_RECVMSG
+        if_pf (post_ret == -FI_EAGAIN) {
+            header->next = buffs_to_retry[is_request];
+            buffs_to_retry[is_request] = header;
+            post_ret = FI_SUCCESS;
+            if (is_request) {
+                GASNETI_TRACE_EVENT(C, RECVMSG_REQ_EAGAIN);
+            } else {
+                GASNETI_TRACE_EVENT(C, RECVMSG_REP_EAGAIN);
+            }
+        }
+#endif
         GASNETC_OFI_UNLOCK(&gasnetc_ofi_locks.am_rx);
         GASNETC_OFI_CHECK_RET(post_ret, "fi_recvmsg failed inside am_recv_poll");
+        if (is_request) {
+            GASNETI_TRACE_EVENT(C, RECVMSG_REQ);
+        } else {
+            GASNETI_TRACE_EVENT(C, RECVMSG_REP);
+        }
     }
+
+#if GASNETC_OFI_RETRY_RECVMSG
+    if_pf (buffs_to_retry[is_request]) {
+        GASNETC_OFI_LOCK(&gasnetc_ofi_locks.am_rx);
+        header = buffs_to_retry[is_request];
+        while (header) {
+            gasnetc_ofi_recv_metadata_t* metadata = header->metadata;
+            struct fi_msg* am_buff_msg = &metadata->am_buff_msg;
+            post_ret = fi_recvmsg(ep, am_buff_msg, FI_MULTI_RECV);
+            if (post_ret == -FI_EAGAIN) break;
+            GASNETC_OFI_CHECK_RET(post_ret, "deferred fi_recvmsg failed");
+            header = header->next;
+            if (is_request) {
+                GASNETI_TRACE_EVENT(C, RECVMSG_REQ_REPOST);
+            } else {
+                GASNETI_TRACE_EVENT(C, RECVMSG_REP_REPOST);
+            }
+        }
+        buffs_to_retry[is_request] = header;
+        GASNETC_OFI_UNLOCK(&gasnetc_ofi_locks.am_rx);
+    }
+#endif
 }
 
 /* General progress function */
