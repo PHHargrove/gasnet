@@ -105,7 +105,7 @@ void roundtrip_test(int iters, int nbytes)
 	/* initialize statistics */
 	init_stat(&st, nbytes);
 	
-	memset(msgbuf, 1, nbytes);
+	//memset(msgbuf, 1, nbytes);
 
 	BARRIER();
 	
@@ -154,7 +154,7 @@ void oneway_test(int iters, int nbytes)
 	/* initialize statistics */
 	init_stat(&st, nbytes);
 	
-	memset(msgbuf, 1, nbytes);
+	//memset(msgbuf, 1, nbytes);
 
 	BARRIER();
 	
@@ -204,7 +204,7 @@ void roundtrip_nbi_test(int iters, int nbytes)
 	/* initialize statistics */
 	init_stat(&st, nbytes);
 	
-	memset(msgbuf, 1, nbytes);
+	//memset(msgbuf, 1, nbytes);
 
 	BARRIER();
 	
@@ -257,7 +257,7 @@ void oneway_nbi_test(int iters, int nbytes)
 	/* initialize statistics */
 	init_stat(&st, nbytes);
 	
-	memset(msgbuf, 1, nbytes);
+	//memset(msgbuf, 1, nbytes);
 
 	BARRIER();
 	
@@ -310,7 +310,7 @@ void roundtrip_nb_test(int iters, int nbytes)
 	/* initialize statistics */
 	init_stat(&st, nbytes);
 	
-	memset(msgbuf, 1, nbytes);
+	//memset(msgbuf, 1, nbytes);
 
 	BARRIER();
 	
@@ -366,7 +366,7 @@ void oneway_nb_test(int iters, int nbytes)
 	
 	events = (gex_Event_t*) test_malloc(sizeof(gex_Event_t) * iters);
 	
-	memset(msgbuf, 1, nbytes);
+	//memset(msgbuf, 1, nbytes);
 
 	BARRIER();
 	
@@ -420,7 +420,8 @@ void oneway_nb_test(int iters, int nbytes)
 
 int main(int argc, char **argv)
 {
-    int min_payload, max_payload;
+    int min_payload = 1;
+    int max_payload;
     void *myseg;
     void *alloc = NULL;
     int arg;
@@ -466,6 +467,10 @@ int main(int argc, char **argv)
       } else if (!strcmp(argv[arg], "-s")) {
         skipwarmup = 1;
         ++arg;
+      } else if (!strcmp(argv[arg], "-min-size")) {
+        ++arg;
+        if (argc > arg) { min_payload = atoi(argv[arg]); arg++; }
+        else help = 1;
 #if GASNET_HAVE_MK_CLASS_CUDA_UVA
       // UNDOCUMENTED
       } else if (!strcmp(argv[arg], "-cuda-uva")) {
@@ -509,10 +514,11 @@ int main(int argc, char **argv)
                "  The -a option enables full-duplex mode, where all nodes send.\n"
                "  The -c option enables cross-machine pairing, default is nearest neighbor.\n"
                "  The -f option enables 'first/last' mode, where the first/last\n"
-               "   nodes communicate with each other, while all other nodes sit idle.\n");
+               "   nodes communicate with each other, while all other nodes sit idle.\n"
+               "  The '-min-size N' option sets the minimum transfer size tested.\n"
+              );
     if (help || argc > arg) test_usage();
 
-    min_payload = 1;
     max_payload = maxsz;
 
     if (max_payload < min_payload) {
@@ -590,16 +596,19 @@ int main(int argc, char **argv)
 
       // The "trick" to diverting RMA operation to the remote GPU memory
       myteam = gex_TM_Pair(myep, gex_EP_QueryIndex(gpu_ep));
+myteam = gex_TM_Pair(gpu_ep, gex_EP_QueryIndex(gpu_ep));
       gex_Event_Wait( gex_EP_QueryBoundSegmentNB(myteam, peerproc, (void**)&tgtmem, NULL, NULL, 0) );
     }
 #endif
 
         if (insegment) {
-	    msgbuf = (void *) myseg;
+	    //msgbuf = (void *) myseg;
+            gex_Event_Wait( gex_EP_QueryBoundSegmentNB(myteam, myproc, (void**)&msgbuf, NULL, NULL, 0) );
         } else {
 	    alloc = (void *) test_calloc((maxsz+PAGESZ)*2,1); /* calloc prevents valgrind warnings */
             msgbuf = (void *) alignup(((uintptr_t)alloc), PAGESZ); /* ensure page alignment of base */
         }
+MSG("myseg=%p loc=%p rem=%p", myseg, msgbuf, tgtmem);
         assert(((uintptr_t)msgbuf) % PAGESZ == 0);
         if (myproc == 0) 
           MSG("Running %i iterations of %s%s%snon-bulk put/get with local addresses %sside the segment for sizes: %i...%i\n", 

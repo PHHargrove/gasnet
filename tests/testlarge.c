@@ -470,16 +470,19 @@ int main(int argc, char **argv)
 
       // The "trick" to diverting RMA operation to the remote GPU memory
       myteam = gex_TM_Pair(myep, gex_EP_QueryIndex(gpu_ep));
+myteam = gex_TM_Pair(gpu_ep, gex_EP_QueryIndex(gpu_ep));
       gex_Event_Wait( gex_EP_QueryBoundSegmentNB(myteam, peerproc, (void**)&tgtmem, NULL, NULL, 0) );
     }
 #endif
 
         if (insegment) {
-	    msgbuf = (void *) myseg;
+	    //msgbuf = (void *) myseg;
+            gex_Event_Wait( gex_EP_QueryBoundSegmentNB(myteam, myproc, (void**)&msgbuf, NULL, NULL, 0) );
         } else {
 	    alloc = (void *) test_calloc(maxsz+PAGESZ,1); /* calloc prevents valgrind warnings */
             msgbuf = (void *) alignup(((uintptr_t)alloc), PAGESZ); /* ensure page alignment of base */
         }
+MSG("myseg=%p loc=%p rem=%p", myseg, msgbuf, tgtmem);
         assert(((uintptr_t)msgbuf) % PAGESZ == 0);
 
         if (myproc == 0) 
