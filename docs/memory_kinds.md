@@ -361,7 +361,25 @@ or demand allocation of memory suitable for intra-nbrhd cross-mapping via PSHM.
 
 ## `gex_Segment_Destroy()`
 
-Not currently implemented.
+Currently has only a NON-CONFORMING implementation.
+
+The eventual specification for `gex_Segment_Destroy()` will include as a
+precondition reversal of any `gex_EP_BindSegment()` or `gex_Segment_Attach()`
+which have bound the segment to an EP.  However, no means to do so has been
+specified or implemented.  Therefore, the current implementation has the
+following properties which will be irrelevant in the final version:
+
++ If at the time of a call to `gex_Segment_Destroy()` any RMA or AM Long
+  operation is in-flight involving an endpoint (at either end) to which the
+  subject segment is bound then the behavior is undefined.
++ If after a call to `gex_Segment_Destroy()` begins any RMA or AM Long operation
+  is initiated involving an endpoint (at either end) to which the subject segment
+  is bound then the behavior is undefined.
+
+The implementation of `gex_Segment_Destroy()` releases all resources which the
+implementation has allocated to the segment.  For instance, any memory
+registrations are released and any memory (device or host) allocated to the
+segment by GASNet is freed.
 
 ## `gex_EP_Create()`
 
