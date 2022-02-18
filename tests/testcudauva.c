@@ -47,13 +47,16 @@ static gex_Rank_t    nranks;
 static uint8_t *cmp_buffer;
 
 #if GASNET_HAVE_MK_CLASS_CUDA_UVA
+CUcontext my_ctx;
 static int equalDH(uint8_t *d_ptr, uint8_t *h_ptr, size_t len) {
-  cuMemcpyDtoH(cmp_buffer, (CUdeviceptr)d_ptr, len);
+  check_cudacall( cuCtxPushCurrent(my_ctx) );
+  check_cudacall( cuMemcpyDtoH(cmp_buffer, (CUdeviceptr)d_ptr, len) );
   int result = !memcmp(cmp_buffer, h_ptr, len);
   if (!result) {
     // Restore expected content to avoid cascading failures
-    cuMemcpyHtoD((CUdeviceptr)d_ptr, h_ptr, len);
+    check_cudacall( cuMemcpyHtoD((CUdeviceptr)d_ptr, h_ptr, len) );
   }
+  check_cudacall( cuCtxPopCurrent(&my_ctx) );
   return result;
 }
 #endif
@@ -75,6 +78,72 @@ static int equalDH(uint8_t *d_ptr, uint8_t *h_ptr, size_t len) {
        MSG(label " verification passed"); \
     }                                             \
   } while (0)
+
+      gex_TM_t LH_RG1  ;
+      gex_TM_t LH_RG2  ;
+      gex_TM_t LG1_RG1 ;
+      gex_TM_t LG2_RG2 ;
+      gex_TM_t LG1_RG2 ;
+      gex_TM_t LG2_RG1 ;
+  gex_Rank_t peer;
+  uint8_t *loc1;
+  uint8_t *loc2;
+  uint8_t *array1;
+  uint8_t *array2;
+  uint8_t *loc_gpu1, *loc_gpu2, *rem_gpu1, *rem_gpu2;
+    int count;
+
+
+void do_rma(void *arg) {
+MSG("TID: %p", pthread_self());
+// Case 1. Puts - local host to remote gpus
+//   BEFORE:  GPU1=uninit:uninit    GPU2=uninit:uninit
+//   AFTER:   GPU1=array1:uninit    GPU2=array2:uninit
+      gex_RMA_PutNBI(LH_RG1, peer, rem_gpu1, array1, len, GEX_EVENT_DEFER, 0);
+      gex_RMA_PutNBI(LH_RG2, peer, rem_gpu2, array2, len, GEX_EVENT_DEFER, 0);
+      gex_NBI_Wait(GEX_EC_PUT,0);
+      BARRIER();
+      CHECK_DEVICE("Case 1a", loc_gpu1, array1, len);
+      CHECK_DEVICE("Case 1b", loc_gpu2, array2, len);
+
+// Case 2. Gets - remote gpus to local host
+//   BEFORE:  GPU1=array1:uninit    GPU2=array2:uninit
+//   AFTER:   GPU1=array1:uninit    GPU2=array2:uninit
+      gex_Event_t get_events[2] = {
+              gex_RMA_GetNB(LH_RG1, loc1, peer, rem_gpu1, len, 0),
+              gex_RMA_GetNB(LH_RG2, loc2, peer, rem_gpu2, len, 0)
+          };
+      gex_Event_WaitAll(get_events, 2, 0);
+      CHECK_HOST("Case 2a", loc1, array1, len);
+      CHECK_HOST("Case 2b", loc2, array2, len);
+      BARRIER();
+
+// Case 3. Put - local gpus to remote gpus "cross over"
+//   BEFORE:  GPU1=array1:uninit    GPU2=array2:uninit
+//   AFTER:   GPU1=array1:array2    GPU2=array2:array1
+      gex_RMA_PutBlocking(LG1_RG2, peer, rem_gpu2+len, loc_gpu1, len, 0);
+      BARRIER();
+      CHECK_DEVICE("Case 3a", loc_gpu2+len, array1, len);
+      gex_RMA_PutBlocking(LG2_RG1, peer, rem_gpu1+len, loc_gpu2, len, 0);
+      BARRIER();
+      CHECK_DEVICE("Case 3b", loc_gpu1+len, array2, len);
+
+// Case 4. Get - remote gpus to local gpus
+//   BEFORE:  GPU1=array1:array2    GPU2=array2:array1
+//   AFTER:   GPU1=array1:array1    GPU2=array2:array2
+      gex_RMA_GetBlocking(LG1_RG1, loc_gpu1+len, peer, rem_gpu1, len, 0);
+      CHECK_DEVICE("Case 4a", loc_gpu1+len, array1, len);
+      gex_RMA_GetBlocking(LG2_RG2, loc_gpu2+len, peer, rem_gpu2, len, 0);
+      CHECK_DEVICE("Case 4b", loc_gpu2+len, array2, len);
+
+      if (!test_errs) MSG("GEX_MK_CLASS_CUDA_UVA: success");
+
+      check_cudacall( cuCtxSetCurrent(NULL) );
+      check_cudacall( cuDevicePrimaryCtxRelease(0) );
+      if (count > 1) {
+        check_cudacall( cuDevicePrimaryCtxRelease(1) );
+      }
+}
 
 int main(int argc, char **argv)
 {
@@ -115,14 +184,14 @@ int main(int argc, char **argv)
   if (argi < argc || help) test_usage();
 
   cmp_buffer = test_malloc(len);
-  uint8_t *loc1 = test_malloc(len);
-  uint8_t *loc2 = test_malloc(len);
-  uint8_t *array1 = test_malloc(len);
-  uint8_t *array2 = test_malloc(len);
+  loc1 = test_malloc(len);
+  loc2 = test_malloc(len);
+  array1 = test_malloc(len);
+  array2 = test_malloc(len);
 
   myrank = gex_TM_QueryRank(myteam);
   nranks = gex_TM_QuerySize(myteam);
-  gex_Rank_t peer = (myrank + 1) % nranks;
+  peer = (myrank + 1) % nranks;
 
   if (nranks == 1) {
     // TODO: remove once loopback kinds works correctly
@@ -173,8 +242,9 @@ int main(int argc, char **argv)
     }
     test_static_assert(GASNET_MAXEPS >= 2);
 
-    int count;
     cuInit(0);
+check_cudacall( cuCtxPopCurrent(&my_ctx) );
+MSG("First: %p", my_ctx);
     if (cuDeviceGetCount(&count) || !count) {
       MSG("GEX_MK_CLASS_CUDA_UVA: skipped - could not find a CUDA device");
       // If this lack of a device is NOT a collective property, then we want
@@ -220,7 +290,7 @@ int main(int argc, char **argv)
       // Create the first GPU segment
       gex_Segment_t d_segment1 = GEX_SEGMENT_INVALID;
       GASNET_Safe( gex_Segment_Create(&d_segment1, myclient, client_gpu1, TEST_SEGSZ_REQUEST, kind, 0));
-      uint8_t *loc_gpu1 = gex_Segment_QueryAddr(d_segment1);
+      loc_gpu1 = gex_Segment_QueryAddr(d_segment1);
       if (client_segment) assert_always(loc_gpu1 == client_gpu1);
 
       // Confirm the gex_Segment_Create() did NOT change the current context
@@ -241,7 +311,7 @@ int main(int argc, char **argv)
       // Repeat to create a second local GPU segment
       gex_Segment_t d_segment2 = GEX_SEGMENT_INVALID;
       GASNET_Safe( gex_Segment_Create(&d_segment2, myclient, client_gpu2, TEST_SEGSZ_REQUEST, kind, 0));
-      uint8_t *loc_gpu2 = gex_Segment_QueryAddr(d_segment2);
+      loc_gpu2 = gex_Segment_QueryAddr(d_segment2);
       if (client_segment) assert_always(loc_gpu2 == client_gpu2);
       check_cudacall( cuCtxGetCurrent(&tmp_ctx) );
       assert_always(tmp_ctx == curr_ctx);
@@ -260,69 +330,32 @@ int main(int argc, char **argv)
       assert_always(host_epidx == 0);
       assert_always(gpu1_epidx == 1);
       assert_always(gpu2_epidx == 2);
-      gex_TM_t LH_RG1  = gex_TM_Pair(myep,    gpu1_epidx);
-      gex_TM_t LH_RG2  = gex_TM_Pair(myep,    gpu2_epidx);
-      gex_TM_t LG1_RG1 = gex_TM_Pair(gpu1_ep, gpu1_epidx);
-      gex_TM_t LG2_RG2 = gex_TM_Pair(gpu2_ep, gpu2_epidx);
-      gex_TM_t LG1_RG2 = gex_TM_Pair(gpu1_ep, gpu2_epidx);
-      gex_TM_t LG2_RG1 = gex_TM_Pair(gpu2_ep, gpu1_epidx);
+      LH_RG1  = gex_TM_Pair(myep,    gpu1_epidx);
+      LH_RG2  = gex_TM_Pair(myep,    gpu2_epidx);
+      LG1_RG1 = gex_TM_Pair(gpu1_ep, gpu1_epidx);
+      LG2_RG2 = gex_TM_Pair(gpu2_ep, gpu2_epidx);
+      LG1_RG2 = gex_TM_Pair(gpu1_ep, gpu2_epidx);
+      LG2_RG1 = gex_TM_Pair(gpu2_ep, gpu1_epidx);
 
-      uint8_t *rem_gpu1;
+      rem_gpu1;
       size_t queried_len;
       gex_Event_Wait( gex_EP_QueryBoundSegmentNB(LH_RG1, peer, (void**)&rem_gpu1, NULL, &queried_len, 0) );
       assert_always(queried_len == TEST_SEGSZ_REQUEST);
 
-      uint8_t *rem_gpu2;
+      rem_gpu2;
       gex_Event_Wait( gex_EP_QueryBoundSegmentNB(LH_RG2, peer, (void**)&rem_gpu2, NULL, &queried_len, 0) );
       assert_always(queried_len == TEST_SEGSZ_REQUEST);
 
-// Case 1. Puts - local host to remote gpus
-//   BEFORE:  GPU1=uninit:uninit    GPU2=uninit:uninit
-//   AFTER:   GPU1=array1:uninit    GPU2=array2:uninit
-      gex_RMA_PutNBI(LH_RG1, peer, rem_gpu1, array1, len, GEX_EVENT_DEFER, 0);
-      gex_RMA_PutNBI(LH_RG2, peer, rem_gpu2, array2, len, GEX_EVENT_DEFER, 0);
-      gex_NBI_Wait(GEX_EC_PUT,0);
-      BARRIER();
-      CHECK_DEVICE("Case 1a", loc_gpu1, array1, len);
-      CHECK_DEVICE("Case 1b", loc_gpu2, array2, len);
+//check_cudacall( cuCtxSetCurrent(NULL) );
+check_cudacall( cuCtxPopCurrent(&my_ctx) );
+MSG("Last: %p", my_ctx);
+MSG("TID: %p", pthread_self());
 
-// Case 2. Gets - remote gpus to local host
-//   BEFORE:  GPU1=array1:uninit    GPU2=array2:uninit
-//   AFTER:   GPU1=array1:uninit    GPU2=array2:uninit
-      gex_Event_t get_events[2] = {
-              gex_RMA_GetNB(LH_RG1, loc1, peer, rem_gpu1, len, 0),
-              gex_RMA_GetNB(LH_RG2, loc2, peer, rem_gpu2, len, 0)
-          };
-      gex_Event_WaitAll(get_events, 2, 0);
-      CHECK_HOST("Case 2a", loc1, array1, len);
-      CHECK_HOST("Case 2b", loc2, array2, len);
-      BARRIER();
-
-// Case 3. Put - local gpus to remote gpus "cross over"
-//   BEFORE:  GPU1=array1:uninit    GPU2=array2:uninit
-//   AFTER:   GPU1=array1:array2    GPU2=array2:array1
-      gex_RMA_PutBlocking(LG1_RG2, peer, rem_gpu2+len, loc_gpu1, len, 0);
-      BARRIER();
-      CHECK_DEVICE("Case 3a", loc_gpu2+len, array1, len);
-      gex_RMA_PutBlocking(LG2_RG1, peer, rem_gpu1+len, loc_gpu2, len, 0);
-      BARRIER();
-      CHECK_DEVICE("Case 3b", loc_gpu1+len, array2, len);
-
-// Case 4. Get - remote gpus to local gpus
-//   BEFORE:  GPU1=array1:array2    GPU2=array2:array1
-//   AFTER:   GPU1=array1:array1    GPU2=array2:array2
-      gex_RMA_GetBlocking(LG1_RG1, loc_gpu1+len, peer, rem_gpu1, len, 0);
-      CHECK_DEVICE("Case 4a", loc_gpu1+len, array1, len);
-      gex_RMA_GetBlocking(LG2_RG2, loc_gpu2+len, peer, rem_gpu2, len, 0);
-      CHECK_DEVICE("Case 4b", loc_gpu2+len, array2, len);
-
-      if (!test_errs) MSG("GEX_MK_CLASS_CUDA_UVA: success");
-
-      check_cudacall( cuCtxSetCurrent(NULL) );
-      check_cudacall( cuDevicePrimaryCtxRelease(0) );
-      if (count > 1) {
-        check_cudacall( cuDevicePrimaryCtxRelease(1) );
-      }
+#if GASNET_PAR
+      test_createandjoin_pthreads(1, &do_rma, NULL, 0);
+#else
+      do_rma(NULL);
+#endif
     }
 
     // TODO: once supported: Destroy Segments, Kinds and Endpoints; free GPU memory

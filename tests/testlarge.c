@@ -472,6 +472,7 @@ int main(int argc, char **argv)
       myteam = gex_TM_Pair(myep, gex_EP_QueryIndex(gpu_ep));
 myteam = gex_TM_Pair(gpu_ep, gex_EP_QueryIndex(gpu_ep));
       gex_Event_Wait( gex_EP_QueryBoundSegmentNB(myteam, peerproc, (void**)&tgtmem, NULL, NULL, 0) );
+cuCtxSetCurrent(NULL);
     }
 #endif
 
