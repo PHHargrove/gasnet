@@ -76,6 +76,25 @@ extern void gasnete_init(void) {
   ========
 */
 
+// Extended API "kill switches"
+// TODO: remove this when the native extended implementation is stable
+//
+// In gasnet_extended_fwd.h one can add any one of the following four defines to
+// disable the native implementation and use amref instead:
+//   #define gasnete_amref_get_nb        gasnete_get_nb
+//   #define gasnete_amref_put_nb        gasnete_put_nb
+//   #define gasnete_amref_get_nbi       gasnete_get_nbi
+//   #define gasnete_amref_put_nbi       gasnete_put_nbi
+// The following ensures the required pieces will be compiled
+#if defined(gasnete_amref_get_nb) || defined(gasnete_amref_get_nbi)
+  #define GASNETE_BUILD_AMREF_GET_HANDLERS 1
+  #define GASNETE_BUILD_AMREF_GET 1
+#endif
+#if defined(gasnete_amref_put_nb) || defined(gasnete_amref_put_nbi)
+  #define GASNETE_BUILD_AMREF_PUT_HANDLERS 1
+  #define GASNETE_BUILD_AMREF_PUT 1
+#endif
+
 /* Use some or all of the reference implementation of get/put in terms of AMs
  * Configuration appears in gasnet_extended_fwd.h
  */
@@ -93,6 +112,7 @@ extern void gasnete_init(void) {
      gasnete_put_nb
 */
 
+#ifndef gasnete_amref_get_nb
 extern
 gex_Event_t gasnete_get_nb(
                     gex_TM_t tm,
@@ -106,7 +126,9 @@ gex_Event_t gasnete_get_nb(
   gasnetc_rdma_get(dest, gasneti_e_tm_rank_to_jobrank(tm,rank), src, nbytes, &op->ofi GASNETI_THREAD_PASS);
   return (gex_Event_t)op;
 }
+#endif
 
+#ifndef gasnete_amref_put_nb
 // TODO-EX: Improved LC support.
 //  + NOW will sometimes need to block for RC
 //  + Currently explict handle is mapped to NOW
@@ -146,6 +168,7 @@ gex_Event_t gasnete_put_nb(
 
   return (gex_Event_t)op;
 }
+#endif
 
 /* ------------------------------------------------------------------------------------ */
 /*
@@ -159,6 +182,7 @@ gex_Event_t gasnete_put_nb(
      gasnete_put_nbi
 */
 
+#ifndef gasnete_amref_get_nbi
 extern
 int gasnete_get_nbi(
                     gex_TM_t tm,
@@ -174,7 +198,9 @@ int gasnete_get_nbi(
   gasnetc_rdma_get(dest, gasneti_e_tm_rank_to_jobrank(tm,rank), src, nbytes, &op->get_ofi GASNETI_THREAD_PASS);
   return GASNET_OK;
 }
+#endif
 
+#ifndef gasnete_amref_put_nbi
 // TODO-EX: Improved LC support.
 //  + NOW will sometimes need to block for RC
 //  + GROUP is mapped to NOW
@@ -212,6 +238,7 @@ int gasnete_put_nbi(
 
   return GASNET_OK;
 }
+#endif
 
 /* ------------------------------------------------------------------------------------ */
 /*
