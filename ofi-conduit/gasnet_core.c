@@ -493,6 +493,15 @@ extern void gasnetc_exit(int exitcode) {
   // TODO: 120 is arbitrary and hard-coded
   alarm(MAX(120, timeout));
   if (graceful) {
+    GASNETC_EXIT_STATE("draining network");
+    { GASNET_BEGIN_FUNCTION();
+      gex_Event_t *events;
+      size_t count;
+      gasneti_finalize_all_nbi_ff(&events, &count GASNETI_THREAD_PASS);
+      // TODO *timed* wait
+      gasnete_wait_all(events, count GASNETI_THREAD_PASS);
+    }
+
     GASNETC_EXIT_STATE("in gasnetc_ofi_exit()");
     gasnetc_ofi_exit();
   }
