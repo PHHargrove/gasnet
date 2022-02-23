@@ -130,8 +130,10 @@ static int gasnete_free_threaddata(gasneti_threaddata_t *thread) {
     /* fire-and-forget iop */                                                   \
     gasneti_aop_t *aop = thread->nbi_ff_aop;                                    \
     if (aop) {                                                                  \
-      /* first balance counters, otherwise can never become "done" */           \
-      iop = (gasnete_iop_t *) gasneti_aop_to_event(aop);                        \
+      /* One must first balance counters, otherwise can never become "done". */ \
+      /* However, this must be done only once or new imbalance results. */      \
+      iop = thread->is_undead ? (gasnete_iop_t *) aop                           \
+                              : (gasnete_iop_t *) gasneti_aop_to_event(aop);    \
       if (GASNETE_IOP_ISDONE(iop)) {                                            \
         thread->nbi_ff_aop = NULL;                                              \
         gasneti_free(iop);                                                      \
@@ -160,6 +162,7 @@ static int gasnete_free_threaddata(gasneti_threaddata_t *thread) {
     if (missing) {                                                              \
       /* TODO: handle this better? */                                           \
       GASNETI_TRACE_PRINTF(I, ("%d iops leaked", missing));                     \
+      thread->is_undead = 1;                                                    \
       leak = 1;                                                                 \
     }                                                                           \
   }
@@ -322,12 +325,12 @@ static void gasnete_threaddata_cleanup_fn(void *_thread) {
     }
   }
 
+  gasneti_mutex_lock(&threadtable_lock);
   if (! GASNETE_FREE_THREADDATA(thread)) {
-    gasneti_mutex_lock(&threadtable_lock);
       gasnete_threadtable[idx] = NULL;
       gasnete_numthreads--;
-    gasneti_mutex_unlock(&threadtable_lock);
   }
+  gasneti_mutex_unlock(&threadtable_lock);
 }
 
 GASNETI_NEVER_INLINE(gasnete_new_threaddata,
