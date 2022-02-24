@@ -130,8 +130,10 @@ static int gasnete_free_threaddata(gasneti_threaddata_t *thread) {
     /* fire-and-forget iop */                                                   \
     gasneti_aop_t *aop = thread->nbi_ff_aop;                                    \
     if (aop) {                                                                  \
-      /* first balance counters, otherwise can never become "done" */           \
-      iop = (gasnete_iop_t *) gasneti_aop_to_event(aop);                        \
+      /* One must first balance counters, otherwise can never become "done". */ \
+      /* However, this must be done only once or new imbalance results. */      \
+      iop = thread->is_undead ? (gasnete_iop_t *) aop                           \
+                              : (gasnete_iop_t *) gasneti_aop_to_event(aop);    \
       if (GASNETE_IOP_ISDONE(iop)) {                                            \
         thread->nbi_ff_aop = NULL;                                              \
         gasneti_free(iop);                                                      \
@@ -160,6 +162,7 @@ static int gasnete_free_threaddata(gasneti_threaddata_t *thread) {
     if (missing) {                                                              \
       /* TODO: handle this better? */                                           \
       GASNETI_TRACE_PRINTF(I, ("%d iops leaked", missing));                     \
+      thread->is_undead = 1;                                                    \
       leak = 1;                                                                 \
     }                                                                           \
   }
@@ -322,12 +325,12 @@ static void gasnete_threaddata_cleanup_fn(void *_thread) {
     }
   }
 
+  gasneti_mutex_lock(&threadtable_lock);
   if (! GASNETE_FREE_THREADDATA(thread)) {
-    gasneti_mutex_lock(&threadtable_lock);
       gasnete_threadtable[idx] = NULL;
       gasnete_numthreads--;
-    gasneti_mutex_unlock(&threadtable_lock);
   }
+  gasneti_mutex_unlock(&threadtable_lock);
 }
 
 GASNETI_NEVER_INLINE(gasnete_new_threaddata,
@@ -395,6 +398,64 @@ extern void * gasnete_new_threaddata(void)) {
     return threaddata;
   }
 #endif
+
+void gasneti_finalize_all_nbi_ff(gex_Event_t **events_p, size_t *count_p GASNETI_THREAD_FARG)
+{
+  const gasnete_threadidx_t mytid = GASNETI_MYTHREAD->threadidx;
+  gasneti_assert(events_p);
+  gasneti_assert(count_p);
+
+  gasneti_mutex_lock(&threadtable_lock);
+    gex_Event_t *events = gasneti_malloc(gasnete_numthreads * sizeof(gex_Event_t *));
+    int count = 0;
+    for (int th_idx = 0; th_idx <= gasnete_maxthreadidx; ++th_idx) {
+      gasneti_threaddata_t *thread = gasnete_threadtable[th_idx];
+      if (!thread) continue;
+
+      // Attempt to atomically "steal" the nbi_ff aop from the threaddata.
+      // This includes an acquire fence to reduce the likelihood of subsequently
+      // reading out-of-date info.  However, there is no certainty that concurrent
+      // activity in a live thread will behave well.
+#if GASNETT_HAVE_ATOMIC_CAS
+      uintptr_t aop_field = (uintptr_t) &(thread->nbi_ff_aop);
+  #if PLATFORM_ARCH_64
+      uintptr_t aop_addr = gasneti_atomic64_swap((gasneti_atomic64_t *)aop_field, 0, GASNETI_ATOMIC_ACQ);
+  #elif PLATFORM_ARCH_32
+      uintptr_t aop_addr = gasneti_atomic32_swap((gasneti_atomic32_t *)aop_field, 0, GASNETI_ATOMIC_ACQ);
+  #else
+      #error
+  #endif
+      gasneti_aop_t *aop = (gasneti_aop_t *)aop_addr;
+#else
+      gasneti_aop_t *aop = thread->nbi_ff_aop;
+      thread->nbi_ff_aop = NULL;
+      gasneti_sync_reads();
+#endif
+
+      if (aop) {
+        // Balance counters at most once.  Thread exit may have done so already.
+        gex_Event_t ev = thread->is_undead ? (gex_Event_t) aop
+                                           : gasneti_aop_to_event(aop);
+        events[count++] = ev;
+
+	// Reowner to calling thread to prevents sync from "behaving badly",
+	// such as by adding to the foreign_iops list in the orignal owner
+	// which may have exited.
+        // NOTE: this does NOT adjust `iop_num` in the other thread, and thus
+        // may force the threaddata to leak.  However, this should not be a
+        // real issue at process exit time.
+        gasnete_iop_t *iop = (gasnete_iop_t *) ev;
+        if (iop->threadidx != mytid) {
+          iop->threadidx = mytid;
+          GASNETI_MYTHREAD->iop_num ++;
+        }
+      }
+    }
+  gasneti_mutex_unlock(&threadtable_lock);
+
+  *events_p = events;
+  *count_p = count;
+}
 
 #endif /* GASNETE_THREADING_CUSTOM  */
 

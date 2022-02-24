@@ -171,6 +171,13 @@ extern int gasnetc_attach_primary(void) {
 /* ------------------------------------------------------------------------------------ */
 int gasnetc_segment_create_hook(gex_Segment_t e_segment)
 {
+  // Until we have key management for more than aux + client:
+  static int count = 0;
+  if (count > 1) { // Note that the aux seg is not counted here
+    GASNETI_RETURN_ERRR(RESOURCE,"ofi-conduit does not support multiple user segments");
+  }
+  ++count;
+
   // Register the segment
   gasnetc_Segment_t segment = (gasnetc_Segment_t) gasneti_import_segment(e_segment);
   // TODO: non-fatal error handling:
@@ -494,6 +501,15 @@ extern void gasnetc_exit(int exitcode) {
   // TODO: 120 is arbitrary and hard-coded
   alarm(MAX(120, timeout));
   if (graceful) {
+    GASNETC_EXIT_STATE("draining network");
+    { GASNET_BEGIN_FUNCTION();
+      gex_Event_t *events;
+      size_t count;
+      gasneti_finalize_all_nbi_ff(&events, &count GASNETI_THREAD_PASS);
+      // TODO *timed* wait
+      gasnete_wait_all(events, count GASNETI_THREAD_PASS);
+    }
+
     GASNETC_EXIT_STATE("in gasnetc_ofi_exit()");
     gasnetc_ofi_exit();
   }
