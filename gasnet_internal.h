@@ -973,6 +973,7 @@ typedef struct _gasneti_threaddata_t {
 
   gasnete_thread_cleanup_t *thread_cleanup; /* thread cleanup function LIFO */
   int thread_cleanup_delay;
+  int is_undead; // marks leaked threaddata for a thread which has exited
 
   //
   // Active Message fields
@@ -1044,6 +1045,12 @@ void gasneti_end_nbi_ff(GASNETI_THREAD_FARG_ALONE)
   gasneti_aop_t *aop = gasneti_aop_pop(GASNETI_THREAD_PASS_ALONE);
   gasneti_assert(aop == GASNETI_MYTHREAD->nbi_ff_aop);
 }
+
+// Sets the nbi_ff_aop of all threads to NULL and returns (via reference
+// arguments) an array of events and its length.  This array, contains all of
+// the aops which were found to be non-NULL.  The array and count are suitable
+// for calls to gex_Event_{Try,Wait}{All,Some}().
+extern void gasneti_finalize_all_nbi_ff(gex_Event_t **events_p, size_t *count_p GASNETI_THREAD_FARG);
 
 // DO NOT USE THIS!
 // This exists only to permit "safe" testing in gasnet_diagnostic.c.

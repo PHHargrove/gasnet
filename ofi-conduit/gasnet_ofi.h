@@ -127,6 +127,9 @@ typedef struct gasnetc_ofi_am_buf {
 typedef struct gasnetc_ofi_ctxt {
   struct fi_context 	ctxt;
   void * metadata;
+#if GASNETC_OFI_RETRY_RECVMSG
+  struct gasnetc_ofi_ctxt *next;
+#endif
   int 					index;
   char _pad0[GASNETI_CACHE_PAD(sizeof(int))];
   gasnetc_paratomic_t   consumed_cntr;
@@ -195,10 +198,8 @@ int gasnetc_rdma_put_will_block (size_t nbytes) {
     return nbytes > gasnetc_ofi_bbuf_threshold ? 1 : 0;
 } 
 
-int gasnetc_rdma_put_non_bulk(gex_Rank_t dest, void* dest_addr, void* src_addr, 
+gex_Event_t gasnetc_rdma_put_non_bulk(gex_Rank_t dest, void* dest_addr, void* src_addr,
         size_t nbytes, gasnetc_ofi_op_ctxt_t* ctxt_ptr GASNETI_THREAD_FARG);
-void gasnetc_rdma_put_wait(gex_Event_t op GASNETI_THREAD_FARG);
-void gasnetc_rdma_get_wait(gex_Event_t op GASNETI_THREAD_FARG);
 
 extern int gasnetc_exit_in_progress;
 
