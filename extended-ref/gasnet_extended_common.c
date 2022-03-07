@@ -438,12 +438,9 @@ void gasneti_finalize_all_nbi_ff(gex_Event_t **events_p, size_t *count_p GASNETI
                                            : gasneti_aop_to_event(aop);
         events[count++] = ev;
 
-	// Reowner to calling thread to prevents sync from "behaving badly",
-	// such as by adding to the foreign_iops list in the orignal owner
-	// which may have exited.
-        // NOTE: this does NOT adjust `iop_num` in the other thread, and thus
-        // may force the threaddata to leak.  However, this should not be a
-        // real issue at process exit time.
+        // Reowner to calling thread to prevents sync from "behaving badly",
+        // such as by adding to the foreign_iops list in the orignal owner
+        // which may have exited.
         gasnete_iop_t *iop = (gasnete_iop_t *) ev;
         if (iop->threadidx != mytid) {
           iop->threadidx = mytid;

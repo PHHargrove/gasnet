@@ -1045,6 +1045,13 @@ void gasneti_end_nbi_ff(GASNETI_THREAD_FARG_ALONE)
 // arguments) an array of events and its length.  This array, contains all of
 // the aops which were found to be non-NULL.  The array and count are suitable
 // for calls to gex_Event_{Try,Wait}{All,Some}().
+//
+// The caller is responsible for freeing the array, which may be non-NULL
+// even when the count is zero.
+//
+// NOTE: this does NOT adjust `iop_num` in other threads when stealing their
+// nbi_ff_aop.  This may force the threaddata to leak.  However, this should
+// not be a real issue at process exit (the main intended use of this call).
 extern void gasneti_finalize_all_nbi_ff(gex_Event_t **events_p, size_t *count_p GASNETI_THREAD_FARG);
 
 // DO NOT USE THIS!
