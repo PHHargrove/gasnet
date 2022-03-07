@@ -495,7 +495,7 @@ extern void gasnetc_exit(int exitcode) {
   if (graceful) {
     GASNETC_EXIT_STATE("draining network");
     { GASNET_BEGIN_FUNCTION(); // OK - not a critical-path
-      gex_Event_t *events;
+      gex_Event_t *events = NULL;
       size_t count;
       gasneti_finalize_all_nbi_ff(&events, &count GASNETI_THREAD_PASS);
       if (count) { // bounded polling (upto 25% of the total timeout) to drain any nbi_ff operations
@@ -504,6 +504,7 @@ extern void gasnetc_exit(int exitcode) {
         gasneti_polluntil((gasneti_ticks_to_ns(gasneti_ticks_now() - t_start) > timeout_ns) ||
                           (GASNET_ERR_NOT_READY != gasnete_test_all(events, count GASNETI_THREAD_PASS)));
       }
+      gasneti_free(events);
     }
 
     GASNETC_EXIT_STATE("in gasnetc_ofi_exit()");
