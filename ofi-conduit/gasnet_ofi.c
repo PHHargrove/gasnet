@@ -1647,7 +1647,6 @@ block_anyways:
       gasnete_eop_t *eop = gasnete_eop_new(GASNETI_MYTHREAD);
       eop->ofi.type = OFI_TYPE_EPUT;
       gasnetc_rdma_put(dest, dest_addr, src_addr, nbytes, &eop->ofi GASNETI_THREAD_PASS);
-      gasneti_polluntil(GASNETE_EOP_DONE(eop));
       return (gex_Event_t)eop;
     }
 }
