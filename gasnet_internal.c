@@ -1506,17 +1506,36 @@ extern double gasneti_get_exittimeout(double dflt_max, double dflt_min, double d
   #define gasnetc_check_portable_conduit() 0
 #endif
 
-static void gasneti_check_portable_conduit(void) { /* check for portable conduit abuse */
-  char mycore[80], myext[80];
-  char const *mn = GASNET_CORE_NAME_STR;
-  char *m;
-  m = mycore; while (*mn) { *m = tolower(*mn); m++; mn++; }
-  *m = '\0';
-  mn = GASNET_EXTENDED_NAME_STR;
-  m = myext; while (*mn) { *m = tolower(*mn); m++; mn++; }
-  *m = '\0';
-  int lowQualityVerbs = 0; // bug 3609: some verbs-compatible networks need special handling
-  #if PLATFORM_OS_LINUX
+typedef struct { 
+    const char *filename;
+    mode_t filemode;
+    const char *desc;
+    int hwid;
+} gasneti_device_probe_t;
+
+#define GASNETI_IBV_DEVICES \
+        { "/dev/infiniband/uverbs0",     S_IFCHR, "InfiniBand IBV", 2 },  /* OFED 1.0 */ \
+        { "/dev/infiniband/ofs/uverbs0", S_IFCHR, "InfiniBand IBV", 2 }   /* Solaris */
+#define GASNETI_CXI_DEVICES \
+        { "/dev/cxi0",                   S_IFCHR, "HPE Slingshot (OFI)", 3 }, \
+        { "/sys/class/cxi",              S_IFDIR, "HPE Slingshot (OFI)", 3 } 
+#define GASNETI_GNI_DEVICES \
+        { "/dev/kgni0",                  S_IFCHR, "Cray Aries", 6 }, \
+        { "/proc/kgnilnd",               S_IFDIR, "Cray Aries", 6 }
+
+// Boolean probe for device nodes (file or directory)
+static int gasneti_device_probe(gasneti_device_probe_t *dev_to_probe) {
+  struct stat stat_buf;
+  return !stat(dev_to_probe->filename,&stat_buf) && 
+         (!dev_to_probe->filemode || (dev_to_probe->filemode & stat_buf.st_mode));
+}
+
+// bug 3609: some verbs-compatible networks need special handling
+static int gasneti_lowQualityVerbs(void) {
+  static int lowQualityVerbs = 0;
+#if PLATFORM_OS_LINUX
+  static int is_init = 0;
+  if (!is_init) {
     const char *filename[] = {
       "/sys/class/infiniband/hfi1_0/board_id", // Intel Omni-Path
       "/sys/class/infiniband/qib0/board_id",   // QLogic/Intel TrueScale
@@ -1536,7 +1555,43 @@ static void gasneti_check_portable_conduit(void) { /* check for portable conduit
         fclose(fp);
       }
     }
-  #endif
+    is_init = 1;
+  }
+#endif
+  return lowQualityVerbs;
+}
+
+// Search for hardware with a corresponding "native" OFI provider
+static int gasneti_nativeOfiProvider(void) {
+  static int nativeOfiProvider = 0;
+#if PLATFORM_OS_LINUX || PLATFORM_OS_CNL
+  static int is_init = 0;
+  if (!is_init) {
+    gasneti_device_probe_t dev_list[] = {
+      GASNETI_IBV_DEVICES, // verbs provider + "bug 3609 devices" (psm and psm2 providers)
+      GASNETI_CXI_DEVICES
+    };
+    for (int i = 0; i < sizeof(dev_list)/sizeof(dev_list[0]); ++i) {
+      if (gasneti_device_probe(dev_list + i)) {
+        nativeOfiProvider = 1;
+        break;
+      }
+    }
+    is_init = 1;
+  }
+#endif
+  return nativeOfiProvider;
+}
+
+static void gasneti_check_portable_conduit(void) { /* check for portable conduit abuse */
+  char mycore[80], myext[80];
+  char const *mn = GASNET_CORE_NAME_STR;
+  char *m;
+  m = mycore; while (*mn) { *m = tolower(*mn); m++; mn++; }
+  *m = '\0';
+  mn = GASNET_EXTENDED_NAME_STR;
+  m = myext; while (*mn) { *m = tolower(*mn); m++; mn++; }
+  *m = '\0';
   
   if ( /* is a portable network conduit */
       gasnetc_check_portable_conduit()
@@ -1562,8 +1617,8 @@ static void gasneti_check_portable_conduit(void) { /* check for portable conduit
         if (!strcmp(name,"smp")) continue;
         if (!strcmp(name,"mpi")) continue;
         if (!strcmp(name,"udp")) continue;
-        if (!strcmp(name,"ofi") && !lowQualityVerbs) continue;
-        if (!strcmp(name,"ibv") && lowQualityVerbs) continue; // never recommend ibv on these networks
+        if (!strcmp(name,"ofi") && !gasneti_nativeOfiProvider()) continue;
+        if (!strcmp(name,"ibv") && gasneti_lowQualityVerbs()) continue; // never recommend ibv on these networks
         if (strlen(natives)) strcat(natives,", ");
         strcat(natives,name);
       }
@@ -1572,29 +1627,19 @@ static void gasneti_check_portable_conduit(void) { /* check for portable conduit
     if (natives[0]) {
       sprintf(reason, "WARNING: Support was detected for native GASNet conduits: %s",natives);
     } else { /* look for hardware devices supported by native conduits */
-      struct { 
-        const char *filename;
-        mode_t filemode;
-        const char *desc;
-        int hwid;
-      } known_devs[] = {
-        { "/dev/infiniband/uverbs0",     S_IFCHR, "InfiniBand IBV", 2 },  /* OFED 1.0 */
-        { "/dev/infiniband/ofs/uverbs0", S_IFCHR, "InfiniBand IBV", 2 },  /* Solaris */
-        { "/dev/cxi0",                   S_IFCHR, "HPE Slingshot (OFI)", 3 },
-        { "/sys/class/cxi",              S_IFDIR, "HPE Slingshot (OFI)", 3 },
+      gasneti_device_probe_t known_devs[] = {
+        GASNETI_IBV_DEVICES,
+        GASNETI_CXI_DEVICES,
         #if !GASNET_SEGMENT_EVERYTHING
-          { "/dev/kgni0",            S_IFCHR, "Cray Aries", 6 },
-          { "/proc/kgnilnd",         S_IFDIR, "Cray Aries", 6 },
+          GASNETI_GNI_DEVICES,
         #endif
         { "/list_terminator", S_IFDIR, "", 9999 }
       };
-      int i, lim = sizeof(known_devs)/sizeof(known_devs[0]);
-      for (i = 0; i < lim; i++) {
-        struct stat stat_buf;
-        if (!stat(known_devs[i].filename,&stat_buf) && 
-            (!known_devs[i].filemode || (known_devs[i].filemode & stat_buf.st_mode))) {
+      int lim = sizeof(known_devs)/sizeof(known_devs[0]);
+      for (int i = 0; i < lim; i++) {
+        if (gasneti_device_probe(known_devs + i)) {
             int hwid = known_devs[i].hwid;
-            if (hwid == 2 && lowQualityVerbs) continue; // never recommend ibv on these networks
+            if (hwid == 2 && gasneti_lowQualityVerbs()) continue; // never recommend ibv on these networks
             if (strlen(natives)) strcat(natives,", ");
             strcat(natives,known_devs[i].desc);
             while (i < lim && hwid == known_devs[i].hwid) i++; /* don't report a network twice */
