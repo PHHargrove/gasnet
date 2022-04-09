@@ -1531,8 +1531,11 @@ static int gasneti_device_probe(gasneti_device_probe_t *dev_to_probe) {
 }
 
 // bug 3609: some verbs-compatible networks need special handling
-static int gasneti_lowQualityVerbs(void) {
-  static int lowQualityVerbs = 0;
+// While that bug is about ibv-conduit, something simlar holds for OFI verbs provider
+#define GASNETI_HCA_OMNI_PATH  1
+#define GASNETI_HCA_TRUESCALE  2
+static int gasneti_probeInfiniBandHCAs(void) {
+  static int probeInfiniBandHCAs = 0;
 #if PLATFORM_OS_LINUX
   static int is_init = 0;
   if (!is_init) {
@@ -1548,9 +1551,9 @@ static int gasneti_lowQualityVerbs(void) {
         if (r) { 
           buffer[r-1] = 0;
           // eg: "Intel Omni-Path HFI Adapter 100 Series, 1 Port, PCIe x16"
-          if (strstr(buffer, "Omni-Path")) lowQualityVerbs = 1;
+          if (strstr(buffer, "Omni-Path")) probeInfiniBandHCAs |= GASNETI_HCA_OMNI_PATH;
           // eg: "InfiniPath_QLE7340"
-          if (strstr(buffer, "InfiniPath")) lowQualityVerbs = 1;
+          if (strstr(buffer, "InfiniPath")) probeInfiniBandHCAs |= GASNETI_HCA_TRUESCALE;
         }
         fclose(fp);
       }
@@ -1558,7 +1561,13 @@ static int gasneti_lowQualityVerbs(void) {
     is_init = 1;
   }
 #endif
-  return lowQualityVerbs;
+  return probeInfiniBandHCAs;
+}
+
+// bug 3609: some verbs-compatible networks need special handling
+static int gasneti_lowQualityVerbs(void) {
+  int mask = (GASNETI_HCA_OMNI_PATH | GASNETI_HCA_TRUESCALE);
+  return gasneti_probeInfiniBandHCAs() & mask;
 }
 
 // Search for hardware with a corresponding "native" OFI provider
@@ -1568,13 +1577,17 @@ static int gasneti_nativeOfiProvider(void) {
   static int is_init = 0;
   if (!is_init) {
     gasneti_device_probe_t dev_list[] = {
-      GASNETI_IBV_DEVICES, // verbs provider + "bug 3609 devices" (psm and psm2 providers)
-      GASNETI_CXI_DEVICES
+      GASNETI_IBV_DEVICES, // verbs or psm2 providers
+      GASNETI_CXI_DEVICES  // cxi provider
     };
-    for (int i = 0; i < sizeof(dev_list)/sizeof(dev_list[0]); ++i) {
-      if (gasneti_device_probe(dev_list + i)) {
-        nativeOfiProvider = 1;
-        break;
+    if (gasneti_probeInfiniBandHCAs() & GASNETI_HCA_TRUESCALE) {
+      // Assume no good if TrueScale HCA is found (we assume single fabric)
+    } else {
+      for (int i = 0; i < sizeof(dev_list)/sizeof(dev_list[0]); ++i) {
+        if (gasneti_device_probe(dev_list + i)) {
+          nativeOfiProvider = 1;
+          break;
+        }
       }
     }
     is_init = 1;
