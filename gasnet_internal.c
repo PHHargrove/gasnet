@@ -1517,11 +1517,11 @@ typedef struct {
         { "/dev/infiniband/uverbs0",     S_IFCHR, "InfiniBand IBV", 2 },  /* OFED 1.0 */ \
         { "/dev/infiniband/ofs/uverbs0", S_IFCHR, "InfiniBand IBV", 2 }   /* Solaris */
 #define GASNETI_CXI_DEVICES \
-        { "/dev/cxi0",                   S_IFCHR, "HPE Slingshot (OFI)", 3 }, \
-        { "/sys/class/cxi",              S_IFDIR, "HPE Slingshot (OFI)", 3 } 
+        { "/dev/cxi0",                   S_IFCHR, "HPE Slingshot-11 (OFI)", 3 }, \
+        { "/sys/class/cxi",              S_IFDIR, "HPE Slingshot-11 (OFI)", 3 } 
 #define GASNETI_GNI_DEVICES \
-        { "/dev/kgni0",                  S_IFCHR, "Cray Aries", 6 }, \
-        { "/proc/kgnilnd",               S_IFDIR, "Cray Aries", 6 }
+        { "/dev/kgni0",                  S_IFCHR, "Cray Aries/Gemini", 6 }, \
+        { "/proc/kgnilnd",               S_IFDIR, "Cray Aries/Gemini", 6 }
 
 // Boolean probe for device nodes (file or directory)
 static int gasneti_device_probe(gasneti_device_probe_t *dev_to_probe) {
