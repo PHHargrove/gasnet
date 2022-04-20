@@ -839,8 +839,61 @@ bounce buffers and for the rdma post descriptor pool. This is done to
 reduce the number of separately registered segments, because
 registrations are a scarce resource.
 
+==GEX_FLAG_IMMEDIATE==
 
-== Build notes ==
+The following summarizes the current state of support for GEX_FLAG_IMMEDIATE.
+Last reviewed against 2022.3.0
 
+For some operations, support for GEX_FLAG_IMMEDIATE is "fully implemented"
+meaning use of the flag provides a strong guarantee against injection stalls.
+For some operations this "fully implemented" behavior exists only when the
+parameters meet certain conditions, documented below.  In all other cases the
+flag is "partially implemented" meaning use of the flag provides a guarantee
+against some subset of the possible causes of an injection stalls, but other
+possible stalls exist which are not taken into consideration.
 
+Regardless of "fully" or "partially implemented" status, all operations reliably
+detect possible stalls which depend on remote progress (such as for AM flow
+control).
 
+All stalls which might potential occur in partially implemented cases are
+related to the availability of local resources required for the injection of
+RDMA operations (including AM Long payloads).  Such resources are recovered as a
+result of either asynchronous progress by the NIC, or by the progress of other
+threads which temporarily hold resources for their own communication injection.
+
+* AM Short
+  + The IMMEDIATE flag is fully implemented for Short AMs.
+
+* AM Medium
+  + The IMMEDIATE flag is fully implemented for Medium AMs.
+
+* AM Long
+  + The IMMEDIATE flag is partially implemented for Long AMs.
+    The logic is sensitive to flow-control (including GASNET_LONG_DEPTH) and
+    buffer allocation for the AM header.  However, it ignores the possibility
+    of a stall in injection of the payload transfer.
+
+* RMA Put
+  + For (nbytes <= 128) the IMMEDIATE flag is fully implemented.
+  + Otherwise, the IMMEDIATE flag is fully implemented only if *none* of the
+    following apply.  Stated another way: if any of the following apply, then
+    the flag is partially implemented because they may lead to a stall not
+    considered in the IMMEDIATE flag logic:
+    - Source memory is read-only
+    - Source is in the local endpoint's bound segment and (nbytes > 2GiB - 4KiB)
+    - Source is not in the local endpoint's bound segment and
+      (nbytes <= GASNET_GNI_PUT_BOUNCE_REGISTER_CUTOVER) || (nbytes > 8MiB)
+
+* RMA Get
+  + For (nbytes <= 122) the IMMEDIATE flag is fully implemented.
+  + For (122 < nbytes <= 128) the IMMEDIATE flag is fully implemented if nbytes,
+    dest and src are each divisible by 4.
+  + Otherwise, the IMMEDIATE flag is fully implemented only if *none* of the
+    following apply.  Stated another way: if any of the following apply, then
+    the flag is partially implemented because they may lead to a stall not
+    considered in the IMMEDIATE flag logic:
+    - One or more of nbytes, dest or src is not divisible by 4.
+    - Destination is in the local endpoint's bound segment and (nbytes > 2GiB - 4KiB)
+    - Destination is not in the local endpoint's bound segment and
+      (nbytes <= GASNET_GNI_GET_BOUNCE_REGISTER_CUTOVER) || (nbytes > 8MiB)
