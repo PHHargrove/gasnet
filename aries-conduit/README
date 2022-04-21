@@ -883,7 +883,7 @@ injection.
     the flag is partially implemented because they may lead to a stall not
     considered in the IMMEDIATE flag logic:
     - Source memory is read-only
-    - Source is in the local endpoint's bound segment and (nbytes > 2GiB - 4KiB)
+    - Source is in the local endpoint's bound segment and (nbytes > 2GiB - 4MiB)
     - Source is outside the local endpoint's bound segment and
       (128 < nbytes <= GASNET_GNI_PUT_BOUNCE_REGISTER_CUTOVER) || (nbytes > 8MiB)
 
@@ -896,6 +896,6 @@ injection.
     the flag is partially implemented because they may lead to a stall not
     considered in the IMMEDIATE flag logic:
     - One or more of nbytes, dest or src is not divisible by 4.
-    - Destination is in the local endpoint's bound segment and (nbytes > 2GiB - 4KiB)
+    - Destination is in the local endpoint's bound segment and (nbytes > 2GiB - 4MiB)
     - Destination is outside the local endpoint's bound segment and
       (128 < nbytes <= GASNET_GNI_GET_BOUNCE_REGISTER_CUTOVER) || (nbytes > 8MiB)
