@@ -845,22 +845,24 @@ The following summarizes the current state of support for GEX_FLAG_IMMEDIATE.
 Last reviewed against 2022.3.0
 
 For some operations, support for GEX_FLAG_IMMEDIATE is "fully implemented"
-meaning use of the flag provides a strong guarantee against injection stalls.
-For some operations this "fully implemented" behavior exists only when the
-parameters meet certain conditions, documented below.  In all other cases the
-flag is "partially implemented" meaning use of the flag provides a guarantee
-against some subset of the possible causes of an injection stalls, but other
-possible stalls exist which are not taken into consideration.
+meaning use of the flag provides a strong guarantee against injection stalls due
+to shortages of GASNet-owned resources.  For some operations this "fully
+implemented" behavior exists only when the parameters meet certain conditions,
+documented below.  In all other cases the flag is "partially implemented"
+meaning use of the flag provides a guarantee against some subset of the possible
+causes of an injection stalls, but other possible stalls exist which are not
+taken into consideration.
 
 Regardless of "fully" or "partially implemented" status, all operations reliably
 detect possible stalls which depend on remote progress (such as for AM flow
 control).
 
-All stalls which might potential occur in partially implemented cases are
+All stalls which might potentially occur in partially implemented cases are
 related to the availability of local resources required for the injection of
 RDMA operations (including AM Long payloads).  Such resources are recovered as a
 result of either asynchronous progress by the NIC, or by the progress of other
-threads which temporarily hold resources for their own communication injection.
+local threads which temporarily hold resources for their own communication
+injection.
 
 * AM Short
   + The IMMEDIATE flag is fully implemented for Short AMs.
@@ -882,8 +884,8 @@ threads which temporarily hold resources for their own communication injection.
     considered in the IMMEDIATE flag logic:
     - Source memory is read-only
     - Source is in the local endpoint's bound segment and (nbytes > 2GiB - 4KiB)
-    - Source is not in the local endpoint's bound segment and
-      (nbytes <= GASNET_GNI_PUT_BOUNCE_REGISTER_CUTOVER) || (nbytes > 8MiB)
+    - Source is outside the local endpoint's bound segment and
+      (128 < nbytes <= GASNET_GNI_PUT_BOUNCE_REGISTER_CUTOVER) || (nbytes > 8MiB)
 
 * RMA Get
   + For (nbytes <= 122) the IMMEDIATE flag is fully implemented.
@@ -895,5 +897,5 @@ threads which temporarily hold resources for their own communication injection.
     considered in the IMMEDIATE flag logic:
     - One or more of nbytes, dest or src is not divisible by 4.
     - Destination is in the local endpoint's bound segment and (nbytes > 2GiB - 4KiB)
-    - Destination is not in the local endpoint's bound segment and
-      (nbytes <= GASNET_GNI_GET_BOUNCE_REGISTER_CUTOVER) || (nbytes > 8MiB)
+    - Destination is outside the local endpoint's bound segment and
+      (128 < nbytes <= GASNET_GNI_GET_BOUNCE_REGISTER_CUTOVER) || (nbytes > 8MiB)
