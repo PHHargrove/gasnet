@@ -152,17 +152,22 @@ static int rdma_periodic_poll_threshold; /* Set via environment variable in init
         gasnetc_ofi_tx_poll();\
     }} while(0)
 
-/* In this case, inject means "inject into the network". It is not specific
- * to the fi_inject/fi_inject_write functions. fxn must assign a return value
- * to an int named "ret" in the scope in which it is called.*/
+// In this case, inject means "inject into the network". It is not specific
+// to the fi_inject/fi_inject_write functions. fxn must assign a return value
+// to an int named "ret" in the scope in which it is called.
+// If and only-if "imm" is non-zero, will loop until (ret != -FI_EAGAIN)
+#define OFI_INJECT_RETRY_IMM(imm, lock, fxn, poll_type)  \
+    do {                                                 \
+        GASNETC_OFI_LOCK_EXPR(lock, fxn);                \
+        if (!imm) {                                      \
+            GASNETI_SPIN_WHILE(ret == -FI_EAGAIN, {      \
+                GASNETC_OFI_POLL_SELECTIVE(poll_type);   \
+                GASNETC_OFI_LOCK_EXPR(lock, fxn);        \
+            });                                          \
+        }                                                \
+    } while(0)
 #define OFI_INJECT_RETRY(lock, fxn, poll_type)\
-    do {\
-        GASNETC_OFI_LOCK_EXPR(lock, fxn);\
-        GASNETI_SPIN_WHILE(ret == -FI_EAGAIN, {\
-          GASNETC_OFI_POLL_SELECTIVE(poll_type);\
-          GASNETC_OFI_LOCK_EXPR(lock, fxn);\
-        });\
-    }while(0)
+        OFI_INJECT_RETRY_IMM(0, lock, fxn, poll_type)
 
 static gasneti_lifo_head_t ofi_am_request_pool = GASNETI_LIFO_INITIALIZER;
 static gasneti_lifo_head_t ofi_am_reply_pool = GASNETI_LIFO_INITIALIZER;
@@ -1154,15 +1159,19 @@ void gasnetc_ofi_am_send_complete(gasnetc_ofi_am_buf_t *header)
 }
 
 // Allocate an AM send buffer, spin-polling if necessary
-// TODO: GEX_FLAG_IMMEDIATE support
 // TODO: should Reply be permitted to borrow from Request pool?
 GASNETI_INLINE(gasnetc_ofi_am_header)
-gasnetc_ofi_am_buf_t *gasnetc_ofi_am_header(int isreq GASNETI_THREAD_FARG)
+gasnetc_ofi_am_buf_t *gasnetc_ofi_am_header(int isreq, int imm GASNETI_THREAD_FARG)
 {
     gasneti_lifo_head_t* pool = isreq ? &ofi_am_request_pool
                                       : &ofi_am_reply_pool;
+
     gasnetc_ofi_am_buf_t *header = gasneti_lifo_pop(pool);
+#if GASNETC_IMMEDIATE_AMPOLLS
     if (header) return header;
+#else
+    if (header || imm) return header;
+#endif
 
     // Poll only the tx queue and retry the pool before (maybe) allocating another buffer
     gasnetc_ofi_tx_poll();
@@ -1184,6 +1193,12 @@ gasnetc_ofi_am_buf_t *gasnetc_ofi_am_header(int isreq GASNETI_THREAD_FARG)
         }
         return header;
     }
+
+#if GASNETC_IMMEDIATE_AMPOLLS
+    if (imm) return NULL;
+#else
+    gasneti_assert(!imm);
+#endif
 
     // Spin-poll until a buffer is free
     // These are "DOUNTIL" since already know buffer pool is empty
@@ -1578,14 +1593,31 @@ void gasnetc_ofi_poll()
  * ----------------------------------------------*/
 
 int gasnetc_ofi_am_send_short(gex_Rank_t dest, gex_AM_Index_t handler,
-                     int numargs, va_list argptr, int isreq GASNETI_THREAD_FARG)
+                     int numargs, va_list argptr, int isreq, int flags GASNETI_THREAD_FARG)
 {
-    int ret = FI_SUCCESS;
-    gex_AM_Arg_t *arglist;
-    int i;
-    unsigned int len;
-    gasnetc_ofi_am_buf_t *header;
-    gasnetc_ofi_am_send_buf_t *sendbuf;
+    // Determine inject-vs-send
+    size_t len = sizeof(gex_AM_Arg_t) * numargs
+               + offsetof(gasnetc_ofi_am_send_buf_t, buf.short_buf);
+    len = GASNETI_ALIGNUP(len, GASNETI_MEDBUF_ALIGNMENT); // keep multi-recv buffers aligned
+    const int use_inject = (len <= max_buffered_send);
+
+    // IMMEDIATE fails unless fi_injectdata() will be used
+    const int imm = flags & GEX_FLAG_IMMEDIATE;
+    if (imm && !use_inject) {
+gasneti_console_message("IMM","S0");
+        return 1;
+    }
+
+    // Get a send buffer
+    gasnetc_ofi_am_buf_t *header = gasnetc_ofi_am_header(isreq, imm GASNETI_THREAD_PASS);
+    if (!header) {
+        gasneti_assert(imm);
+gasneti_console_message("IMM","S1");
+        return 1;
+    }
+    gasnetc_ofi_am_send_buf_t *sendbuf = &header->sendbuf;
+
+    int ret = 0;
     struct fid_ep* ep;
     fi_addr_t am_dest;
     int poll_type;
@@ -1600,34 +1632,31 @@ int gasnetc_ofi_am_send_short(gex_Rank_t dest, gex_AM_Index_t handler,
         poll_type = OFI_POLL_REPLY;
     }
 
-    /* Get a send buffer */
-    header = gasnetc_ofi_am_header(isreq GASNETI_THREAD_PASS);
-
-    /* Fill in the arguments */
-    sendbuf = &header->sendbuf;
-    arglist = (gex_AM_Arg_t*) sendbuf->buf.short_buf.data;
-    for (i = 0 ; i < numargs ; ++i) {
-        arglist[i] = va_arg(argptr, gex_AM_Arg_t);
-    }
-
-    /* Copy arg and handle into the buffer */
+    // Initialize metadata (handler, args, etc.)
     sendbuf->handler = (uint8_t) handler;
     sendbuf->sourceid = gasneti_mynode;
     sendbuf->type = OFI_AM_SHORT;
     sendbuf->argnum = numargs;
+    gex_AM_Arg_t *arglist = (gex_AM_Arg_t*) sendbuf->buf.short_buf.data;
+    for (int i = 0 ; i < numargs ; ++i) {
+        arglist[i] = va_arg(argptr, gex_AM_Arg_t);
+    }
 
-    len = sizeof(gex_AM_Arg_t) * numargs + offsetof(gasnetc_ofi_am_send_buf_t, buf.short_buf);
-    /* Alignment is added in order to ensure that all messages will be placed into the
-     * multi-recv buffer at an 8 byte aligned address. This is due to medium message
-     * payloads needing to be placed at an 8-byte aligned address. */
-    len = GASNETI_ALIGNUP(len, GASNETI_MEDBUF_ALIGNMENT);
-
-    if(len <= max_buffered_send) {
-        OFI_INJECT_RETRY(&gasnetc_ofi_locks.am_tx,
+    // Send
+    if (use_inject) {
+        gasneti_assert_uint(len ,<=, max_buffered_send);
+        OFI_INJECT_RETRY_IMM(imm, &gasnetc_ofi_locks.am_tx,
             ret = fi_inject(ep, sendbuf, len, am_dest), poll_type);
-        GASNETC_OFI_CHECK_RET(ret, "fi_inject for short am failed");
+        if (ret == -FI_EAGAIN) {
+            gasneti_assert(imm);
+            // fall through to return w/o communication
+gasneti_console_message("IMM","S2");
+        } else {
+            GASNETC_OFI_CHECK_RET(ret, "fi_inject for short am failed");
+        }
         gasneti_lifo_push(header->pool, header);
     } else {
+        gasneti_assert(!imm);
         OFI_INJECT_RETRY(&gasnetc_ofi_locks.am_tx,
             ret = fi_send(ep, sendbuf, len, NULL, am_dest, &header->ctxt), poll_type);
         GASNETC_OFI_CHECK_RET(ret, "fi_send for short am failed");
@@ -1640,14 +1669,31 @@ int gasnetc_ofi_am_send_short(gex_Rank_t dest, gex_AM_Index_t handler,
 
 int gasnetc_ofi_am_send_medium(gex_Rank_t dest, gex_AM_Index_t handler, 
                      void *source_addr, size_t nbytes,   /* data payload */
-                     int numargs, va_list argptr, int isreq GASNETI_THREAD_FARG)
+                     int numargs, va_list argptr, int isreq, int flags GASNETI_THREAD_FARG)
 {
-    int ret = FI_SUCCESS;
-    gex_AM_Arg_t *arglist;
-    int i;
-    unsigned int len;
-    gasnetc_ofi_am_buf_t *header;
-    gasnetc_ofi_am_send_buf_t *sendbuf;
+    // Determine inject-vs-send
+    const size_t len0 = GASNETI_ALIGNUP(sizeof(gex_AM_Arg_t) * numargs, GASNETI_MEDBUF_ALIGNMENT);
+    size_t len = len0 + nbytes + offsetof(gasnetc_ofi_am_send_buf_t, buf.medium_buf);
+    len = GASNETI_ALIGNUP(len, GASNETI_MEDBUF_ALIGNMENT); // keep multi-recv buffers aligned
+    const int use_inject = (len <= max_buffered_send);
+
+    // IMMEDIATE fails unless fi_injectdata() will be used
+    const int imm = flags & GEX_FLAG_IMMEDIATE;
+    if (imm && !use_inject) {
+gasneti_console_message("IMM","M0");
+        return 1;
+    }
+
+    // Get a send buffer
+    gasnetc_ofi_am_buf_t *header = gasnetc_ofi_am_header(isreq, imm GASNETI_THREAD_PASS);
+    if (!header) {
+        gasneti_assert(imm);
+gasneti_console_message("IMM","M1");
+        return 1;
+    }
+    gasnetc_ofi_am_send_buf_t *sendbuf = &header->sendbuf;
+
+    int ret = 0;
     struct fid_ep* ep;
     fi_addr_t am_dest;
     int poll_type;
@@ -1655,44 +1701,41 @@ int gasnetc_ofi_am_send_medium(gex_Rank_t dest, gex_AM_Index_t handler,
         ep = gasnetc_ofi_request_epfd;
         am_dest = GET_AM_REQUEST_DEST(dest);
         poll_type = OFI_POLL_ALL;
-    gasneti_assert (nbytes <= gex_AM_LUBRequestMedium());
     } 
     else {
         ep = gasnetc_ofi_reply_epfd;
         am_dest = GET_AM_REPLY_DEST(dest);
         poll_type = OFI_POLL_REPLY;
-    gasneti_assert (nbytes <= gex_AM_LUBReplyMedium());
     }
 
-
-    /* Get a send buffer */
-    header = gasnetc_ofi_am_header(isreq GASNETI_THREAD_PASS);
-
-    /* Fill in the arguments */
-    sendbuf = &header->sendbuf;
-    arglist = (gex_AM_Arg_t*) sendbuf->buf.medium_buf.data;
-    for (i = 0 ; i < numargs ; ++i) {
-        arglist[i] = va_arg(argptr, gex_AM_Arg_t);
-    }
-    len = GASNETI_ALIGNUP(sizeof(gex_AM_Arg_t)*numargs, GASNETI_MEDBUF_ALIGNMENT);
-
-    memcpy((uint8_t *)(sendbuf->buf.medium_buf.data)+ len, source_addr, nbytes);
-
-    len += (nbytes + offsetof(gasnetc_ofi_am_send_buf_t, buf.medium_buf));
-    len = GASNETI_ALIGNUP(len, GASNETI_MEDBUF_ALIGNMENT);
-
-    /* Copy arg and handle into the buffer */
+    // Initialize metadata (handler, args, etc.)
     sendbuf->handler = (uint8_t) handler;
     sendbuf->sourceid = gasneti_mynode;
     sendbuf->type = OFI_AM_MEDIUM;
     sendbuf->argnum = numargs;
+    gex_AM_Arg_t *arglist = (gex_AM_Arg_t*) sendbuf->buf.medium_buf.data;
+    for (int i = 0 ; i < numargs ; ++i) {
+        arglist[i] = va_arg(argptr, gex_AM_Arg_t);
+    }
 
-    if(len <= max_buffered_send) {
-        OFI_INJECT_RETRY(&gasnetc_ofi_locks.am_tx,
+    // Copy payload into buffer
+    memcpy((uint8_t *)(sendbuf->buf.medium_buf.data) + len0, source_addr, nbytes);
+
+    // Send
+    if (use_inject) {
+        gasneti_assert_uint(len ,<=, max_buffered_send);
+        OFI_INJECT_RETRY_IMM(imm, &gasnetc_ofi_locks.am_tx,
             ret = fi_injectdata(ep, sendbuf, len, nbytes, am_dest), poll_type);
-        GASNETC_OFI_CHECK_RET(ret, "fi_inject for medium ashort failed");
+        if (ret == -FI_EAGAIN) {
+            gasneti_assert(imm);
+            // fall through to return w/o communication
+gasneti_console_message("IMM","M2");
+        } else {
+            GASNETC_OFI_CHECK_RET(ret, "fi_inject for medium am failed");
+        }
         gasneti_lifo_push(header->pool, header);
     } else {
+        gasneti_assert(!imm);
         OFI_INJECT_RETRY(&gasnetc_ofi_locks.am_tx,
             ret = fi_senddata(ep, sendbuf, len, NULL, nbytes, am_dest, &header->ctxt), poll_type);
         GASNETC_OFI_CHECK_RET(ret, "fi_send for medium am failed");
@@ -1707,15 +1750,36 @@ int gasnetc_ofi_am_send_medium(gex_Rank_t dest, gex_AM_Index_t handler,
 int gasnetc_ofi_am_send_long(gex_Rank_t dest, gex_AM_Index_t handler,
                        void *source_addr, size_t nbytes,   /* data payload */
                        void *dest_addr,
-                       int numargs, va_list argptr, int isreq, int isasync
-                               GASNETI_THREAD_FARG)
+                       int numargs, va_list argptr, int isreq, int flags
+                       GASNETI_THREAD_FARG)
 {
-    int ret = FI_SUCCESS;
-    gex_AM_Arg_t *arglist;
-    int i;
-    unsigned int len;
-    gasnetc_ofi_am_buf_t *header;
-    gasnetc_ofi_am_send_buf_t *sendbuf;
+    // Compute lengths needed to select payload protocol
+    const size_t len0 = sizeof(gex_AM_Arg_t) * numargs; // end of arguments
+    const size_t len1 = len0 + nbytes; // end of packed payload, if any
+    const int is_packed = (len1 < long_rma_threshold);
+    size_t len = (is_packed ? len1 : len0)
+               + offsetof(gasnetc_ofi_am_long_buf_t, data)
+               + offsetof(gasnetc_ofi_am_send_buf_t, buf.long_buf);
+    len = GASNETI_ALIGNUP(len, GASNETI_MEDBUF_ALIGNMENT); // keep multi-recv buffers aligned
+    const int use_inject = (len <= max_buffered_send);
+
+    // IMMEDIATE fails unless a *single* fi_injectdata() call is sufficient
+    const int imm = flags & GEX_FLAG_IMMEDIATE;
+    if (imm && !(is_packed && use_inject)) {
+gasneti_console_message("IMM","L0");
+        return 1;
+    }
+
+    // Get a send buffer
+    gasnetc_ofi_am_buf_t *header = gasnetc_ofi_am_header(isreq, imm GASNETI_THREAD_PASS);
+    if (!header) {
+        gasneti_assert(imm);
+gasneti_console_message("IMM","L1");
+        return 1;
+    }
+    gasnetc_ofi_am_send_buf_t *sendbuf = &header->sendbuf;
+
+    int ret = 0;
     struct fid_ep* ep;
     fi_addr_t am_dest;
     int poll_type;
@@ -1730,35 +1794,25 @@ int gasnetc_ofi_am_send_long(gex_Rank_t dest, gex_AM_Index_t handler,
         poll_type = OFI_POLL_REPLY;
     }
 
-    if(isreq)
-        gasneti_assert (nbytes <= gex_AM_LUBRequestLong());
-    else
-        gasneti_assert (nbytes <= gex_AM_LUBReplyLong());
-
-    /* Get a send buffer */
-    header = gasnetc_ofi_am_header(isreq GASNETI_THREAD_PASS);
-
-    /* Fill in the arguments */
-    sendbuf = &header->sendbuf;
-    arglist = (gex_AM_Arg_t*) sendbuf->buf.long_buf.data;
-    for (i = 0 ; i < numargs ; ++i) {
+    // Initialize metadata (handler, args, etc.)
+    sendbuf->handler = (uint8_t) handler;
+    sendbuf->sourceid = gasneti_mynode;
+    sendbuf->argnum = numargs;
+    sendbuf->buf.long_buf.dest_ptr = dest_addr;
+    gex_AM_Arg_t *arglist = (gex_AM_Arg_t*) sendbuf->buf.long_buf.data;
+    for (int i = 0 ; i < numargs ; ++i) {
         arglist[i] = va_arg(argptr, gex_AM_Arg_t);
     }
-    len = sizeof(gex_AM_Arg_t)*numargs;
-#if !GASNET_PSHM
-    if(dest == gasneti_mynode) {
-        memcpy(dest_addr, source_addr, nbytes);
-        sendbuf->type = OFI_AM_LONG;
-    } else
-#endif
-    if(len + nbytes < long_rma_threshold)
-    {
-        /* Pack the payload if it's small enough */
-        memcpy(sendbuf->buf.long_buf.data + len, source_addr, nbytes);
-        len += nbytes;
+
+    // Either copy or send payload
+    if (is_packed) {
+        // Pack the payload if it's small enough
+        memcpy(sendbuf->buf.long_buf.data + len0, source_addr, nbytes);
         sendbuf->type = OFI_AM_LONG_MEDIUM;
     } else {
-        /* Launch the long data payload transfer with RMA operation */
+        // Launch the long data payload transfer using RMA
+        gasneti_assert(!imm);
+
         gasnetc_ofi_op_ctxt_t lam_ctxt;
         lam_ctxt.type = OFI_TYPE_AM_DATA;
         lam_ctxt.data_sent = 0;
@@ -1776,32 +1830,31 @@ int gasnetc_ofi_am_send_long(gex_Rank_t dest, gex_AM_Index_t handler,
         gasnetc_paratomic_increment(&pending_rdma,0);
 #endif
 
-        /* Because the order is not guaranteed between different ep, */
-        /* we send the am part after confirming the large rdma operation */
-        /* is successful. */
+        // Because no ordering is guaranteed between different ep, we send
+        // the AM header only after the RMA operation completes
         while(!lam_ctxt.data_sent) {
             GASNETC_OFI_POLL_SELECTIVE(poll_type);
         }
         sendbuf->type = OFI_AM_LONG;
     }
-    len += offsetof(gasnetc_ofi_am_long_buf_t, data) + offsetof(gasnetc_ofi_am_send_buf_t, buf.long_buf);
-    len = GASNETI_ALIGNUP(len, GASNETI_MEDBUF_ALIGNMENT);
 
-    /* Copy arg and handle into the buffer */
-    sendbuf->handler = (uint8_t) handler;
-    sendbuf->sourceid = gasneti_mynode;
-    sendbuf->argnum = numargs;
-    sendbuf->buf.long_buf.dest_ptr = dest_addr;
-
-    if(len <= max_buffered_send) {
-        OFI_INJECT_RETRY(&gasnetc_ofi_locks.am_tx,
+    // Send
+    if (use_inject) {
+        gasneti_assert_uint(len ,<=, max_buffered_send);
+        OFI_INJECT_RETRY_IMM(imm, &gasnetc_ofi_locks.am_tx,
             ret = fi_injectdata(ep, sendbuf, len, nbytes, am_dest), poll_type);
-        GASNETC_OFI_CHECK_RET(ret, "fi_inject for long ashort failed");
+        if (ret == -FI_EAGAIN) {
+            gasneti_assert(imm);
+            // fall through to return w/o communication
+gasneti_console_message("IMM","L2");
+        } else {
+            GASNETC_OFI_CHECK_RET(ret, "fi_inject for long am failed");
+        }
         gasneti_lifo_push(header->pool, header);
     } else {
+        gasneti_assert(!imm);
         OFI_INJECT_RETRY(&gasnetc_ofi_locks.am_tx,
             ret = fi_senddata(ep, sendbuf, len, NULL, nbytes, am_dest, &header->ctxt), poll_type);
-
         GASNETC_OFI_CHECK_RET(ret, "fi_send for long am failed");
 #if GASNET_DEBUG
         gasnetc_paratomic_increment(&pending_am,0);
