@@ -180,13 +180,15 @@ void gasnetc_ofi_exit(void);
 
 /* Active Messages Send Functions */
 int gasnetc_ofi_am_send_short(gex_Rank_t dest, gex_AM_Index_t handler, 
-		int numargs, va_list argptr, int isreq GASNETI_THREAD_FARG);
+                int numargs, va_list argptr, int isreq, int flags
+                GASNETI_THREAD_FARG);
 int gasnetc_ofi_am_send_medium(gex_Rank_t dest, gex_AM_Index_t handler, 
-		void *source_addr, size_t nbytes,
-		int numargs, va_list argptr, int isreq GASNETI_THREAD_FARG);
+                void *source_addr, size_t nbytes,
+                int numargs, va_list argptr, int isreq, int flags
+                GASNETI_THREAD_FARG);
 int gasnetc_ofi_am_send_long(gex_Rank_t dest, gex_AM_Index_t handler,
-		void *source_addr, size_t nbytes,
-		void *dest_addr, int numargs, va_list argptr, int isReq, int isAsync
+                void *source_addr, size_t nbytes, void *dest_addr,
+                int numargs, va_list argptr, int isreq, int flags
                 GASNETI_THREAD_FARG);
 
 /* One-siede PUT/GET Functions */
