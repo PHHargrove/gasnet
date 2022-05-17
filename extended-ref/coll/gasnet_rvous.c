@@ -24,7 +24,6 @@ void gasnete_coll_put_nb(gasnete_coll_generic_data_t *data,
     GASNETI_MEMCPY(local_dst, src, nbytes);
   } else {
     data->handle = gasnete_put_nb(tm, rank, dst, (void*)src, nbytes, GEX_EVENT_DEFER, 0 GASNETI_THREAD_PASS);
-    gasnete_coll_save_event(&data->handle);
   }
 }
 
@@ -51,7 +50,6 @@ void gasnete_coll_get_nb(gasnete_coll_generic_data_t *data,
     GASNETI_MEMCPY(dst, local_src, nbytes);
   } else {
     data->handle = gasnete_get_nb(tm, dst, rank, src, nbytes, 0 GASNETI_THREAD_PASS);
-    gasnete_coll_save_event(&data->handle);
   }
 }
 
@@ -87,7 +85,8 @@ static int gasnete_coll_pf_bcast_RVGet(gasnete_coll_op_t *op GASNETI_THREAD_FARG
       data->state = 2; GASNETI_FALLTHROUGH
       
   case 2:	/* Sync data movement */
-    if (data->handle != GEX_EVENT_INVALID) {
+// WIP - confirmed
+    if (data->handle && gasnete_test(data->handle GASNETI_THREAD_PASS)) {
       break;
     }
     data->state = 3; GASNETI_FALLTHROUGH
@@ -180,7 +179,8 @@ static int gasnete_coll_pf_bcast_TreeRVGet(gasnete_coll_op_t *op GASNETI_THREAD_
     data->state = 3; GASNETI_FALLTHROUGH
     
   case 3:	/* Sync data movement */
-    if (data->handle != GEX_EVENT_INVALID) {
+// WIP - confirmed
+    if (data->handle && gasnete_test(data->handle GASNETI_THREAD_PASS)) {
       break;
     }
     /*the get has finished now send a signal down the tree signalling the ok to get*/
@@ -391,7 +391,8 @@ static int gasnete_coll_pf_scat_RVGet(gasnete_coll_op_t *op GASNETI_THREAD_FARG)
       data->state = 2; GASNETI_FALLTHROUGH
 
     case 2:	/* Sync data movement */
-      if (data->handle != GEX_EVENT_INVALID) {
+// WIP - confirmed
+      if (data->handle && gasnete_test(data->handle GASNETI_THREAD_PASS)) {
 	break;
       }
       data->state = 3; GASNETI_FALLTHROUGH
@@ -542,7 +543,8 @@ static int gasnete_coll_pf_gath_RVPut(gasnete_coll_op_t *op GASNETI_THREAD_FARG)
       data->state = 2; GASNETI_FALLTHROUGH
 
     case 2:	/* Sync data movement */
-      if (data->handle != GEX_EVENT_INVALID) {
+ // WIP - confirmed
+      if (data->handle && gasnete_test(data->handle GASNETI_THREAD_PASS)) {
 	break;
       }
       data->state = 3; GASNETI_FALLTHROUGH
@@ -687,12 +689,12 @@ static int gasnete_coll_pf_exchg_RVPut(gasnete_coll_op_t *op GASNETI_THREAD_FARG
       gasnete_coll_put_nbi(op->e_tm, i, (int8_t*) ((void**)data->p2p->data)[i] + op->team->myrank*args->nbytes, (int8_t*) args->src+i*args->nbytes, args->nbytes GASNETI_THREAD_PASS);
     }
     data->handle = gasnete_end_nbi_accessregion(0 GASNETI_THREAD_PASS);
-    gasnete_coll_save_event(&data->handle);
     GASNETI_MEMCPY_SAFE_IDENTICAL((int8_t*) args->dst + op->team->myrank*args->nbytes, 
                                         (int8_t*) args->src+op->team->myrank*args->nbytes, args->nbytes);
     data->state = 4; GASNETI_FALLTHROUGH
   case 4: /* sync all the handles for the puts*/
-    if (op->team->total_ranks > 1 && data->handle != GEX_EVENT_INVALID) {
+// WIP - confirmed
+    if (data->handle && gasnete_test(data->handle GASNETI_THREAD_PASS)) {
       return 0;
     }
     data->state = 5; GASNETI_FALLTHROUGH

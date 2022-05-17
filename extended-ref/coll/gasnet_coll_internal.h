@@ -851,7 +851,24 @@ int gasnete_coll_segment_check(gasnete_coll_team_t team, int flags,
 /*---------------------------------------------------------------------------------*/
 /* Events to test for progress */
 
-extern void gasnete_coll_save_event(gex_Event_t *event_p);
+#define COVERAGE() do { \
+   static int once = 0; \
+   if (!once) { \
+     once=1; \
+     gasneti_console_message("COVER","%s:%d %s", __FILE__, __LINE__, GASNETT_CURRENT_FUNCTION); \
+   } \
+ } while (0)
+
+#define gasnete_coll_save_event(p) do { \
+   static int once = 0; \
+   if (!once) { \
+     once=1; \
+     gasneti_console_message("SE","%s:%d %s", __FILE__, __LINE__, GASNETT_CURRENT_FUNCTION); \
+   } \
+   gasnete_coll_save_event_(p); \
+ } while (0)
+
+extern void gasnete_coll_save_event_(gex_Event_t *event_p);
 extern void gasnete_coll_sync_saved_events(GASNETI_THREAD_FARG_ALONE);
 
 /*---------------------------------------------------------------------------------*
@@ -960,8 +977,6 @@ struct gasnete_coll_generic_data_t_ {
   gasnete_coll_local_tree_geom_t        *tree_geom;
   gasnete_coll_dissem_info_t *dissem_info;
   gex_Event_t			handle;
-  gex_Event_t			handle2;
-  gex_Event_t		coll_handle;
   void				*private_data;
   
   /* Hook for conduit-specific extension */

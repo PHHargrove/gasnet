@@ -75,7 +75,7 @@ gasnete_coll_tree_type_t gasnete_coll_autotune_get_tree_type_idx(gasnet_team_han
   int log2_threads = gasnete_coll_log2_rank(MIN((uint32_t) team->total_ranks,128));
   int tree_class;
   int radix;
-  gasneti_assert(idx < gasnete_coll_autotune_get_num_tree_types(team));
+  gasneti_assert_uint(idx ,<, gasnete_coll_autotune_get_num_tree_types(team));
   if(team->autotune_info->allow_flat_tree) {
     if(idx == 0) {
       ret->tree_class = GASNETE_COLL_FLAT_TREE;

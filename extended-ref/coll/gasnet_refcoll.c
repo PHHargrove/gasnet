@@ -173,7 +173,7 @@ static struct {
   size_t       allocated, used;
 } gasnete_coll_event_list = {NULL, NULL, 0, 0};
 
-void gasnete_coll_save_event(gex_Event_t *event_p) {
+void gasnete_coll_save_event_(gex_Event_t *event_p) {
   gasneti_mutex_assertlocked(&gasnete_coll_poll_lock);
   if (*event_p != GEX_EVENT_INVALID) {
     int allocated = gasnete_coll_event_list.allocated;
@@ -1943,13 +1943,14 @@ static int gasnete_coll_pf_gall_Gath(gasnete_coll_op_t *op GASNETI_THREAD_FARG) 
       for (i = 0; i < op->team->total_ranks; ++i, ++h) {
         *h = gasnete_coll_gather_nb(team, i, dst, src, nbytes,
                                     flags|GASNETE_COLL_NONROOT_SUBORDINATE|GASNET_COLL_DISABLE_AUTOTUNE, op->sequence+i+1 GASNETI_THREAD_PASS);
-        gasnete_coll_save_event(h);
       }
     }
     data->state = 2; GASNETI_FALLTHROUGH
 
   case 2:	/* Sync data movement */
-    if (!gasnete_coll_generic_coll_sync(data->private_data, op->team->total_ranks GASNETI_THREAD_PASS)) {
+gasneti_console_message("GALLGATH","%d x %zd", (int)op->team->total_ranks, (size_t)args->nbytes);
+// WIP - confirmed
+    if (gasnete_test_all((gex_Event_t *)data->private_data, op->team->total_ranks GASNETI_THREAD_PASS)) {
       break;
     }
     data->state = 3; GASNETI_FALLTHROUGH
@@ -2098,7 +2099,7 @@ static int gasnete_coll_pf_exchg_Gath(gasnete_coll_op_t *op GASNETI_THREAD_FARG)
       for (i = 0; i < team->total_ranks; ++i, ++h, src_addr += nbytes) {
         *h = gasnete_coll_gather_nb(team, i, dst, (void *)src_addr, nbytes,
                                     flags|GASNETE_COLL_NONROOT_SUBORDINATE|GASNET_COLL_DISABLE_AUTOTUNE, op->sequence+i+1 GASNETI_THREAD_PASS);
-        gasnete_coll_save_event(h);
+        gasnete_coll_save_event_(h); // WIP - reachable via autotuner
       }
     }
     data->state = 2; GASNETI_FALLTHROUGH

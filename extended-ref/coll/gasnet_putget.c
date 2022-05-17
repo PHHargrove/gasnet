@@ -417,7 +417,6 @@ static int gasnete_coll_pf_scat_TreePut(gasnete_coll_op_t *op GASNETI_THREAD_FAR
               
           GASNETE_FAST_UNALIGNED_MEMCPY(args->dst, gasnete_coll_scale_ptr(args->src,args->dist,(op->team->myrank)), args->nbytes);
           data->handle = gasnete_end_nbi_accessregion(0 GASNETI_THREAD_PASS);
-          gasnete_coll_save_event(&data->handle);
         } else {
           int8_t* src_arr;
           int8_t* scratch_space = gasnete_coll_scratch_myaddr(op, 0);
@@ -458,7 +457,6 @@ static int gasnete_coll_pf_scat_TreePut(gasnete_coll_op_t *op GASNETI_THREAD_FAR
           }
           GASNETE_FAST_UNALIGNED_MEMCPY(args->dst, src_arr, args->nbytes);
           data->handle = gasnete_end_nbi_accessregion(0 GASNETI_THREAD_PASS);
-          gasnete_coll_save_event(&data->handle);
         }
       } else if(data->p2p->state[0]){
         int8_t *scratchspace = gasnete_coll_scratch_myaddr(op, 0);
@@ -479,7 +477,6 @@ static int gasnete_coll_pf_scat_TreePut(gasnete_coll_op_t *op GASNETI_THREAD_FAR
           sent_bytes+=geom->subtree_sizes[i]*args->nbytes;
         }
         data->handle = gasnete_end_nbi_accessregion(0 GASNETI_THREAD_PASS);
-        gasnete_coll_save_event(&data->handle);
         
         
         /* In the case of Mysync the data is always sent to the scratch space so copy it out*/
@@ -491,7 +488,8 @@ static int gasnete_coll_pf_scat_TreePut(gasnete_coll_op_t *op GASNETI_THREAD_FAR
       data->state = 4; GASNETI_FALLTHROUGH
       
       case 4: /* wait for all puts to finish*/
-      if (data->handle != GEX_EVENT_INVALID) {
+// WIP - confirmed
+      if (data->handle && gasnete_test(data->handle GASNETI_THREAD_PASS)) {
         break;
       }
       data->state = 5; GASNETI_FALLTHROUGH
@@ -608,7 +606,6 @@ static int gasnete_coll_pf_scat_TreePutNoCopy(gasnete_coll_op_t *op GASNETI_THRE
             }
           }
           data->handle = gasnete_end_nbi_accessregion(0 GASNETI_THREAD_PASS);
-          gasnete_coll_save_event(&data->handle);
         }
         GASNETE_FAST_UNALIGNED_MEMCPY(args->dst, gasnete_coll_scale_ptr(args->src,args->dist,(op->team->myrank)), args->nbytes);
       } else if (data->p2p->state[0] 
@@ -633,7 +630,6 @@ static int gasnete_coll_pf_scat_TreePutNoCopy(gasnete_coll_op_t *op GASNETI_THRE
         }
         
         data->handle = gasnete_end_nbi_accessregion(0 GASNETI_THREAD_PASS);
-        gasnete_coll_save_event(&data->handle);
         
         /* In the case of Mysync or being an intermediate node  the data is always sent to the scratch space so copy it out*/
         GASNETE_FAST_UNALIGNED_MEMCPY(args->dst, scratchspace, args->nbytes);
@@ -644,7 +640,8 @@ static int gasnete_coll_pf_scat_TreePutNoCopy(gasnete_coll_op_t *op GASNETI_THRE
       data->state = 4; GASNETI_FALLTHROUGH
       
       case 4: /* wait for all puts to finish*/
-      if (data->handle != GEX_EVENT_INVALID) {
+// WIP - confirmed
+      if (data->handle && gasnete_test(data->handle GASNETI_THREAD_PASS)) {
         break;
       }
       data->state = 5; GASNETI_FALLTHROUGH
@@ -730,13 +727,13 @@ static int gasnete_coll_pf_scat_TreePutSeg(gasnete_coll_op_t *op GASNETI_THREAD_
         /*ignore the handle returned*/
         handle_vec->handles[i] = gasnete_coll_scat_TreePut(op->team, gasnete_coll_scale_ptr(args->dst,1,sent_bytes) , srcproc, gasnete_coll_scale_ptr(args->src,1,sent_bytes), 
                                                            seg_size, args->nbytes, flags, impl, op->sequence+i+1 GASNETI_THREAD_PASS);   
-        gasnete_coll_save_event(&handle_vec->handles[i]);
+        gasnete_coll_save_event(&handle_vec->handles[i]);//QQQ
         sent_bytes += seg_size;
       }
       
       handle_vec->handles[i] = gasnete_coll_scat_TreePut(op->team, gasnete_coll_scale_ptr(args->dst,1,sent_bytes) , srcproc, gasnete_coll_scale_ptr(args->src,1,sent_bytes), 
                                                          args->nbytes-sent_bytes, args->nbytes, flags, impl, op->sequence+i+1 GASNETI_THREAD_PASS);   
-      gasnete_coll_save_event(&handle_vec->handles[i]);
+      gasnete_coll_save_event_(&handle_vec->handles[i]);//WIP - reachable via autotune
       gasnete_coll_free_implementation(impl);
 
     }
@@ -904,13 +901,7 @@ static int gasnete_coll_pf_gath_TreePut(gasnete_coll_op_t *op GASNETI_THREAD_FAR
       }
       data->state = 4; GASNETI_FALLTHROUGH
 
-  case 4: /*sync data movement*/
-    if(data->handle !=GEX_EVENT_INVALID) {
-      break;
-    }
-    data->state = 5; GASNETI_FALLTHROUGH
-
-  case 5: /*node level barrier*/
+  case 4: /*node level barrier*/
     
     /* go down the tree with the barrier again*/
     if(op->flags & GASNET_COLL_OUT_ALLSYNC) {
@@ -926,9 +917,9 @@ static int gasnete_coll_pf_gath_TreePut(gasnete_coll_op_t *op GASNETI_THREAD_FAR
         gasnete_tm_p2p_advance(op, children[child], 0, 0 GASNETI_THREAD_PASS);
       }
     }
-    data->state = 6; GASNETI_FALLTHROUGH
+    data->state = 5; GASNETI_FALLTHROUGH
     
-  case 6: /* done*/
+  case 5: /* done*/
       gasnete_coll_generic_free(op->team, data GASNETI_THREAD_PASS);
       result = (GASNETE_COLL_OP_COMPLETE | GASNETE_COLL_OP_INACTIVE);
       gasnete_coll_free_scratch(op);
@@ -1066,14 +1057,7 @@ static int gasnete_coll_pf_gath_TreePutNoCopy(gasnete_coll_op_t *op GASNETI_THRE
     }
     data->state = 4; GASNETI_FALLTHROUGH
     
-  case 4: /*sync data movement*/
-    /*since we have initiated possibly more than one put we need to sync all of them*/
-    if(data->handle !=GEX_EVENT_INVALID || data->handle2 !=GEX_EVENT_INVALID) {
-      break;
-    }
-    data->state = 5; GASNETI_FALLTHROUGH
-    
-  case 5: /*node level barrier*/
+  case 4: /*node level barrier*/
     
     /* go down the tree with the barrier again*/
     if(op->flags & GASNET_COLL_OUT_ALLSYNC) {
@@ -1088,9 +1072,9 @@ static int gasnete_coll_pf_gath_TreePutNoCopy(gasnete_coll_op_t *op GASNETI_THRE
         gasnete_tm_p2p_advance(op, children[child], 0, 1 GASNETI_THREAD_PASS);
       }
     }
-    data->state = 6; GASNETI_FALLTHROUGH
+    data->state = 5; GASNETI_FALLTHROUGH
     
-  case 6: /* done*/
+  case 5: /* done*/
     gasnete_coll_generic_free(op->team, data GASNETI_THREAD_PASS);
     result = (GASNETE_COLL_OP_COMPLETE | GASNETE_COLL_OP_INACTIVE);
     gasnete_coll_free_scratch(op);
@@ -1162,14 +1146,14 @@ static int gasnete_coll_pf_gath_TreePutSeg(gasnete_coll_op_t *op GASNETI_THREAD_
         handle_vec->handles[i] = gasnete_coll_gath_TreePut(op->team, dstproc, gasnete_coll_scale_ptr(args->dst,1,sent_bytes),
                                                            gasnete_coll_scale_ptr(args->src,1,sent_bytes), 
                                                            seg_size, args->nbytes, flags, impl, op->sequence+i+1 GASNETI_THREAD_PASS);   
-        gasnete_coll_save_event(&handle_vec->handles[i]);
+        gasnete_coll_save_event(&handle_vec->handles[i]);//QQQ
         sent_bytes += seg_size;
       }
       
       handle_vec->handles[i] = gasnete_coll_gath_TreePut(op->team, dstproc, gasnete_coll_scale_ptr(args->dst,1,sent_bytes),
                                                          gasnete_coll_scale_ptr(args->src,1,sent_bytes), 
                                                          args->nbytes-sent_bytes, args->nbytes, flags, impl, op->sequence+i+1 GASNETI_THREAD_PASS);   
-      gasnete_coll_save_event(&handle_vec->handles[i]);
+      gasnete_coll_save_event_(&handle_vec->handles[i]);//WIP - reachable via autotune
       gasnete_coll_free_implementation(impl);
     }
       data->state = 2; GASNETI_FALLTHROUGH
