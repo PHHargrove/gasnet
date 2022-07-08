@@ -174,7 +174,9 @@ static int gasnetc_init( gex_Client_t            *client_p,
 
   /* allocate and attach an aux segment */
   gasnet_seginfo_t auxseg = gasneti_auxsegAttach((uintptr_t)-1, &gasneti_bootstrapExchange);
+#if GASNET_SEGMENT_FAST || GASNET_SEGMENT_LARGE
   gasnetc_auxseg_register(auxseg);
+#endif
 
   /* determine Max{Local,GLobal}SegmentSize */
   gasneti_segmentInit(mmap_limit, &gasneti_bootstrapExchange, flags);
