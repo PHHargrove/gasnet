@@ -100,7 +100,6 @@ static uint64_t* gasnetc_ofi_target_aux_keys;
 
 // Alias unless/until the properties are split
 #define GASNETC_OFI_HAS_MR_PROV_KEY (!GASNETC_OFI_HAS_MR_SCALABLE)
-#define GASNETC_OFI_HAS_VIRT_ADDR   (!GASNETC_OFI_HAS_MR_SCALABLE)
 
 static size_t tx_cq_size = 0;
 static size_t rx_cq_size = 0;
