@@ -221,7 +221,7 @@ extern int gasnetc_exit_in_progress;
 #define GASNETC_OFI_EVENTS_PER_POLL 16
 #endif
 
-// Conversion of remote EP index to memory registration key,
+// Conversion of EP index to memory registration key,
 // where -1 is used for the aux seg
 #define _GASNETC_CLIENT_KEY_BASE     1
 #define GASNETC_EPIDX_TO_KEY(epidx)  ((epidx)+_GASNETC_CLIENT_KEY_BASE)
