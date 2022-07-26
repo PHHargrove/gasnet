@@ -189,7 +189,8 @@ int main(int argc, char **argv)
       ERR("FAILED EARLY SEGMENT PUBLISH TEST");
     }
 
-    // Pick a segment to test and destroy the other
+    // Pick a segment for the main tests
+    // The other is used in one later test and then destroyed
     gex_Segment_t seg, other_seg;
     void *    seg_addr;
     uintptr_t seg_size;
