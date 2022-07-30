@@ -996,8 +996,8 @@ int gasnetc_ofi_init(void)
   fi_freeinfo(hints);
 
   if (GASNETC_OFI_HAS_MR_PROV_KEY) {
-    gasnetc_ofi_target_keys = gasneti_calloc(2*gasneti_nodes, sizeof(uint64_t));
-    gasnetc_ofi_target_aux_keys = gasnetc_ofi_target_keys + gasneti_nodes;
+      gasnetc_ofi_target_keys = gasneti_calloc(2*gasneti_nodes, sizeof(uint64_t));
+      gasnetc_ofi_target_aux_keys = gasnetc_ofi_target_keys + gasneti_nodes;
   }
 
   receive_region_size = multirecv_buff_size*num_multirecv_buffs;
@@ -1432,13 +1432,8 @@ int gasnetc_segment_register(gasnetc_Segment_t segment, uint64_t key)
                         FI_REMOTE_READ | FI_REMOTE_WRITE, 0ULL, key, 0ULL,
                         mrfd_p, NULL);
     GASNETC_OFI_CHECK_RET(ret, "fi_mr_reg for rdma failed");
-    if (segment) {
-    #if GASNETC_OFI_HAS_MR_PROV_KEY
-      // Provider may ignore our requested key
-      segment->mr_key = fi_mr_key(*mrfd_p);
-    #else
+    if (segment && ! GASNETC_OFI_HAS_MR_PROV_KEY) {
       gasneti_assert_uint(key ,==, fi_mr_key(*mrfd_p));
-    #endif
     }
 
 #ifdef FI_MR_ENDPOINT
@@ -1486,13 +1481,12 @@ void gasnetc_segment_exchange(gex_TM_t tm, gex_EP_t *eps, size_t num_eps)
   p = local;
   for (gex_Rank_t i = 0; i < num_eps; ++i) {
     gex_EP_t ep = eps[i];
-    gasneti_Segment_t i_segment = gasneti_import_ep(ep)->_segment;
-    if (! i_segment) continue;
+    gasnetc_Segment_t segment = (gasnetc_Segment_t) gasneti_import_ep(ep)->_segment;
+    if (! segment) continue;
     p->loc.gex_rank = gasneti_mynode;
     p->loc.gex_ep_index = gex_EP_QueryIndex(ep);
-    gasnetc_Segment_t c_segment = (gasnetc_Segment_t) i_segment;
-    gasneti_assert(c_segment->mrfd);
-    p->mr_key = c_segment->mr_key;
+    gasneti_assert(segment->mrfd);
+    p->mr_key = fi_mr_key(segment->mrfd);
     ++p;
   }
 

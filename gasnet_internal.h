@@ -591,9 +591,9 @@ extern void gasnetc_segment_destroy_hook(gasneti_Segment_t i_segment);
 #endif
 
 #if GASNETC_EP_BINDSEGMENT_HOOK
-// Called after all conduit-independent segment binding steps in
-// gex_EP_BindSegment().  Use of this hook may include per-EP memory
-// registration.
+// Called by gex_EP_BindSegment() after argument checking, but before any
+// conduit-independent segment binding steps.
+// Use of this hook may include per-EP memory registration.
 //
 // Arguments provided to gex_EP_BindSegment() are also provided to this
 // hook, but with their internal types.

@@ -2022,16 +2022,16 @@ extern int gex_EP_BindSegment(
     GASNETI_RETURN_ERRR(BAD_ARG,"Invalid call to gex_EP_BindSegment() on EP with a bound segment");
   }
 
+#if GASNETC_EP_BINDSEGMENT_HOOK
+  GASNETI_SAFE_PROPAGATE( gasnetc_ep_bindsegment_hook(i_ep, i_segment, flags) );
+#endif
+
   i_ep->_segment = i_segment;
   gasneti_record_seginfo(gasneti_mynode, i_ep->_index, i_segment->_addr, i_segment->_size);
 
   gasneti_legacy_segment_attach_hook(i_ep);
 
-#if GASNETC_EP_BINDSEGMENT_HOOK
-  return gasnetc_ep_bindsegment_hook(i_ep, i_segment, flags);
-#else
   return GASNET_OK;
-#endif
 }
 
 /* ------------------------------------------------------------------------------------ */

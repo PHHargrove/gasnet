@@ -172,7 +172,6 @@ typedef struct gasnetc_Segment_t_ {
   GASNETI_SEGMENT_COMMON // conduit-indep part as prefix
 
   // conduit-specific fields
-  uint64_t              mr_key;
   struct fid_mr*        mrfd;
 } *gasnetc_Segment_t;
 
