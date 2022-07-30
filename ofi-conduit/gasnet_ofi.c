@@ -95,7 +95,8 @@ static uint64_t* gasnetc_ofi_target_aux_keys;
 #ifdef GASNETC_OFI_HAS_MR_SCALABLE
   #define GASNETC_OFI_HAS_MR_SCALABLE_STATIC 1
 #else
-  #define GASNETC_OFI_HAS_MR_SCALABLE has_mr_scalable
+  // cast prevents erroneous use in preprocessor directives
+  #define GASNETC_OFI_HAS_MR_SCALABLE ((short)has_mr_scalable)
 #endif
 
 // Alias unless/until the properties are split
