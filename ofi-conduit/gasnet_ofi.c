@@ -5,6 +5,7 @@
  * Portions copyright 2018-2020, The Regents of the University of California.
  * Terms of use are as specified in license.txt
  */
+#define GASNETI_NEED_GASNET_MK_H 1
 #include <gasnet_core_internal.h>
 #include <gasnet_extended_internal.h>
 #include <gasnet_hwloc_internal.h>
@@ -46,6 +47,10 @@ size_t gasnetc_ofi_bbuf_threshold;
 
 #ifdef FI_MR_ENDPOINT
 static int gasnetc_fi_mr_endpoint = 0;
+#endif
+
+#if GASNET_HAVE_MK_CLASS_MULTIPLE
+static int gasnetc_fi_hmem = 0;
 #endif
 
 size_t gasnetc_ofi_max_medium = GASNETC_OFI_MAX_MEDIUM_DFLT;
@@ -180,19 +185,21 @@ uintptr_t gasnetc_remote_addr(gex_Rank_t jobrank, void *addr, int rem_epidx)
 }
 GASNETI_PUREP(gasnetc_remote_addr)
 
-// Statements with launch a fi_write or fi_read, setting "ret"
-#define OFI_RMA(rw, ep, loc_addr, nbytes, jobrank, rem_epidx, rem_addr, ctxt_ptr, aux) \
+// Statements which launch a fi_write or fi_read, setting "ret"
+#define OFI_RMA(rw, c_ep, loc_addr, nbytes, jobrank, rem_epidx, rem_addr, ctxt_ptr, aux) \
     do { \
         fi_addr_t _peer = gasnetc_fabric_addr(RDMA, jobrank); \
         uintptr_t _addr = gasnetc_remote_addr(jobrank, rem_addr, rem_epidx); \
         uint64_t _key   = gasnetc_remote_key(jobrank, rem_epidx); \
         void *_op_ctxt  = gasnetc_rdma_ctxt_to_op_ctxt(ctxt_ptr, aux); \
-        ret = fi_##rw(ep, loc_addr, nbytes, NULL, _peer, _addr, _key, _op_ctxt); \
+        void *_desc     = gasneti_i_segment_kind_is_host(c_ep->_segment) ? NULL: fi_mr_desc(c_ep->mrfd); \
+        struct fid_ep *_ofi_ep = gasnetc_ofi_rdma_epfd; /* TODO: ep isolation */ \
+        ret = fi_##rw(_ofi_ep, loc_addr, nbytes, _desc, _peer, _addr, _key, _op_ctxt); \
     } while(0)
-#define OFI_WRITE(ep, src_addr, nbytes, jobrank, rem_epidx, dest_addr, ctxt_ptr, aux) \
-        OFI_RMA(write, ep, src_addr, nbytes, jobrank, rem_epidx, dest_addr, ctxt_ptr, aux)
-#define OFI_READ(ep, dest_addr, nbytes, jobrank, rem_epidx, src_addr, ctxt_ptr, aux) \
-        OFI_RMA(read, ep, dest_addr, nbytes, jobrank, rem_epidx, src_addr, ctxt_ptr, aux)
+#define OFI_WRITE(c_ep, src_addr, nbytes, jobrank, rem_epidx, dest_addr, ctxt_ptr, aux) \
+        OFI_RMA(write, c_ep, src_addr, nbytes, jobrank, rem_epidx, dest_addr, ctxt_ptr, aux)
+#define OFI_READ(c_ep, dest_addr, nbytes, jobrank, rem_epidx, src_addr, ctxt_ptr, aux) \
+        OFI_RMA(read, c_ep, dest_addr, nbytes, jobrank, rem_epidx, src_addr, ctxt_ptr, aux)
 
 /* Poll periodically on RMA injection to ensure efficient progress.
  * This is a data race, but it is safe as polling here is unnecessary, it
@@ -290,12 +297,18 @@ static gasnetc_paratomic_t pending_am = gasnetc_paratomic_init(0);
 static int gasnetc_ofi_inited = 0;
 
 // OFI_CONDUIT_VERSION: API version to request in fi_getinfo()
+// NOTE: we do NOT blindly chase the latest to avoid nasty surprises.
+//
+// FI_MR_HMEM and corresponding fields in `struct fi_mr_attr` first
+// appear in API version 1.9.  So, memory kinds needs >= 1.9.
 //
 // FI_MR_{SCALABLE,BASIC} are deprecated since 1.5.
 // Some newer providers don't support them.
-// So, use API version 1.5 if possible.
-// NOTE: we do NOT blindly chase the latest to avoid nasty surprises.
-#if FI_VERSION(FI_MAJOR_VERSION, FI_MINOR_VERSION) >= FI_VERSION(1, 5)
+// So, use API version >= 1.5 if possible.
+#if GASNET_HAVE_MK_CLASS_MULTIPLE
+  // NOTE: configure has verified API version 1.9+
+  #define OFI_CONDUIT_VERSION FI_VERSION(1, 9)
+#elif FI_VERSION(FI_MAJOR_VERSION, FI_MINOR_VERSION) >= FI_VERSION(1, 5)
   #define OFI_CONDUIT_VERSION FI_VERSION(1, 5)
 #else
   #define OFI_CONDUIT_VERSION FI_VERSION(1, 0)
@@ -722,6 +735,9 @@ int gasnetc_ofi_init(void)
 
   /* caps: fabric interface capabilities */
   hints->caps           = FI_RMA | FI_MSG | FI_MULTI_RECV;
+#if GASNET_HAVE_MK_CLASS_MULTIPLE
+  hints->caps          |= FI_HMEM;
+#endif
   /* mode: convey requirements for application to use fabric interfaces */
   hints->mode           = FI_CONTEXT;   /* fi_context is used for per
                                            operation context parameter */
@@ -761,6 +777,9 @@ int gasnetc_ofi_init(void)
           hints->domain_attr->mr_mode = FI_MR_SCALABLE;
   }
 #endif
+#if GASNET_HAVE_MK_CLASS_MULTIPLE
+  hints->domain_attr->mr_mode |= FI_MR_HMEM;
+#endif
 
   // Setup various environment variables quite early, before the provider may
   // have been determined.  This is necessary because fi_getinfo() may read them.
@@ -793,6 +812,15 @@ int gasnetc_ofi_init(void)
 
   info = gasnetc_ofi_getinfo(hints);
   if (!info) {
+  #if GASNET_HAVE_MK_CLASS_MULTIPLE
+      hints->caps ^= FI_HMEM; // retry w/o FI_HMEM
+      info = gasnetc_ofi_getinfo(hints);
+      if (info) {
+          // fall through
+          // gasnetc_fi_hmem will get set to zero later, leading to
+          // deferred failure in the first call to gex_MK_Create(), if any
+      } else
+  #endif
       GASNETI_RETURN_ERRR(RESOURCE,
               "No OFI providers found that could support the OFI conduit");
   }
@@ -896,6 +924,9 @@ int gasnetc_ofi_init(void)
                          "Pick an OFI provider that supports FI_MR_SCALABLE if EVERYTHING\n"
                          "is needed.\n");
   }
+#endif
+#if GASNET_HAVE_MK_CLASS_MULTIPLE
+  gasnetc_fi_hmem = !!(info->caps & FI_HMEM);
 #endif
 
   /* Open the fabric provider */
@@ -1498,15 +1529,60 @@ int gasnetc_ep_bindsegment(gasneti_EP_t i_ep, gasneti_Segment_t segment)
         // No additional host memory registration required
         return GASNET_OK;
     } else {
-        gasneti_unreachable_error(("ofi-conduit does not yet support non-host memory kinds"));
+        gasneti_unreachable_error(("ofi-conduit does not yet support non-host memory kinds in GASNET_SEGMENT_EVERYTHING mode"));
     }
 #endif
 
+    // TBD: do we want local READ or WRITE here?  will atomics need them, for instance?
+    struct iovec iov = { segbase, segsize };
+    uint64_t access = FI_REMOTE_READ | FI_REMOTE_WRITE;
     uint64_t key = GASNETC_EPIDX_TO_KEY(c_ep->_index);
-    int ret = fi_mr_reg(gasnetc_ofi_domainfd, segbase, segsize,
-                        FI_REMOTE_READ | FI_REMOTE_WRITE, 0ULL, key, 0ULL,
-                        mrfd_p, NULL);
-    GASNETC_OFI_CHECK_RET(ret, "fi_mr_reg for rdma failed");
+    uint64_t flags = 0;
+    struct fi_mr_attr attr = {
+        &iov,          // mr_iov
+        1,             // iov_count
+        access,        // access
+        0ULL,          // offset (reserved)
+        key,           // requested_key
+        NULL,          // context
+        // implicit zero initialization for the remainder, which may differ by libfabric version
+    };
+#if GASNET_HAVE_MK_CLASS_MULTIPLE
+    gex_MK_Class_t mk_class;
+    if (segment->_kind == GEX_MK_HOST) {
+      gasneti_static_assert(FI_HMEM_SYSTEM == 0);
+      mk_class = GEX_MK_CLASS_HOST;
+      c_ep->device_only_segment = 0;
+    } else {
+      gasneti_MK_t i_mk = gasneti_import_mk(segment->_kind);
+      mk_class = i_mk->_mk_class;
+      switch (mk_class) {
+        #if GASNET_HAVE_MK_CLASS_CUDA_UVA
+        case GEX_MK_CLASS_CUDA_UVA:
+          attr.iface = FI_HMEM_CUDA;
+          attr.device.cuda = (int)(uintptr_t)i_mk->_mk_conduit;
+          c_ep->device_only_segment = 1;
+          #ifdef FI_HMEM_DEVICE_ONLY
+            flags |= FI_HMEM_DEVICE_ONLY;
+          #endif
+          break;
+        #endif
+
+        #if GASNET_HAVE_MK_CLASS_HIP
+        case GEX_MK_CLASS_HIP:
+          attr.iface = FI_HMEM_ROCR;
+          c_ep->device_only_segment = 0;
+          break;
+        #endif
+
+        default:
+          gasneti_unreachable_error(("undefined or unsupported gex_MK_Class_t value: %d", mk_class));
+          break;
+      }
+    }
+#endif
+    int ret = fi_mr_regattr(gasnetc_ofi_domainfd, &attr, flags, mrfd_p);
+    GASNETC_OFI_CHECK_RET(ret, "fi_mr_regattr for rdma failed");
     if (segment && ! GASNETC_OFI_HAS_MR_PROV_KEY) {
       gasneti_assert_uint(key ,==, fi_mr_key(*mrfd_p));
     }
@@ -2054,8 +2130,9 @@ int gasnetc_ofi_am_send_long(gex_Rank_t dest, gex_AM_Index_t handler,
 
         // TODO: following line is only correct until AM supported on non-primordial EP
         const int rem_epidx = gasnetc_in_auxseg(dest, dest_addr) ? -1 : 0;
+        gasnetc_EP_t c_ep = (gasnetc_EP_t)gasneti_import_ep(gasneti_THUNK_EP);
         OFI_INJECT_RETRY(&gasnetc_ofi_locks.rdma_tx,
-                         OFI_WRITE(gasnetc_ofi_rdma_epfd, source_addr, nbytes,
+                         OFI_WRITE(c_ep, source_addr, nbytes,
                                    dest, rem_epidx, dest_addr, &lam_ctxt, 0),
                          poll_type);
         GASNETC_OFI_CHECK_RET(ret, "fi_write failed for AM long");
@@ -2144,6 +2221,7 @@ gasnetc_rdma_put_non_bulk(gex_TM_t tm, gex_Rank_t rank, void* dest_addr, void* s
     const gex_EP_Location_t loc = gasneti_e_tm_rank_to_location(tm, rank, 0);
     const gex_Rank_t jobrank = loc.gex_rank;
     const int rem_epidx = gasnetc_in_auxseg(jobrank, dest_addr) ? -1 : loc.gex_ep_index;
+    gasnetc_EP_t c_ep = (gasnetc_EP_t)gasneti_e_tm_to_i_ep(tm);
     int i;
     int ret = FI_SUCCESS;
     uintptr_t src_ptr = (uintptr_t)src_addr;
@@ -2151,6 +2229,11 @@ gasnetc_rdma_put_non_bulk(gex_TM_t tm, gex_Rank_t rank, void* dest_addr, void* s
     gasnetc_assert_callback_eq(ctxt_ptr, gasnetc_ofi_handle_rdma);
 
     PERIODIC_RMA_POLL();
+
+#if GASNET_HAVE_MK_CLASS_CUDA_UVA
+    // CUDA device memory precludes bounce buffers and (at least currently) use of FI_INJECT
+    if (c_ep->device_only_segment) goto block_anyways;
+#endif
 
     /* The payload can be injected without need for a bounce buffer */
     if (nbytes <= max_buffered_write) {
@@ -2216,7 +2299,7 @@ out_imm_inject:
             memcpy(buf_container->buf, (void*)src_ptr, bytes_to_copy);
 
             OFI_INJECT_RETRY_IMM(&gasnetc_ofi_locks.rdma_tx,
-                                 OFI_WRITE(gasnetc_ofi_rdma_epfd, buf_container->buf, bytes_to_copy,
+                                 OFI_WRITE(c_ep, buf_container->buf, bytes_to_copy,
                                            jobrank, rem_epidx, (void *)dest_ptr, bbuf_ctxt, 0),
                                  OFI_POLL_ALL, imm, out_imm_bounce);
             imm = 0; // no going back once first buffer has been written
@@ -2270,6 +2353,7 @@ gasnetc_rdma_put(gex_TM_t tm, gex_Rank_t rank, void *dest_addr, void *src_addr, 
     const gex_EP_Location_t loc = gasneti_e_tm_rank_to_location(tm, rank, 0);
     const gex_Rank_t jobrank = loc.gex_rank;
     const int rem_epidx = gasnetc_in_auxseg(jobrank, dest_addr) ? -1 : loc.gex_ep_index;
+    gasnetc_EP_t c_ep = (gasnetc_EP_t)gasneti_e_tm_to_i_ep(tm);
     int ret = FI_SUCCESS;
 
     gasnetc_assert_callback_eq(ctxt_ptr, gasnetc_ofi_handle_rdma);
@@ -2277,7 +2361,7 @@ gasnetc_rdma_put(gex_TM_t tm, gex_Rank_t rank, void *dest_addr, void *src_addr, 
 
     PERIODIC_RMA_POLL();
     OFI_INJECT_RETRY_IMM(&gasnetc_ofi_locks.rdma_tx,
-                         OFI_WRITE(gasnetc_ofi_rdma_epfd, src_addr, nbytes,
+                         OFI_WRITE(c_ep, src_addr, nbytes,
                                    jobrank, rem_epidx, dest_addr, ctxt_ptr, alc),
                          OFI_POLL_ALL, flags & GEX_FLAG_IMMEDIATE, out_imm);
     GASNETC_OFI_CHECK_RET(ret, "fi_write failed");
@@ -2298,6 +2382,7 @@ gasnetc_rdma_get(void *dest_addr, gex_TM_t tm, gex_Rank_t rank, void * src_addr,
     const gex_EP_Location_t loc = gasneti_e_tm_rank_to_location(tm, rank, 0);
     const gex_Rank_t jobrank = loc.gex_rank;
     const int rem_epidx = gasnetc_in_auxseg(jobrank, src_addr) ? -1 : loc.gex_ep_index;
+    gasnetc_EP_t c_ep = (gasnetc_EP_t)gasneti_e_tm_to_i_ep(tm);
     int ret = FI_SUCCESS;
 
     gasnetc_assert_callback_eq(ctxt_ptr, gasnetc_ofi_handle_rdma);
@@ -2305,7 +2390,7 @@ gasnetc_rdma_get(void *dest_addr, gex_TM_t tm, gex_Rank_t rank, void * src_addr,
     PERIODIC_RMA_POLL();
 
     OFI_INJECT_RETRY_IMM(&gasnetc_ofi_locks.rdma_tx,
-                         OFI_READ(gasnetc_ofi_rdma_epfd, dest_addr, nbytes,
+                         OFI_READ(c_ep, dest_addr, nbytes,
                                   jobrank, rem_epidx, src_addr, ctxt_ptr, 0),
                          OFI_POLL_ALL, flags & GEX_FLAG_IMMEDIATE, out_imm);
 
@@ -2319,3 +2404,51 @@ gasnetc_rdma_get(void *dest_addr, gex_TM_t tm, gex_Rank_t rank, void * src_addr,
 out_imm:
     return 1;
 }
+
+#if GASNET_HAVE_MK_CLASS_MULTIPLE
+int gasnetc_mk_create_hook(
+                    gasneti_MK_t                     kind,
+                    gasneti_Client_t                 client,
+                    const gex_MK_Create_args_t       *args,
+                    gex_Flags_t                      flags)
+{
+    // Fail if the FI_HMEM capability was not found at initialization
+    // TODO: fall back to reference implementation when we have one
+    if (!gasnetc_fi_hmem) {
+        GASNETI_RETURN_ERRR(RESOURCE,
+            gasneti_dynsprintf("Provider '%s' reports no support for FI_HMEM needed for memory kinds",
+                               gasnetc_ofi_provider));
+    }
+
+    // TODO: Fail (later fall back to ref) if the given device support is not present.
+    //
+    // So far libfabric builds with and without CUDA support have been seen to
+    // behave identically with respect to all function return values (including
+    // non-NULL returns from fi_mr_desc()), but non-CUDA builds will SEGV (for
+    // instance when trying to memcpy() small Puts from GPU memory to a bounce
+    // buffer).  So, we need something else (probably here) to query/test for
+    // the necesary support to allow for graceful failure.
+
+    // Capture the user's device argument for use in memory registration
+    switch (args->gex_class) {
+      #if GASNET_HAVE_MK_CLASS_CUDA_UVA
+      case GEX_MK_CLASS_CUDA_UVA:
+        kind->_mk_conduit = (void*)(uintptr_t)args->gex_args.gex_class_cuda_uva.gex_CUdevice;
+        break;
+      #endif
+
+      #if GASNET_HAVE_MK_CLASS_HIP
+      case GEX_MK_CLASS_HIP:
+        // No device needed for HIP
+        break;
+      #endif
+
+      default:
+        gasneti_unreachable_error(("unknown or unsupported gex_MK_Class_t value: %d", args->gex_class));
+        break;
+    }
+
+    return GASNET_OK;
+}
+
+#endif
