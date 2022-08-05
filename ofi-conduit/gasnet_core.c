@@ -312,6 +312,10 @@ int gasnetc_ep_init_hook(gasneti_EP_t i_ep)
     GASNETI_RETURN_ERRR(BAD_ARG,
                         "ofi-conduit supports only GEX_EP_CAPABILITY_RMA for non-primordial endpoints");
   }
+
+  gasnetc_EP_t c_ep = (gasnetc_EP_t)i_ep;
+  c_ep->mrfd = NULL;
+
   return GASNET_OK;
 }
 
