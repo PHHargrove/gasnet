@@ -109,7 +109,7 @@ static size_t tx_cq_size = 0;
 static size_t rx_cq_size = 0;
 
 // Determine if (jobrank,addr) is in the aux segment registration
-GASNETI_INLINE(gasnetc_in_auxseg)
+GASNETI_INLINE(gasnetc_in_auxseg) GASNETI_PURE
 int gasnetc_in_auxseg(gex_Rank_t jobrank, void *addr)
 {
 #if GASNET_SEGMENT_FAST || GASNET_SEGMENT_LARGE
@@ -122,10 +122,11 @@ int gasnetc_in_auxseg(gex_Rank_t jobrank, void *addr)
     return 0;
 #endif
 }
+GASNETI_PUREP(gasnetc_in_auxseg)
 
 // Lookup or compute correct key for RDMA
 // NOTE: rem_epidx has type int (not gex_EP_Index_t) to allow -1 to name the aux seg
-GASNETI_INLINE(gasnetc_remote_key)
+GASNETI_INLINE(gasnetc_remote_key) GASNETI_PURE
 uint64_t gasnetc_remote_key(gex_Rank_t jobrank, int rem_epidx)
 {
 #if GASNET_SEGMENT_FAST || GASNET_SEGMENT_LARGE
@@ -144,10 +145,11 @@ uint64_t gasnetc_remote_key(gex_Rank_t jobrank, int rem_epidx)
     return GASNETC_EPIDX_TO_KEY(0);
 #endif
 }
+GASNETI_PUREP(gasnetc_remote_key)
 
 // Lookup correct "address" (which may be an offset) for RDMA
 // NOTE: rem_epidx has type int (not gex_EP_Index_t) to allow -1 to name the aux seg
-GASNETI_INLINE(gasnetc_remote_addr)
+GASNETI_INLINE(gasnetc_remote_addr) GASNETI_PURE
 uintptr_t gasnetc_remote_addr(gex_Rank_t jobrank, void *addr, int rem_epidx)
 {
 #if GASNET_SEGMENT_FAST || GASNET_SEGMENT_LARGE
@@ -168,10 +170,10 @@ uintptr_t gasnetc_remote_addr(gex_Rank_t jobrank, void *addr, int rem_epidx)
     gasneti_assert_int(rem_epidx ,>=, 0);
     gasneti_assert_int(rem_epidx ,<, GASNET_MAXEPS);
     // SCALABLE uses an offset, but base address is zero for EVERYTHING
-    gasneti_assert(! GASNETC_OFI_HAS_MR_VIRT_ADDR);
     return (uintptr_t)addr;
 #endif
 }
+GASNETI_PUREP(gasnetc_remote_addr)
 
 // Statements with launch a fi_write or fi_read, setting "ret"
 #define OFI_RMA(rw, ep, loc_addr, nbytes, jobrank, rem_epidx, rem_addr, ctxt_ptr, aux) \
@@ -354,6 +356,9 @@ gasnetc_ofi_recv_ctxt_t *gasnetc_op_ctxt_to_recv_ctxt(void *p)
 // where we use the callback function as the operation context.
 // The callbacks perform the reverse using gasneti_container_of().
 GASNETI_INLINE(gasnetc_rdma_ctxt_to_op_ctxt_inner)
+#if GASNET_NDEBUG // else the assertions violate the "const" annotation
+GASNETT_CONST
+#endif
 void *gasnetc_rdma_ctxt_to_op_ctxt_inner(void *p, unsigned int aux)
 {
   uintptr_t raw = (uintptr_t)p;
@@ -361,6 +366,9 @@ void *gasnetc_rdma_ctxt_to_op_ctxt_inner(void *p, unsigned int aux)
   gasneti_assert(0 == (aux &  GASNETC_RDMA_CTXT_MASK));
   return (void *)(raw | aux);
 }
+#if GASNET_NDEBUG // otherwise assertions violate the "const" annotation
+GASNETT_CONSTP(gasnetc_rdma_ctxt_to_op_ctxt_inner)
+#endif
 #define gasnetc_rdma_ctxt_to_op_ctxt(p,aux) \
         gasnetc_rdma_ctxt_to_op_ctxt_inner(&(p)->callback,aux)
 
