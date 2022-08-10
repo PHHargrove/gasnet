@@ -1060,7 +1060,9 @@ int gasnetc_ofi_init(void)
   fi_freeinfo(hints);
 
   if (GASNETC_OFI_HAS_MR_PROV_KEY) {
-    uint64_t **tmp = gasneti_calloc(1+GASNET_MAXEPS, sizeof(uint64_t*));
+    // 'static' ensures valgrind does not consider this allocation "possibly lost"
+    static uint64_t **tmp;
+    tmp = gasneti_calloc(1+GASNET_MAXEPS, sizeof(uint64_t*));
     gasnetc_remote_key_tbl = tmp + 1; // places aux seg keys at gasnetc_remote_key_tbl[-1]
   }
 
@@ -1574,9 +1576,12 @@ void gasnetc_segment_exchange(gex_TM_t tm, gex_EP_t *eps, size_t num_eps)
       key_array = gasnetc_remote_key_tbl[idx];
       if (!key_array) {
         key_array = gasneti_calloc(gasneti_nodes, sizeof(uint64_t));
+        gasneti_local_rmb();
         gasnetc_remote_key_tbl[idx] = key_array;
       }
       gasneti_mutex_unlock(&lock);
+    } else {
+      gasneti_local_rmb();
     }
     gex_Rank_t jobrank = p->loc.gex_rank;
     uint64_t key = p->mr_key;
