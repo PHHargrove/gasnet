@@ -69,17 +69,22 @@ enum {
 #define GASNETC_FABRIC_ADDR_OFFSET(idx, jobrank) \
     ((idx) + (jobrank)*NUM_OFI_ENDPOINTS)
 
-// TODO: multi-ep with independent resources will require rewriting this
 #if USE_AV_MAP
     static addr_table_t  *addr_table;
-    #define GET_FABRIC_ADDR(idx, jobrank) \
-        ((fi_addr_t)(addr_table->table[GASNETC_FABRIC_ADDR_OFFSET(idx, jobrank)]))
-#else
-    #define GET_FABRIC_ADDR(idx, jobrank) \
-        ((fi_addr_t)GASNETC_FABRIC_ADDR_OFFSET(idx, jobrank))
 #endif
+
+// TODO: multi-ep with independent resources will require rewriting this
+GASNETI_INLINE(gasnetc_fabric_addr_inner) GASNETI_PURE
+fi_addr_t gasnetc_fabric_addr_inner(int idx, gex_Rank_t jobrank) {
+#if USE_AV_MAP
+    return (fi_addr_t)(addr_table->table[GASNETC_FABRIC_ADDR_OFFSET(idx, jobrank)]);
+#else
+    return (fi_addr_t)GASNETC_FABRIC_ADDR_OFFSET(idx, jobrank);
+#endif
+}
+GASNETI_PUREP(gasnetc_fabric_addr_inner)
 #define gasnetc_fabric_addr(type, jobrank) \
-        GET_FABRIC_ADDR(GASNETC_FADDR_IDX_##type, jobrank)
+        gasnetc_fabric_addr_inner(GASNETC_FADDR_IDX_##type, jobrank)
 
 
 #define SCALABLE_NOT_AUTO_DETECTED (-1)
@@ -588,7 +593,9 @@ static void ofi_exchange_addresses() {
   gasneti_static_assert(GASNETC_FADDR_IDX_RDMA == 2);
   ret = fi_getname(&gasnetc_ofi_rdma_epfd->fid, p, &rdmanamelen);
   GASNETC_OFI_CHECK_RET(ret, "fi_getname failed for the RDMA endpoint");
-  p += rdmanamelen; // unused (for now)
+  p += rdmanamelen;
+
+  gasneti_assert_ptr(p ,==, on_node_addresses + total_len);
 
   gasneti_bootstrapExchange(on_node_addresses, total_len, alladdrs);
   /* NOTE: If AV_MAP is ever to be supported, the NULL in the below call needs to be
