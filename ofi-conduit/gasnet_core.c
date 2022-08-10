@@ -226,6 +226,21 @@ extern int gasnetc_attach_primary(void) {
 }
 /* ------------------------------------------------------------------------------------ */
 
+void gasnetc_segment_destroy_hook(gasneti_Segment_t i_segment)
+{
+  // Pending introduction of gex_EP_UnbindSegment() we are permitting clients
+  // to destroy an idle bound segment.  This hook prevents a resource leak in
+  // such usage.  TODO: remove once clients are required to unbind.
+
+  gasneti_Client_t i_client = i_segment->_client;
+  for (gex_EP_Index_t ep_idx = 0; ep_idx < GASNET_MAXEPS; ++ep_idx) {
+     gasneti_EP_t i_ep = i_client->_ep_tbl[ep_idx];
+     if (i_ep && i_ep->_segment == i_segment) {
+         gasnetc_ep_unbindsegment(i_ep);
+     }
+  }
+}
+
 int gasnetc_segment_attach_hook(gex_Segment_t e_segment, gex_TM_t e_tm)
 {
   // Exchange memory keys, if needed

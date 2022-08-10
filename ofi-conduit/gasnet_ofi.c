@@ -1529,6 +1529,8 @@ int gasnetc_ep_unbindsegment(gasneti_EP_t i_ep)
     if (c_ep->mrfd) {
       int ret = fi_close(&c_ep->mrfd->fid);
       GASNETC_OFI_CHECK_RET(ret, "fi_close(ep->mrfd) failed");
+      c_ep->mrfd = NULL;
+      c_ep->_segment = NULL;
     }
 #endif
     return GASNET_OK;
