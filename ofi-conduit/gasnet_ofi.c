@@ -360,10 +360,7 @@ gasnetc_ofi_recv_ctxt_t *gasnetc_op_ctxt_to_recv_ctxt(void *p)
 // This is for use with gasnetc_ofi_{nb,bounce,blocking}_op_ctxt_t,
 // where we use the callback function as the operation context.
 // The callbacks perform the reverse using gasneti_container_of().
-GASNETI_INLINE(gasnetc_rdma_ctxt_to_op_ctxt_inner)
-#if GASNET_NDEBUG // else the assertions violate the "const" annotation
-GASNETT_CONST
-#endif
+GASNETI_INLINE(gasnetc_rdma_ctxt_to_op_ctxt_inner) GASNETT_PURE
 void *gasnetc_rdma_ctxt_to_op_ctxt_inner(void *p, unsigned int aux)
 {
   uintptr_t raw = (uintptr_t)p;
@@ -371,9 +368,7 @@ void *gasnetc_rdma_ctxt_to_op_ctxt_inner(void *p, unsigned int aux)
   gasneti_assert(0 == (aux &  GASNETC_RDMA_CTXT_MASK));
   return (void *)(raw | aux);
 }
-#if GASNET_NDEBUG // otherwise assertions violate the "const" annotation
-GASNETT_CONSTP(gasnetc_rdma_ctxt_to_op_ctxt_inner)
-#endif
+GASNETT_PUREP(gasnetc_rdma_ctxt_to_op_ctxt_inner)
 #define gasnetc_rdma_ctxt_to_op_ctxt(p,aux) \
         gasnetc_rdma_ctxt_to_op_ctxt_inner(&(p)->callback,aux)
 
