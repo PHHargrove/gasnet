@@ -236,7 +236,7 @@ void gasnetc_segment_destroy_hook(gasneti_Segment_t i_segment)
   for (gex_EP_Index_t ep_idx = 0; ep_idx < GASNET_MAXEPS; ++ep_idx) {
      gasneti_EP_t i_ep = i_client->_ep_tbl[ep_idx];
      if (i_ep && i_ep->_segment == i_segment) {
-         gasnetc_ep_unbindsegment(i_ep);
+         gasneti_assert_zeroret( gasnetc_ep_unbindsegment(i_ep) );
      }
   }
 }
