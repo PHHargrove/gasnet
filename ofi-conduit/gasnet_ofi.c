@@ -1578,7 +1578,7 @@ void gasnetc_segment_exchange(gex_TM_t tm, gex_EP_t *eps, size_t num_eps)
       key_array = gasnetc_remote_key_tbl[idx];
       if (!key_array) {
         key_array = gasneti_calloc(gasneti_nodes, sizeof(uint64_t));
-        gasneti_local_rmb();
+        gasneti_local_wmb();
         gasnetc_remote_key_tbl[idx] = key_array;
       }
       gasneti_mutex_unlock(&lock);
