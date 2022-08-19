@@ -97,8 +97,15 @@ command.  For instance
       These most often support only InfiniBand and therefore are not
       recommended for use as a launcher for GASNet applications if one
       is concerned with reducing resource usage.
-    - Intel MPI
-      Set environment variable I_MPI_DEVICE=sock.
+    - Intel MPI (older)
+      For older versions, set environment variable I_MPI_DEVICE=sock.
+      Newer versions (see below) will warn that I_MPI_DEVICE is not supported.
+    - Intel MPI (newer)
+      For versions not honoring I_MPI_DEVICE, set I_MPI_OFI_PROVIDER=sockets.
+      Intel MPI has been observed to set 'FI_PROVIDER' causing ofi-conduit to
+      also select the sockets provider.  Therefore, when using ofi-conduit
+      one must also set GASNET_OFI_PROVIDER to the provider GASNet-EX should
+      use, or to an empty string to restore the default provider probe.
     - HP-MPI
       Set environment variable MPI_IC_ORDER=tcp.
     - LAM/MPI
