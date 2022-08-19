@@ -342,6 +342,18 @@ Recognized environment variables:
   Unless a different value was set using --with-ofi-max-medium=[value] at
   configure time, the default value is 8192.
 
+* GASNET_OFI_PROVIDER
+  When ofi-conduit queries for providers which have the required capabilities,
+  libfabric honors the value of the 'FI_PROVIDER' environment variable, which
+  constrains the query result and my disqualify the desired provider.
+  Setting 'GASNET_OFI_PROVIDER' will override the value of the 'FI_PROVIDER'
+  environment variable for the duration of ofi-conduit's provider query,
+  restoring it afterwards.  Setting this variable to empty string will unset
+  'FI_PROVIDER' for the duration of the provider query.
+  This variable is useful if one wishes to have multiple runtimes (such as
+  GASNet-EX and MPI) in the same application use different libfabric providers.
+  Default is unset.
+
 * GASNET_OFI_DEVICE
   By default, ofi-conduit will open and use the first device enumerated by
   libfabric as matching the specified provider and required capabilities.
@@ -393,6 +405,7 @@ Recognized environment variables:
   Note that only in the "generic provider" case (described with the configure
   options) can this actually be used to change the provider to one different
   than selected at configure time.
+  See also: GASNET_OFI_PROVIDER, which has higher precedence.
 
 * FI_UNIVERSE_SIZE - This libfabric variable conveys the number of ranks /
   peers a given process endpoint expects to communicate with (default: 256).

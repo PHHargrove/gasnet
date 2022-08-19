@@ -116,8 +116,35 @@ static int gasnetc_init( gex_Client_t            *client_p,
   /* Now enable tracing of all the following steps */
   gasneti_trace_init(argc, argv);
 
-  /* bootstrap the nodes for ofi conduit */
-  int ret = gasnetc_ofi_init();
+  /* Ensure uniform FI_* env vars */
+  /* TODO: what about provider-specific env vars? */
+  gasneti_propagate_env("FI_", GASNETI_PROPAGATE_ENV_PREFIX);
+
+  // bootstrap the nodes for ofi conduit
+  // If GASNET_OFI_PROVIDER is set, it overrides FI_PROVIDER for the duration of this step
+  int ret;
+  { const char *saved_fi_provider = NULL;
+    const char *forced_fi_provider = gasneti_getenv_withdefault("GASNET_OFI_PROVIDER",NULL);
+    if (forced_fi_provider) {
+      saved_fi_provider = getenv("FI_PROVIDER"); // NOT gasneti_getenv
+      if (strlen(forced_fi_provider)) {
+        gasneti_setenv("FI_PROVIDER", forced_fi_provider);
+      } else {
+        // empty string is a request to unset
+        gasneti_unsetenv("FI_PROVIDER");
+      }
+    }
+
+    ret = gasnetc_ofi_init();
+
+    if (forced_fi_provider) {
+      if (saved_fi_provider) {
+        gasneti_setenv("FI_PROVIDER", saved_fi_provider);
+      } else {
+        gasneti_unsetenv("FI_PROVIDER");
+      }
+    }
+  }
   if (GASNET_OK != ret)
     return ret;
 

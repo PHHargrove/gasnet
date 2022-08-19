@@ -684,10 +684,6 @@ int gasnetc_ofi_init(void)
   size_t optval;
   int num_locks; 
   int i;
-  
-  /* Ensure uniform FI_* env vars */
-  /* TODO: what about provider-specific env vars? */
-  gasneti_propagate_env("FI_", GASNETI_PROPAGATE_ENV_PREFIX);
 
 #if GASNETC_OFI_USE_THREAD_DOMAIN && GASNET_PAR
   gasneti_spinlock_init(&gasnetc_ofi_locks.big_lock);
@@ -802,7 +798,7 @@ int gasnetc_ofi_init(void)
           gasneti_fatalerror("Specifed device '%s' is not available or not usable", gasnetc_ofi_device);
         }
       }
-      char *envvar = gasneti_getenv("FI_PROVIDER");
+      char *envvar = getenv("FI_PROVIDER"); // NOT gasneti_getenv
       gasneti_fatalerror(
           "OFI provider '%s' selected at configure time is not available at run time%s%s%s.",
           supported_providers,
