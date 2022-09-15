@@ -207,6 +207,18 @@ see the instructions in other/cross-configure-help.c.
 [NOTE: We currently don't distribute the cross-configure-help.c in our
 normal distribution.  If you think you need it, contact us at gasnet-devel@lbl.gov]
 
+  On HPE Cray EX (aka "Shasta") systems, we recommend the following configure
+  arguments to use the vendor's compiler wrappers:
+    --with-cc=cc --with-cxx=CC --with-mpi-cc=cc
+  Additionally, use of one of the following may provide a marginal improvement
+  in performance:
+    On Slingshot-10 networks: --with-ofi-provider=verbs
+    On Slingshot-11 networks: --with-ofi-provider=cxi
+
+  On Linux clusters with Intel OmniPath networks, we recommend the following
+  configure arguments to avoid using ibv-conduit over an emulated libibverbs:
+    --disable-ibv --enable-ofi --with-ofi-provider=psm2
+
 * Step 2: make all
   Build the GASNet libraries. A number of other useful makefile targets 
   are available from the top-level:
