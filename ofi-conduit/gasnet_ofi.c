@@ -793,12 +793,16 @@ int gasnetc_ofi_init(void)
   // PSM2 provider:
   // In libfabric v1.6, the psm2 provider transitioned to using separate
   // psm2 endpoints for each ofi endpoint, whereas in the past all communication
-  // was multiplexed over a single psm2 endpoint. Setting this variable ensures
-  // that unnecessary connections between remote endpoints which never communicate
-  // are not made, which can cause slow tear-down.
+  // was multiplexed over a single psm2 endpoint.
   int set_psm2_lazy_conn = 0;
   if (FI_VERSION(FI_MAJOR_VERSION, FI_MINOR_VERSION) >= FI_VERSION(1, 6)) {
+      // Setting this variable ensures that unnecessary connections between
+      // remote endpoints which never communicate are not made, which can cause
+      // slow tear-down.
       set_psm2_lazy_conn = gasnetc_setenv_string("FI_PSM2_LAZY_CONN", "1", 1);
+      // Setting this ensures libpsm2 will allow multiple endpoints per process.
+      // If set to zero then this conduit cannot run at all over psm2 provider.
+      gasnetc_setenv_string("PSM2_MULTI_EP", "1", 1);
   }
 
   // CXI provider:
