@@ -623,7 +623,7 @@ static struct fi_info *gasnetc_ofi_getinfo(struct fi_info *hints)
 {
   struct fi_info *info = NULL;
 
-  int ret = fi_getinfo(OFI_CONDUIT_VERSION, NULL, NULL, 0ULL, hints, &info);
+  int ret = fi_getinfo(OFI_CONDUIT_VERSION, NULL, NULL, 1ULL<<60, hints, &info);
   if (FI_SUCCESS != ret) {
     return NULL;
   }
@@ -971,7 +971,7 @@ int gasnetc_ofi_init(void)
 #endif
   hints->mode = 0;  // in particular we do not support FI_CONTEXT due to many-to-one iop
 
-  ret = fi_getinfo(OFI_CONDUIT_VERSION, NULL, NULL, 0ULL, hints, &gasnetc_rma_info);
+  ret = fi_getinfo(OFI_CONDUIT_VERSION, NULL, NULL, 1ULL<<60, hints, &gasnetc_rma_info);
   GASNETC_OFI_CHECK_RET(ret, "fi_getinfo() failed querying for RMA endpoint");
 
   ret = fi_endpoint(gasnetc_ofi_domainfd, gasnetc_rma_info, &gasnetc_ofi_rdma_epfd, NULL);
@@ -1004,7 +1004,7 @@ int gasnetc_ofi_init(void)
   hints->caps     = FI_MSG | FI_MULTI_RECV;
   hints->mode     = FI_CONTEXT;
 
-  ret = fi_getinfo(OFI_CONDUIT_VERSION, NULL, NULL, 0ULL, hints, &gasnetc_msg_info);
+  ret = fi_getinfo(OFI_CONDUIT_VERSION, NULL, NULL, 1ULL<<60, hints, &gasnetc_msg_info);
   GASNETC_OFI_CHECK_RET(ret, "fi_getinfo() failed querying for MSG endpoints");
 
   ret = fi_endpoint(gasnetc_ofi_domainfd, gasnetc_msg_info, &gasnetc_ofi_request_epfd, NULL);
