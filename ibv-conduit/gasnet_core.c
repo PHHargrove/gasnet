@@ -1038,6 +1038,9 @@ static int gasnetc_load_settings(void) {
 #if GASNETC_IBV_XRC
   GASNETI_TRACE_PRINTF(I,  ("  GASNET_USE_XRC                  = %d", gasnetc_use_xrc));
 #endif
+#if GASNETC_IBV_DC
+  GASNETI_TRACE_PRINTF(I,  ("  GASNET_USE_DC                   = %d", gasnetc_use_dc));
+#endif
   GASNETI_TRACE_PRINTF(I,  ("  GASNET_INLINESEND_LIMIT         = %d%s", (int)gasnetc_inline_limit,
 				(gasnetc_inline_limit == (size_t)-1 ? " (automatic)" : "")));
   GASNETI_TRACE_PRINTF(I,  ("  GASNET_NONBULKPUT_BOUNCE_LIMIT  = %u", (unsigned int)gasnetc_nonbulk_bounce_limit));
@@ -1478,6 +1481,9 @@ static void gasnetc_probe_ports(int max_ports) {
       hca->hca_cap	= hca_cap;
       gasneti_leak((/*non-const*/ void *)hca->hca_id);
 
+#if GASNETC_USE_MLX5DV
+      hca->use_mlx5dv = mlx5dv_is_supported(hca_list[curr_hca]);
+#endif
       hca_count++;
     } else {
       (void) ibv_close_device(hca_handle);
@@ -1529,6 +1535,10 @@ static int gasnetc_hca_report(void) {
   
     GASNETI_TRACE_PRINTF(I,("  max_mr                   = %u", (unsigned int)hca->hca_cap.max_mr));
     GASNETI_TRACE_PRINTF(I,("  max_mr_sz                = %"PRIu64, (uint64_t)hca->hca_cap.max_mr_size));
+
+#if GASNETC_USE_MLX5DV
+    GASNETI_TRACE_PRINTF(I,("  mlx5dv support?          = %s", hca->use_mlx5dv? "yes" : "no"));
+#endif
 
     /* Vendor/device-specific firmware checks */
     /* NONE OF OUR KNOWN DEFECTS ARE PRESENT IN IBV-CAPABLE FW */
@@ -1965,14 +1975,56 @@ static int gasnetc_init( gex_Client_t            *client_p,
     }
   }
 #endif /* GASNETC_IBV_XRC */
+#if GASNETC_IBV_DC
+  // WIP - currently opt-in only
+  gasnetc_use_dc = gasneti_getenv_int_withdefault("GASNET_USE_DC", 0, 0);
+  if (gasnetc_use_dc && !gasnetc_use_srq) {
+    gasnetc_use_dc =0 ;
+    gasneti_console0_message(
+              "WARNING","GASNET_USE_DC disabled because SRQ is unavailable.\n"
+              "         To suppress this message set environment variable\n"
+              "         GASNET_USE_DC=0 or reconfigure with --disable-ibv-dc.\n"
+             );
+  } else if (gasnetc_use_dc && gasnetc_num_qps > 1) {
+    // WIP - currently single-rail only (see WIP comment in gasnetc_rcv_am())
+    gasnetc_use_dc =0 ;
+    gasneti_console0_message(
+              "WARNING","GASNET_USE_DC disabled due to multiple paths.\n"
+              "         This could be due to use of multiple HCA ports and/or setting\n"
+              "         GASNET_NUM_QPS greater than one. To suppress this message,\n"
+              "         either eliminate the source(s) or multiple paths, set\n"
+              "         environment variable GASNET_USE_DC=0 or reconfigure using\n"
+              "         --disable-ibv-dc.\n"
+             );
+  } else if (gasnetc_use_dc) {
+  #if GASNETC_IBV_DC_MLX5DV
+    GASNETC_FOR_ALL_HCA(hca) {
+      // WIP - is it possible to check for DC support in some "caps"?
+      if (! hca->use_mlx5dv) {
+        gasnetc_use_dc =0 ;
+        break;
+      }
+    }
+  #endif // GASNETC_IBV_DC_MLX5DV
+    if (!gasnetc_use_dc) {
+      gasneti_console0_message(
+              "WARNING","GASNET_USE_DC disabled because HCA lacks support.\n"
+              "         To suppress this message set environment variable\n"
+              "         GASNET_USE_DC=0 or reconfigure with --disable-ibv-dc.\n"
+             );
+    }
+  }
+#endif // GASNETC_IBV_DC
 
   // Detect configuration differences (likely to be) due to heterogeneous clusters
   {
     const uint32_t srq_flag = 0x80000000;
     const uint32_t xrc_flag = 0x40000000;
+    const uint32_t dc_flag  = 0x20000000;
     uint32_t config_word =
         (gasnetc_use_srq ? srq_flag : 0) |
         (gasnetc_use_xrc ? xrc_flag : 0) |
+        (gasnetc_use_dc  ? dc_flag  : 0) |
         ((gasnetc_num_hcas & 0xff) << 8) |
         (gasnetc_num_ports & 0xff);
     int srq_squashed = 0;
@@ -2009,6 +2061,18 @@ static int gasnetc_init( gex_Client_t            *client_p,
       }
     }
 #endif // GASNETC_IBV_XRC
+#if GASNETC_IBV_DC
+    // Auto-disable (with warning) DC if inhomogeneous
+    for (gex_Rank_t i = 0; i < gasneti_nodes; ++i) {
+      if (dc_flag & (config_word ^ all_configs[i])) {
+        gasnetc_use_dc = 0;
+        gasneti_console0_message(
+                  "WARNING","DC disabled because availability differs across nodes.\n"
+                  "         To suppress this message set environment variable\n"
+                  "         GASNET_USE_DC=0 or reconfigure with --disable-ibv-dc.\n");
+      }
+    }
+#endif // GASNETC_IBV_DC
     // Fail gracefully if HCA or port counts are inhomogeneous
     if (!gasneti_mynode) {
       for (gex_Rank_t i = 1; i < gasneti_nodes; ++i) {

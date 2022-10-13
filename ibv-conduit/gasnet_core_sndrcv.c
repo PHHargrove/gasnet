@@ -56,6 +56,9 @@ int					gasnetc_use_rcv_thread = GASNETC_USE_RCV_THREAD;
 #if GASNETC_IBV_ODP
   int					gasnetc_use_odp = 1;
 #endif
+#if GASNETC_IBV_DC
+  int                                   gasnetc_use_dc = 1;
+#endif
 #if GASNETC_HAVE_FENCED_PUTS
   int                                   gasnetc_use_fenced_puts = 0;
 #endif
@@ -1138,6 +1141,7 @@ void gasnetc_rcv_am(const struct ibv_wc *comp, gasnetc_rbuf_t **spare_p GASNETI_
       cep += gasnetc_num_qps; /* Search top half of table */
     }
     if (gasnetc_num_qps > 1) {
+      // WIP - this search isn't right for DCI
       int i;
       for (i=0; i<gasnetc_num_qps; ++i, ++cep) {
         if ((cep->rcv_qpn == comp->qp_num) && (cep->hca == hca)) break;
@@ -1575,6 +1579,19 @@ gasnetc_snd_post_inner(gasnetc_cep_t * const cep, struct ibv_send_wr *sr_desc, i
     #if GASNETC_IBV_XRC_OFED
       if (gasnetc_use_xrc) { // WIP - check if safe/efficient to omit this check
         ibv_wr_set_xrc_srqn(qpx, sr_desc->qp_type.xrc.remote_srqn);
+      }
+    #endif
+
+    #if GASNETC_IBV_DC
+      if (gasnetc_use_dc) {
+      #if GASNETC_IBV_DC_MLX5DV
+        if_pf (!cep->dc_ah) cep->dc_ah = gasnetc_get_dc_ah(cep);
+        if_pf (!cep->remote_dctn) cep->remote_dctn = gasnetc_get_dctn(cep);
+        struct mlx5dv_qp_ex *mqpx = mlx5dv_qp_ex_from_ibv_qp_ex(qpx);
+        mlx5dv_wr_set_dc_addr(mqpx, cep->dc_ah, cep->remote_dctn, GASNETC_DCT_ACCESS_KEY);
+      #else
+        #error "GASNETC_IBV_DC enabled without a supported implementation"
+      #endif
       }
     #endif
 
@@ -2742,13 +2759,15 @@ extern int gasnetc_sndrcv_limits(void) {
       hca->max_qps *= 2;
     }
   }
- #if GASNETC_IBV_XRC
-  else if (gasnetc_use_xrc) {
-    /* No SRQ means no XRC either */
-    gasnetc_use_xrc = 0;
-  }
-  GASNETI_TRACE_PRINTF(I, ("XRC %sabled", gasnetc_use_xrc ? "en" : "dis"));
- #endif
+  // WIP - need to force XRC v. DC mutual exclusion
+  #if GASNETC_IBV_XRC
+    gasnetc_use_xrc = gasnetc_use_xrc && gasnetc_use_srq; // XRC requires SRQ
+    GASNETI_TRACE_PRINTF(I, ("XRC %sabled", gasnetc_use_xrc ? "en" : "dis"));
+  #endif
+  #if GASNETC_IBV_DC
+    gasnetc_use_dc = gasnetc_use_dc && gasnetc_use_srq; // DC requires SRQ
+    GASNETI_TRACE_PRINTF(I, ("DC %sabled", gasnetc_use_dc ? "en" : "dis"));
+  #endif
 #endif
 
   /* sanity/bounds checks */

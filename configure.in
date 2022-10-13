@@ -3978,6 +3978,58 @@ if test "$enabled_ibv" = yes; then
       fi
     fi
 
+    GASNET_IF_ENABLED_WITH_AUTO([ibv-dc],
+        [Enable/disable Dynamic Connection (DC) support in ibv-conduit (default is to probe)],
+        [enabled_ibv_dc="yes"; force_ibv_dc="yes"],
+        [enabled_ibv_dc="no"],
+        [enabled_ibv_dc="yes"])
+    if test "x$enabled_ibv_srq" = xno; then
+      if test "x$force_ibv_dc" = xyes; then
+        GASNET_MSG_ERROR([IBV DC support was requested with --enable-ibv-dcc but requires SRQ support which has been disabled])
+      fi
+    elif test "$enabled_ibv_dc" = yes; then
+      have_ibv_dc=no
+      GASNET_PUSHVAR(CFLAGS,"$CFLAGS $IBV_CFLAGS $GASNET_THREAD_DEFINES")
+      GASNET_PUSHVAR(LDFLAGS,"$LDFLAGS $IBV_LDFLAGS")
+      GASNET_PUSHVAR(LIBS,"$LIBS $IBV_LIBS -lmlx5 $GASNET_THREAD_LIBS")
+      GASNET_TRY_CACHE_LINK(for DC support via mlx5 direct verbs, ibv_dc_mlx5dv, [
+        #if ! GASNETC_HAVE_IBV_WR_API
+          #error "Missing required GASNETC_HAVE_IBV_WR_API"
+        #endif
+        #if defined(__GNUC__) && !defined(inline)
+          /* ANSI-ify the verbs headers */
+          #define inline __inline__
+          #include <infiniband/verbs.h>
+          #include <infiniband/mlx5dv.h>
+          #undef inline
+        #else
+          #include <infiniband/verbs.h>
+          #include <infiniband/mlx5dv.h>
+        #endif
+      ], [
+        int is_mlx5dv = mlx5dv_is_supported(NULL);
+        struct ibv_qp_init_attr_ex init_attr_ex;
+        init_attr_ex.qp_type  = IBV_QPT_DRIVER;
+        struct mlx5dv_qp_init_attr qp_attr_dv = {0};
+        qp_attr_dv.dc_init_attr.dc_type = MLX5DV_DCTYPE_DCI;
+        qp_attr_dv.comp_mask = MLX5DV_QP_INIT_ATTR_MASK_DC;
+        struct ibv_qp *qp = mlx5dv_create_qp(NULL, NULL, &qp_attr_dv);
+        struct ibv_qp_ex *qpx = ibv_qp_to_qp_ex(qp);
+        struct mlx5dv_qp_ex *mqpx = mlx5dv_qp_ex_from_ibv_qp_ex(qpx);
+        mlx5dv_wr_set_dc_addr(mqpx, NULL, 0, 0);
+      ], [
+        AC_DEFINE(GASNETC_IBV_DC_MLX5DV)
+        IBV_LIBS="$IBV_LIBS -lmlx5"
+        have_ibv_dc=yes
+      ])
+      GASNET_POPVAR(CFLAGS)
+      GASNET_POPVAR(LDFLAGS)
+      GASNET_POPVAR(LIBS)
+      if test "$have_ibv_dc$force_ibv_dc" = noyes; then
+        GASNET_MSG_ERROR([IBV DC support was requested with --enable-ibv-dc but is not available])
+      fi
+    fi
+
       GASNET_IF_ENABLED_WITH_AUTO([ibv-odp],
           [Enable/disable On Demand Paging (ODP) support in ibv-conduit (default is to probe)],
           [enabled_ibv_odp="yes"; force_ibv_odp="yes"],
