@@ -186,6 +186,15 @@ struct ibv_qp *gasnetc_create_qp_ex(gasnetc_hca_t *hca, gasnetc_qp_init_attr *in
 #if GASNETC_HAVE_IBV_CREATE_QP_EX
     init_attr_p->pd = hca->pd;
     init_attr_p->comp_mask |= IBV_QP_INIT_ATTR_PD;
+  #if GASNETC_HAVE_IBV_WR_API
+    init_attr_p->send_ops_flags = IBV_QP_EX_WITH_SEND_WITH_IMM |
+                                  IBV_QP_EX_WITH_RDMA_WRITE |
+                                  IBV_QP_EX_WITH_RDMA_READ;
+    if (gasnetc_use_fenced_puts) {
+      init_attr_p->send_ops_flags |= IBV_QP_EX_WITH_ATOMIC_FETCH_AND_ADD;
+    }
+    init_attr_p->comp_mask |= IBV_QP_INIT_ATTR_SEND_OPS_FLAGS;
+  #endif
     return ibv_create_qp_ex(hca->handle, init_attr_p);
 #else
     return ibv_create_qp(hca->pd, init_attr_p);
@@ -760,6 +769,9 @@ gasnetc_qp_create(gasnetc_conn_info_t *conn_info)
     #endif
 
       cep->qp_handle = hndl;
+    #if GASNETC_HAVE_IBV_WR_API
+      cep->qp_ex_handle = ibv_qp_to_qp_ex(hndl);
+    #endif
       conn_info->local_qpn[qpi] = hndl->qp_num;
     }
 
