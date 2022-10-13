@@ -19,9 +19,18 @@
   #define GASNETI_NEED_VERBS_EXP_H 1
 #endif
 
+#if GASNETC_IBV_DC_MLX5DV
+  #define GASNETC_NEED_MLX5DV_H 1
+  #define GASNETC_USE_MLX5DV 1
+  #define GASNETC_IBV_DC 1
+#endif
+
 #include <infiniband/verbs.h>
 #if GASNETI_NEED_VERBS_EXP_H
   #include <infiniband/verbs_exp.h>
+#endif
+#if GASNETC_NEED_MLX5DV_H
+  #include <infiniband/mlx5dv.h>
 #endif
 
 /* TODO: flatten these? */
@@ -257,6 +266,11 @@ typedef union {
 /* Should dynamic connections use TCP-style rtt estimation? */
 #ifndef GASNETC_CONN_USE_SRTT
   #define GASNETC_CONN_USE_SRTT 1
+#endif
+
+// Nonce for DC
+#ifndef GASNETC_DCT_ACCESS_KEY
+  #define GASNETC_DCT_ACCESS_KEY 0x4741534e65744443ull // "GASNetDC"
 #endif
 
 /* ------------------------------------------------------------------------------------ */
@@ -525,6 +539,9 @@ typedef struct {
   int			qps; /* qps per peer */
   int			max_qps; /* maximum total over all peers */
   int			num_qps; /* current total over all peers */
+#if GASNETC_USE_MLX5DV
+  int                   use_mlx5dv;
+#endif
 
   void			*rbufs;
   gasnetc_lifo_head_t	rbuf_freelist;
@@ -614,6 +631,12 @@ struct gasnetc_cep_t_ {
 #else
   #define _GASNETC_CEP_PTR_2 0
 #endif
+#if GASNETC_IBV_DC
+  struct ibv_ah         *dc_ah;
+  #define _GASNETC_CEP_PTR_3 1*sizeof(void*)
+#else
+  #define _GASNETC_CEP_PTR_3 0
+#endif
 
   // 32-bit fields
   gasnetc_epid_t        epid;           // == uint32_t
@@ -644,11 +667,17 @@ struct gasnetc_cep_t_ {
 #else
   #define _GASNETC_CEP_32_4 0
 #endif
+#if GASNETC_IBV_DC
+  uint32_t              remote_dctn;
+  #define _GASNETC_CEP_32_5 1*4
+#else
+  #define _GASNETC_CEP_32_5 0
+#endif
 
 #define _GASNETC_CEP_TO_PAD (\
     _GASNETC_CEP_RW_BYTES + \
-    _GASNETC_CEP_PTR_0+_GASNETC_CEP_PTR_1+_GASNETC_CEP_PTR_2 + \
-    _GASNETC_CEP_32_0+_GASNETC_CEP_32_1+_GASNETC_CEP_32_2+_GASNETC_CEP_32_3+_GASNETC_CEP_32_4)
+    _GASNETC_CEP_PTR_0+_GASNETC_CEP_PTR_1+_GASNETC_CEP_PTR_2+_GASNETC_CEP_PTR_3 + \
+    _GASNETC_CEP_32_0+_GASNETC_CEP_32_1+_GASNETC_CEP_32_2+_GASNETC_CEP_32_3+_GASNETC_CEP_32_4+_GASNETC_CEP_32_5)
 #if GASNETI_THREADS
   char _pad0[GASNETI_CACHE_PAD(_GASNETC_CEP_TO_PAD)];
 #endif
@@ -931,6 +960,10 @@ extern void gasnetc_conn_implied_ack(gasnetc_EP_t ep, gex_Rank_t node);
 extern void gasnetc_conn_rcv_wc(struct ibv_wc *comp);
 extern void gasnetc_conn_snd_wc(struct ibv_wc *comp);
 #endif
+#if GASNETC_IBV_DC
+extern struct ibv_ah *gasnetc_get_dc_ah(gasnetc_cep_t *cep);
+extern uint32_t gasnetc_get_dctn(gasnetc_cep_t *cep);
+#endif
 
 /* Callback functions in gasnet_core_sndrcv.c */
  /* eop: */
@@ -1103,6 +1136,12 @@ extern int              gasnetc_qp_retry_count;
   #define gasnetc_use_odp	0
 #endif
 
+#if GASNETC_IBV_DC
+  extern int                    gasnetc_use_dc;
+#else
+  #define gasnetc_use_dc        0
+#endif
+
 /* Global variables */
 extern int		gasnetc_num_hcas;
 extern gasnetc_hca_t	gasnetc_hca[GASNETC_IB_MAX_HCAS];
@@ -1116,6 +1155,10 @@ extern gasnetc_port_info_t      *gasnetc_port_tbl;
 extern int                      gasnetc_num_ports;
 #if GASNETC_DYNAMIC_CONNECT
   extern gasnetc_sema_t         gasnetc_zero_sema;
+#endif
+#if GASNETC_IBV_DC
+  extern size_t gasnetc_dct_per_qpi, gasnetc_dct_per_node;
+  extern uint32_t *gasnetc_my_dctns, *gasnetc_all_dctns;
 #endif
 
 /* ------------------------------------------------------------------------------------ */
