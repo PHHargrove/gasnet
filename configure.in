@@ -3822,6 +3822,20 @@ if test "$enabled_ibv" = yes; then
       device.transport_type = IBV_TRANSPORT_IB;
     ], [ AC_DEFINE(HAVE_IBV_TRANSPORT_TYPE) ] )
 
+    # Cannot use AC_CHECK_FUNCS() because ibv_create_qp_ex might be inline in verbs.h
+    GASNET_TRY_CACHE_LINK(for ibv_create_qp_ex, ibv_create_qp_ex, [
+      #if defined(__GNUC__) && !defined(inline)
+        /* ANSI-ify the verbs headers */
+        #define inline __inline__
+        #include <infiniband/verbs.h>
+        #undef inline
+      #else
+        #include <infiniband/verbs.h>
+      #endif
+    ], [
+      struct ibv_qp *qp = ibv_create_qp_ex(NULL,NULL);
+    ], [ AC_DEFINE(GASNETC_HAVE_IBV_CREATE_QP_EX) ] )
+
     AC_CHECK_FUNCS(ibv_wc_status_str)
   fi
 

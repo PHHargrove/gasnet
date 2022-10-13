@@ -496,6 +496,7 @@
 /* GASNet ibv-conduit features and bug work-arounds */
 #undef HAVE_IBV_SRQ
 #undef HAVE_IBV_TRANSPORT_TYPE
+#undef GASNETC_HAVE_IBV_CREATE_QP_EX
 #undef GASNETC_IBV_MAX_MEDIUM
 #undef GASNETC_IBV_ODP
 #undef GASNETC_IBV_ODP_MLNX
