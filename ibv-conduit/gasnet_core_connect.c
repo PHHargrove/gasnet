@@ -174,6 +174,24 @@ gasnetc_parse_filename(const char *filename)
 }
 /* ------------------------------------------------------------------------------------ */
 
+#if GASNETC_HAVE_IBV_CREATE_QP_EX
+  typedef struct ibv_qp_init_attr_ex gasnetc_qp_init_attr;
+#else
+  typedef struct ibv_qp_init_attr gasnetc_qp_init_attr;
+#endif
+
+GASNETI_INLINE(gasnetc_create_qp_ex)
+struct ibv_qp *gasnetc_create_qp_ex(gasnetc_hca_t *hca, gasnetc_qp_init_attr *init_attr_p)
+{
+#if GASNETC_HAVE_IBV_CREATE_QP_EX
+    init_attr_p->pd = hca->pd;
+    init_attr_p->comp_mask |= IBV_QP_INIT_ATTR_PD;
+    return ibv_create_qp_ex(hca->handle, init_attr_p);
+#else
+    return ibv_create_qp(hca->pd, init_attr_p);
+#endif
+}
+
 #if GASNETC_IBV_XRC
 typedef struct gasnetc_xrc_snd_qp_s {
   struct ibv_qp * handle;
@@ -586,11 +604,7 @@ gasnetc_check_inline_limit(int port_num, int send_wr)
   struct ibv_qp * qp_handle;
 
   {
-  #if GASNETC_IBV_XRC_OFED
-    struct ibv_qp_init_attr_ex qp_init_attr;
-  #else
-    struct ibv_qp_init_attr qp_init_attr;
-  #endif
+    gasnetc_qp_init_attr qp_init_attr;
 
     qp_init_attr.cap.max_send_wr     = send_wr;
     qp_init_attr.cap.max_recv_wr     = gasnetc_use_srq ? 0 : gasnetc_am_oust_pp * 2;
@@ -599,8 +613,6 @@ gasnetc_check_inline_limit(int port_num, int send_wr)
     qp_init_attr.qp_context          = NULL; /* XXX: Can/should we use this? */
   #if GASNETC_IBV_XRC_OFED
     qp_init_attr.qp_type             = gasnetc_use_xrc ? IBV_QPT_XRC_SEND : IBV_QPT_RC;
-    qp_init_attr.comp_mask           = IBV_QP_INIT_ATTR_PD;
-    qp_init_attr.pd                  = hca->pd;
   #elif GASNETC_IBV_XRC_MLNX
     qp_init_attr.qp_type             = gasnetc_use_xrc ? IBV_QPT_XRC : IBV_QPT_RC;
   #else
@@ -625,11 +637,7 @@ gasnetc_check_inline_limit(int port_num, int send_wr)
     /* TODO: Binary search? */
     while (1) { /* No query for max_inline_data limit */
       qp_init_attr.cap.max_inline_data = gasnetc_inline_limit;
-    #if GASNETC_IBV_XRC_OFED
-      qp_handle = ibv_create_qp_ex(hca->handle, &qp_init_attr);
-    #else
-      qp_handle = ibv_create_qp(hca->pd, &qp_init_attr);
-    #endif
+      qp_handle = gasnetc_create_qp_ex(hca, &qp_init_attr);
       if (qp_handle != NULL) break;
       if (qp_init_attr.cap.max_inline_data == -1) {
         /* Automatic max not working, fall back on manual search */
@@ -660,11 +668,7 @@ gasnetc_qp_create(gasnetc_conn_info_t *conn_info)
     gasnetc_cep_t *cep;
     int qpi;
 
-  #if GASNETC_IBV_XRC_OFED
-    struct ibv_qp_init_attr_ex  qp_init_attr;
-  #else
-    struct ibv_qp_init_attr     qp_init_attr;
-  #endif
+    gasnetc_qp_init_attr  qp_init_attr;
     const int                   max_recv_wr = gasnetc_use_srq ? 0 : gasnetc_am_oust_pp * 2;
     int                         max_send_wr = gasnetc_op_oust_pp;
   #if GASNETC_IBV_XRC
@@ -680,7 +684,6 @@ gasnetc_qp_create(gasnetc_conn_info_t *conn_info)
     qp_init_attr.qp_context          = NULL; /* XXX: Can/should we use this? */
   #if GASNETC_IBV_XRC_OFED
     qp_init_attr.qp_type             = gasnetc_use_xrc ? IBV_QPT_XRC_SEND : IBV_QPT_RC;
-    qp_init_attr.comp_mask           = IBV_QP_INIT_ATTR_PD;
   #elif GASNETC_IBV_XRC_MLNX
     qp_init_attr.qp_type             = gasnetc_use_xrc ? IBV_QPT_XRC : IBV_QPT_RC;
   #else
@@ -700,9 +703,6 @@ gasnetc_qp_create(gasnetc_conn_info_t *conn_info)
     #endif
       cep->sq_sema_p = &gasnetc_zero_sema;
 
-    #if GASNETC_IBV_XRC_OFED
-      qp_init_attr.pd              = hca->pd;
-    #endif
       qp_init_attr.send_cq         = hca->snd_cq;
       qp_init_attr.recv_cq         = hca->rcv_cq;
 
@@ -741,11 +741,7 @@ gasnetc_qp_create(gasnetc_conn_info_t *conn_info)
       }
     #endif
   
-    #if GASNETC_IBV_XRC_OFED
-      hndl = ibv_create_qp_ex(hca->handle, &qp_init_attr);
-    #else
-      hndl = ibv_create_qp(hca->pd, &qp_init_attr);
-    #endif
+      hndl = gasnetc_create_qp_ex(hca, &qp_init_attr);
       GASNETC_IBV_CHECK_PTR(hndl, "from ibv_create_qp()");
       gasneti_assert(qp_init_attr.cap.max_recv_wr >= max_recv_wr);
       gasneti_assert(qp_init_attr.cap.max_send_wr >= max_send_wr);
