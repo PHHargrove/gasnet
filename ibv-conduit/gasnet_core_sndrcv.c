@@ -1608,6 +1608,64 @@ gasnetc_snd_post_inner(gasnetc_cep_t * const cep, struct ibv_send_wr *sr_desc, i
   GASNETI_SPIN_UNTIL_TRACE(gasnetc_sema_trydown(cep->snd_cq_sema_p),
                            C, POST_SR_STALL_CQ, gasnetc_poll_snd());
 
+#if GASNETC_HAVE_IBV_WR_API
+  // ICK - this is a dead-stupid rewrite of the sr_desc struct to `ibv_wr_*`
+  // operations, where one of the main motivations for those interfaces
+  // was to avoid the memory traffic of constructing and later parsing
+  // that data structure.  However, since the start/complete are documented
+  // as a critical section it would be bad to "start" any earlier.
+  // WIP - specialized "post" functions for the various operations we use
+  // can definately reduce the branching required here
+  if (1) { // WIP - TBD: any conditional?
+    struct ibv_qp_ex *qpx = cep->qp_ex_handle;
+    ibv_wr_start(qpx);
+
+    do {
+      qpx->wr_id = sr_desc->wr_id;
+      qpx->wr_flags = sr_desc->send_flags;
+      switch (sr_desc->opcode) {
+        case IBV_WR_SEND_WITH_IMM:
+          ibv_wr_send_imm(qpx, sr_desc->imm_data);
+          break;
+
+        case IBV_WR_RDMA_WRITE:
+          ibv_wr_rdma_write(qpx, sr_desc->wr.rdma.rkey, sr_desc->wr.rdma.remote_addr);
+          break;
+
+        case IBV_WR_RDMA_READ:
+          ibv_wr_rdma_read(qpx, sr_desc->wr.rdma.rkey, sr_desc->wr.rdma.remote_addr);
+          break;
+
+        case IBV_WR_ATOMIC_FETCH_AND_ADD:
+          ibv_wr_atomic_fetch_add(qpx, sr_desc->wr.atomic.rkey, sr_desc->wr.atomic.remote_addr, 0);
+          break;
+
+        default:
+          gasneti_unreachable_error(("Invalid opcode %d", sr_desc->opcode));
+      }
+
+      if (sr_desc->send_flags & IBV_SEND_INLINE) {
+        gasneti_assert_uint(sr_desc->num_sge ,==, 1);
+        ibv_wr_set_inline_data(qpx, (void*)sr_desc->sg_list[0].addr, sr_desc->sg_list[0].length);
+      } else {
+        ibv_wr_set_sge_list(qpx, sr_desc->num_sge, sr_desc->sg_list);
+      }
+
+    #if GASNETC_IBV_XRC_OFED
+      if (gasnetc_use_xrc) { // WIP - check if safe/efficient to omit this check
+        ibv_wr_set_xrc_srqn(qpx, sr_desc->qp_type.xrc.remote_srqn);
+      }
+    #endif
+
+      sr_desc = sr_desc->next;
+    } while (sr_desc);
+
+    int rc = ibv_wr_complete(qpx);
+    if_pf (rc) gasnetc_snd_post_fail(rc, is_inline);
+    return;
+  }
+#endif
+
   // Post the operation
   struct ibv_send_wr *bad_wr;
   int rc = ibv_post_send(cep->qp_handle, sr_desc, &bad_wr);
