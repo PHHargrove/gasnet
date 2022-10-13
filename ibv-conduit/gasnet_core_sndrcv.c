@@ -57,6 +57,9 @@ int					gasnetc_use_snd_thread = GASNETC_USE_SND_THREAD;
 #if GASNETC_IBV_ODP
   int					gasnetc_use_odp = 1;
 #endif
+#if GASNETC_IBV_DC
+  int                                   gasnetc_use_dc = 1;
+#endif
 #if GASNETC_HAVE_FENCED_PUTS
   int                                   gasnetc_use_fenced_puts = 0;
 #endif
@@ -1341,9 +1344,25 @@ void gasnetc_rcv_am(const struct ibv_wc *comp, gasnetc_rbuf_t **spare_p GASNETI_
     }
     if (gasnetc_num_qps > 1) {
       int i;
-      for (i=0; i<gasnetc_num_qps; ++i, ++cep) {
-        if ((cep->rcv_qpn == comp->qp_num) && (cep->hca == hca)) break;
+    #if GASNETC_IBV_DC
+      if (gasnetc_use_dc) {
+        uint32_t *qpn_tbl = &gasnetc_my_dctns[gasnetc_dct_per_qpi * (isrep ? 0 : gasnetc_num_qps)];
+        for (i=0; i<gasnetc_num_qps; ++i, ++cep) {
+          if (cep->hca == hca) {
+            // WIP: this scales badly!
+            for (int j = 0; j < gasnetc_dct_per_qpi; ++j) {
+              if (qpn_tbl[j] == comp->qp_num) goto match;
+            }
+          }
+          qpn_tbl += gasnetc_dct_per_qpi;
+        }
+        goto match; // where assertion will fail
       }
+    #endif
+      for (i=0; i<gasnetc_num_qps; ++i, ++cep) {
+        if ((cep->rcv_qpn == comp->qp_num) && (cep->hca == hca)) goto match;
+      }
+match:
       gasneti_assert(i < gasnetc_num_qps);
     }
 
@@ -1783,6 +1802,21 @@ int gasnetc_snd_cq_reserve(gasnetc_cep_t * const cep) {
   } while (0)
 #endif
 
+#if !GASNETC_IBV_DC
+  #define GASNETC_WR_DC(qpx, cep) ((void)0)
+#elif GASNETC_IBV_DC_MLX5DV
+  #define GASNETC_WR_DC(qpx, cep) do { \
+    if (gasnetc_use_dc) { \
+      if_pf (!cep->dc_ah) cep->dc_ah = gasnetc_get_dc_ah(cep); \
+      if_pf (!cep->remote_dctn) cep->remote_dctn = gasnetc_get_dctn(cep); \
+      struct mlx5dv_qp_ex *mqpx = mlx5dv_qp_ex_from_ibv_qp_ex(qpx); \
+      mlx5dv_wr_set_dc_addr(mqpx, cep->dc_ah, cep->remote_dctn, GASNETC_DCT_ACCESS_KEY); \
+    } \
+  } while (0)
+#else
+  #error "GASNETC_IBV_DC enabled without a supported implementation"
+#endif
+
 #define GASNETC_WR_BEFORE(qpx, sreq, flags) do { \
   (qpx)->wr_id = (uintptr_t)(sreq); \
   (qpx)->wr_flags = (flags); \
@@ -1790,6 +1824,7 @@ int gasnetc_snd_cq_reserve(gasnetc_cep_t * const cep) {
 
 #define GASNETC_WR_AFTER(qpx, cep) do { \
   GASNETC_WR_XRC(qpx, cep); \
+  GASNETC_WR_DC(qpx, cep); \
 } while (0)
 
 void gasnetc_post_send_imm(
@@ -3264,13 +3299,15 @@ extern int gasnetc_sndrcv_limits(void) {
       hca->max_qps *= 2;
     }
   }
- #if GASNETC_IBV_XRC
-  else if (gasnetc_use_xrc) {
-    /* No SRQ means no XRC either */
-    gasnetc_use_xrc = 0;
-  }
-  GASNETI_TRACE_PRINTF(I, ("XRC %sabled", gasnetc_use_xrc ? "en" : "dis"));
- #endif
+  // WIP - need to force XRC v. DC mutual exclusion
+  #if GASNETC_IBV_XRC
+    gasnetc_use_xrc = gasnetc_use_xrc && gasnetc_use_srq; // XRC requires SRQ
+    GASNETI_TRACE_PRINTF(I, ("XRC %sabled", gasnetc_use_xrc ? "en" : "dis"));
+  #endif
+  #if GASNETC_IBV_DC
+    gasnetc_use_dc = gasnetc_use_dc && gasnetc_use_srq; // DC requires SRQ
+    GASNETI_TRACE_PRINTF(I, ("DC %sabled", gasnetc_use_dc ? "en" : "dis"));
+  #endif
 #endif
 
   /* sanity/bounds checks */

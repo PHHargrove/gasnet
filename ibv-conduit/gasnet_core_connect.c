@@ -78,12 +78,6 @@ typedef struct {
   /* Just exchange qpn.  So no struct required */
 #endif
 
-#if GASNETC_IBV_XRC
-  #define GASNETC_SND_QP_NEEDS_MODIFY(_xrc_snd_qp,_state) \
-	(!gasnetc_use_xrc || ((_xrc_snd_qp).state < (_state)))
-#else
-  #define GASNETC_SND_QP_NEEDS_MODIFY(_xrc_snd_qp,_state) 1
-#endif
 
 const char *gasnetc_connectfile_in  = NULL;
 const char *gasnetc_connectfile_out = NULL;
@@ -199,6 +193,24 @@ struct ibv_qp *gasnetc_create_qp(gasnetc_hca_t *hca, gasnetc_qp_init_attr_t *ini
   init_attr_p->send_ops_flags  = ops;
   init_attr_p->comp_mask      |= IBV_QP_INIT_ATTR_SEND_OPS_FLAGS;
 #endif
+#if GASNETC_IBV_DC_MLX5DV
+  if (gasnetc_use_dc) {
+    // Create a DC Initiator (DCI) QP
+    // TODO: creating an initiator per peer is "missing the point"
+    struct mlx5dv_qp_init_attr qp_attr_dv = {0};
+    qp_attr_dv.dc_init_attr.dc_type = MLX5DV_DCTYPE_DCI;
+    qp_attr_dv.comp_mask |= MLX5DV_QP_INIT_ATTR_MASK_DC;
+    // Some adjustments are needed to the base QP attributes
+    init_attr_p->qp_type = IBV_QPT_DRIVER;
+    init_attr_p->cap.max_recv_sge = 0; // No receive capability
+    if (! init_attr_p->srq) {
+      // Creating a DC QP requires a valid SRQ.
+      // We only get here when probing inline send limit.  So either one is fine.
+      init_attr_p->srq = hca->rqst_srq;
+    }
+    return mlx5dv_create_qp(hca->handle, init_attr_p, &qp_attr_dv);
+  }
+#endif
 #if HAVE_IBV_CREATE_QP_EX
   return ibv_create_qp_ex((hca)->handle, init_attr_p);
 #else
@@ -229,6 +241,40 @@ gasnetc_node2snd_qp(gex_Rank_t rank) {
   return gasnetc_xrc_snd_qp + (idx * gasnetc_alloc_qps);
 }
 #define GASNETC_NODE2SND_QP(rank) gasnetc_node2snd_qp(rank)
+
+#if GASNETC_IBV_DC_MLX5DV
+  #define GASNETC_MAX_DCI 4
+  static struct ibv_qp * gasnetc_dci_hndl[GASNETC_MAX_DCI];
+  static enum ibv_qp_state gasnetc_dci_state[GASNETC_MAX_DCI];
+#endif
+
+GASNETI_INLINE(gasnetc_qp_needs_modify)
+int gasnetc_qp_needs_modify(gex_Rank_t node, int qpi, enum ibv_qp_state state) {
+#if GASNETC_IBV_XRC
+  if (gasnetc_use_xrc) {
+    int idx = gasnetc_xrcd_simple ? gasneti_node2supernode(node) : gasnetc_xrcd_map[node];
+    gasnetc_xrc_snd_qp_t *xrc_snd_qp = gasnetc_xrc_snd_qp + (idx * gasnetc_alloc_qps) + qpi;
+    if (xrc_snd_qp->state < state) {
+      xrc_snd_qp->state = state;
+      return 1;
+    } else {
+      return 0;
+    }
+  }
+#endif
+#if GASNETC_IBV_DC
+  if (gasnetc_use_dc) {
+    unsigned int dci_idx = (qpi + node * gasnetc_alloc_qps) % GASNETC_MAX_DCI;
+    if (gasnetc_dci_state[dci_idx] < state) {
+      gasnetc_dci_state[dci_idx] = state;
+      return 1;
+    } else {
+      return 0;
+    }
+  }
+#endif
+  return 1;
+}
 
 static uint32_t *gasnetc_xrc_rcv_qpn = NULL;
 
@@ -561,12 +607,16 @@ gasnetc_xrc_init(void **shared_mem_p) {
 
   return GASNET_OK;
 }
+#else
+  #define gasnetc_qp_needs_modify(node,qpi,state) 1
 #endif /* GASNETC_IBV_XRC */
 
-/* Distribute the qps to each peer round-robin over the ports.
-   Returns NULL for cases that should not have any connection */
+// Distribute qps over the local ports.
+// Returns NULL for cases that should not have any connection.
 static const gasnetc_port_info_t *
-gasnetc_select_port(gex_Rank_t node, int qpi) {
+gasnetc_epid2port(gasnetc_epid_t epid) {
+    gasnetc_epid_t qpi = gasnetc_epid2qpi(epid) - 1;
+
     if (GASNETC_QPI_IS_REQ(qpi)) {
       /* Second half of table (if any) duplicates first half. */
       qpi -= gasnetc_num_qps;
@@ -595,7 +645,7 @@ gasnetc_setup_ports(gasnetc_conn_info_t *conn_info)
     ports = gasneti_malloc(gasnetc_alloc_qps * sizeof(gasnetc_port_info_t *));
     gasneti_leak(ports);
     for (qpi = 0; qpi < gasnetc_num_qps; ++qpi) {
-      ports[qpi] = gasnetc_select_port(conn_info->node, qpi);
+      ports[qpi] = gasnetc_epid2port(gasnetc_epid(conn_info->node, qpi));
     #if GASNETC_IBV_SRQ
       if (gasnetc_use_srq) {
         /* Second half of table (if any) duplicates first half.
@@ -753,8 +803,21 @@ gasnetc_qp_create(gasnetc_conn_info_t *conn_info)
       }
     #endif
   
-      hndl = gasnetc_create_qp(hca, &qp_init_attr);
-      GASNETC_IBV_CHECK_PTR(hndl, "from gasnetc_create_qp()");
+    #if GASNETC_IBV_DC
+      if (gasnetc_use_dc) {
+        unsigned int dci_idx = (qpi + node * gasnetc_alloc_qps) % GASNETC_MAX_DCI;
+        hndl = gasnetc_dci_hndl[dci_idx];
+        if (!hndl) {
+          hndl = gasnetc_dci_hndl[dci_idx] = gasnetc_create_qp(hca, &qp_init_attr);
+          GASNETC_IBV_CHECK_PTR(hndl, "from gasnetc__create_qp(DC)");
+          gasnetc_dci_state[dci_idx] = IBV_QPS_RESET;
+        }
+      } else
+    #endif
+      {
+        hndl = gasnetc_create_qp(hca, &qp_init_attr);
+        GASNETC_IBV_CHECK_PTR(hndl, "from gasnetc_create_qp()");
+      }
       gasneti_assert(qp_init_attr.cap.max_recv_wr >= max_recv_wr);
       gasneti_assert(qp_init_attr.cap.max_send_wr >= max_send_wr);
       gasneti_assert(qp_init_attr.cap.max_inline_data >= gasnetc_inline_limit);
@@ -795,11 +858,11 @@ gasnetc_qp_reset2init(gasnetc_conn_info_t *conn_info, int active)
     const enum ibv_access_flags qp_access_flags =
          (enum ibv_access_flags)(IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
 
-  #if GASNETC_IBV_XRC
-    gasnetc_xrc_snd_qp_t *xrc_snd_qp = GASNETC_NODE2SND_QP(node);
-  #endif
-
-    qp_mask = (enum ibv_qp_attr_mask)(IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+    if (gasnetc_use_dc) {
+      qp_mask = (enum ibv_qp_attr_mask)(IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT);
+    } else {
+      qp_mask = (enum ibv_qp_attr_mask)(IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+    }
     qp_attr.qp_state        = IBV_QPS_INIT;
     qp_attr.qp_access_flags = qp_access_flags;
 
@@ -819,12 +882,9 @@ gasnetc_qp_reset2init(gasnetc_conn_info_t *conn_info, int active)
       }
     #endif
 
-      if (GASNETC_SND_QP_NEEDS_MODIFY(xrc_snd_qp[qpi], IBV_QPS_INIT)) {
+      if (gasnetc_qp_needs_modify(node, qpi, IBV_QPS_INIT)) {
         rc = ibv_modify_qp(cep->qp_handle, &qp_attr, qp_mask);
         GASNETC_IBV_CHECK(rc, "from ibv_modify_qp(INIT)");
-      #if GASNETC_IBV_XRC
-        if (gasnetc_use_xrc) xrc_snd_qp[qpi].state = IBV_QPS_INIT;
-      #endif
       }
     }
 
@@ -838,17 +898,17 @@ static int
 gasnetc_qp_init2rtr(gasnetc_conn_info_t *conn_info, int active)
 {
     const gex_Rank_t node = conn_info->node;
-    struct ibv_qp_attr qp_attr;
+    struct ibv_qp_attr qp_attr = {0};
     enum ibv_qp_attr_mask qp_mask;
     gasnetc_cep_t *cep;
     int qpi;
     int rc;
 
-  #if GASNETC_IBV_XRC
-    gasnetc_xrc_snd_qp_t *xrc_snd_qp = GASNETC_NODE2SND_QP(node);
-  #endif
-
-    qp_mask = (enum ibv_qp_attr_mask)(IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_DEST_QPN | IBV_QP_MIN_RNR_TIMER);
+    if (gasnetc_use_dc) {
+      qp_mask = (enum ibv_qp_attr_mask)(IBV_QP_STATE | IBV_QP_PATH_MTU);
+    } else {
+      qp_mask = (enum ibv_qp_attr_mask)(IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_DEST_QPN | IBV_QP_MIN_RNR_TIMER);
+    }
     qp_attr.qp_state         = IBV_QPS_RTR;
     qp_attr.ah_attr.sl            = 0;
     qp_attr.ah_attr.is_global     = 0;
@@ -881,12 +941,9 @@ gasnetc_qp_init2rtr(gasnetc_conn_info_t *conn_info, int active)
       }
     #endif
 
-      if (GASNETC_SND_QP_NEEDS_MODIFY(xrc_snd_qp[qpi], IBV_QPS_RTR)) {
+      if (gasnetc_qp_needs_modify(node, qpi, IBV_QPS_RTR)) {
         rc = ibv_modify_qp(cep->qp_handle, &qp_attr, qp_mask);
         GASNETC_IBV_CHECK(rc, "from ibv_modify_qp(RTR)");
-      #if GASNETC_IBV_XRC
-        if (gasnetc_use_xrc) xrc_snd_qp[qpi].state = IBV_QPS_RTR;
-      #endif
       }
     }
 
@@ -903,10 +960,7 @@ gasnetc_qp_rtr2rts(gasnetc_conn_info_t *conn_info)
     int qpi;
     int rc;
 
-  #if GASNETC_IBV_XRC
     const gex_Rank_t node = conn_info->node;
-    gasnetc_xrc_snd_qp_t *xrc_snd_qp = GASNETC_NODE2SND_QP(node);
-  #endif
 
     qp_mask = (enum ibv_qp_attr_mask)(IBV_QP_STATE | IBV_QP_SQ_PSN | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_MAX_QP_RD_ATOMIC);
     qp_attr.qp_state         = IBV_QPS_RTS;
@@ -921,16 +975,13 @@ gasnetc_qp_rtr2rts(gasnetc_conn_info_t *conn_info)
       }
     #endif
 
-      if (GASNETC_SND_QP_NEEDS_MODIFY(xrc_snd_qp[qpi], IBV_QPS_RTS)) {
+      if (gasnetc_qp_needs_modify(node, qpi, IBV_QPS_RTS)) {
         const gasnetc_port_info_t *port = conn_info->port[qpi];
 
         qp_attr.sq_psn           = GASNETC_PSN(gasneti_mynode, qpi);
         qp_attr.max_rd_atomic    = port->rd_atom;
         rc = ibv_modify_qp(cep->qp_handle, &qp_attr, qp_mask);
         GASNETC_IBV_CHECK(rc, "from ibv_modify_qp(RTS)");
-      #if GASNETC_IBV_XRC
-        if (gasnetc_use_xrc) xrc_snd_qp[qpi].state = IBV_QPS_RTS;
-      #endif
       }
     }
 
@@ -2790,3 +2841,167 @@ gasnetc_connect_shutdown(gasnetc_EP_t ep0) {
   }
 } /* gasnetc_connect_shutdown */
 #endif  /* GASNETC_IBV_SHUTDOWN */
+
+#if GASNETC_IBV_DC
+#include <coll/gasnet_hashtable.h>
+
+static struct ibv_qp **gasnetc_my_dct_qps = NULL;
+size_t gasnetc_dct_per_qpi, gasnetc_dct_per_node;
+uint32_t *gasnetc_my_dctns = NULL;
+uint32_t *gasnetc_all_dctns = NULL;
+
+// Create (at least) `2*num_dct` DC Target (DCT) QPs per port.
+//
+// In the worst case we need two per ingress port to be sure there is one a
+// reachable from every peer egress port (and then it is only of genuine concern
+// in the case that multi-rail systems have distinct networks per-rail).  The
+// factor of two comes from the separation of AM replies to their own channel
+// when using SRQ (a prerequisite for use of DC).  In the common case of a
+// single network, we're not going to take advantage of the additional
+// reachability.
+//
+// We actually allocate according to `gasnetc_alloc_qps`, which may inflate the
+// count beyond the worst-case minimum if `GASNET_NUM_QPS` is set.  However,
+// that *is* pretty much the intention of that setting.
+//
+// WIP - collective comms need to move to the caller(s) if this is ever to be
+// used with ibv-conduit's own dynamic connections (if that even makes any
+// sense).
+static int
+gasnetc_create_dct_qps(gasnetc_EP_t ep, size_t num_dct)
+{
+  gasnetc_dct_per_node = num_dct * gasnetc_alloc_qps;
+  gasnetc_dct_per_qpi = num_dct;
+
+  size_t local_count = gasnetc_dct_per_node;
+  gasneti_assert(gasnetc_my_dct_qps == NULL);
+  gasnetc_my_dct_qps = gasneti_malloc(local_count * sizeof(struct ibv_qp *));
+  gasneti_assert(gasnetc_my_dctns == NULL);
+  gasnetc_my_dctns = gasneti_malloc(local_count * sizeof(uint32_t));
+
+#if GASNETC_IBV_DC_MLX5DV
+  struct ibv_qp_init_attr_ex init_attr = {0};
+  init_attr.qp_type   = IBV_QPT_DRIVER;
+  init_attr.comp_mask = IBV_QP_INIT_ATTR_PD;
+
+  struct mlx5dv_qp_init_attr dv_attr = {0};
+  dv_attr.comp_mask		      = MLX5DV_QP_INIT_ATTR_MASK_DC;
+  dv_attr.dc_init_attr.dc_type	      = MLX5DV_DCTYPE_DCT;
+  dv_attr.dc_init_attr.dct_access_key = GASNETC_DCT_ACCESS_KEY;
+
+  struct ibv_qp_attr attr = {0};
+  attr.min_rnr_timer = GASNETC_QP_MIN_RNR_TIMER;
+  attr.qp_access_flags = (enum ibv_access_flags)(IBV_ACCESS_REMOTE_WRITE |
+                                                 IBV_ACCESS_REMOTE_READ |
+                                                 IBV_ACCESS_REMOTE_ATOMIC);
+
+  int idx = 0;
+  for (int qpi = 0; qpi < gasnetc_alloc_qps; ++qpi) {
+    const gasnetc_port_info_t *port = gasnetc_epid2port(gasnetc_epid(0, qpi));
+    gasnetc_hca_t *hca = &gasnetc_hca[port->hca_index];
+
+    init_attr.pd = hca->pd;
+    init_attr.send_cq = hca->snd_cq;
+    init_attr.recv_cq = hca->rcv_cq;
+    init_attr.srq = GASNETC_QPI_IS_REQ(qpi) ? hca->rqst_srq : hca->repl_srq;
+
+    attr.pkey_index = port->pkey_index;
+    attr.port_num = port->port_num;
+    attr.ah_attr.port_num = port->port_num;
+    attr.path_mtu = gasnetc_max_mtu ? MIN(gasnetc_max_mtu, port->port.active_mtu)
+                                    : port->port.active_mtu;
+
+    for (int i = 0; i < num_dct; ++i, ++idx) {
+      struct ibv_qp *qp =  mlx5dv_create_qp(hca->handle, &init_attr, &dv_attr);
+      enum ibv_qp_attr_mask mask;
+      int rc;
+
+      // RESET -> INIT
+      attr.qp_state = IBV_QPS_INIT;
+      mask = (enum ibv_qp_attr_mask)(IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+      rc = ibv_modify_qp(qp, &attr, mask);
+      GASNETC_IBV_CHECK(rc, "from ibv_modify_qp(DCT, INIT)");
+
+      // INIT  -> RTR
+      attr.qp_state = IBV_QPS_RTR;
+      mask = (enum ibv_qp_attr_mask)(IBV_QP_STATE | IBV_QP_MIN_RNR_TIMER | IBV_QP_AV | IBV_QP_PATH_MTU);
+      rc = ibv_modify_qp(qp, &attr, mask);
+      GASNETC_IBV_CHECK(rc, "from ibv_modify_qp(DCT, RTR)");
+
+      // NO RTS transition for a DC Target
+
+      gasnetc_my_dct_qps[idx] = qp; // WIP - leaked / no shutdown
+      gasnetc_my_dctns[idx] = qp->qp_num;
+    }
+  }
+  gasneti_assert(idx == local_count);
+#endif // GASNETC_IBV_DC_MLX5DV
+
+  size_t global_count = gasneti_nodes * local_count;
+  gasneti_assert(gasnetc_all_dctns == NULL);
+  gasnetc_all_dctns = gasneti_malloc(global_count * sizeof(uint32_t));
+  gasneti_leak(gasnetc_all_dctns);
+  gasneti_bootstrapExchange(gasnetc_my_dctns, local_count * sizeof(uint32_t), gasnetc_all_dctns);
+
+  return GASNET_OK;
+}
+
+int gasnetc_dc_init(gasnetc_EP_t ep0)
+{
+  size_t num_dct = 4; // WIP - environment knob
+  gasneti_assert_zeroret( gasnetc_create_dct_qps(ep0, num_dct) );
+
+  // WIP - move DCI creation here?  What about inline limit?
+
+  return GASNET_OK;
+}
+
+uint32_t gasnetc_get_dctn(gasnetc_cep_t *cep)
+{
+  gasnetc_epid_t epid = cep->epid;
+  gex_Rank_t jobrank = gasnetc_epid2node(epid);
+  gasnetc_epid_t qpi = gasnetc_epid2qpi(epid) - 1;
+
+  uint32_t *remote_dctns = gasnetc_all_dctns
+                         + jobrank * gasnetc_dct_per_node
+                         + qpi * gasnetc_dct_per_qpi;
+
+  // WIP - This is naive and has obvious pathalogical weaknesses.
+  // However, if this is the assignment algorithm to be retained, then we
+  // could discard all but 1/gasnetc_dct_per_qpi of the dctns table.
+  size_t dctn_idx = gasneti_mynode % gasnetc_dct_per_qpi;
+
+  return remote_dctns[dctn_idx];
+}
+
+// TODO: if/when track lifetime, then could bound storage
+struct ibv_ah *gasnetc_get_dc_ah(gasnetc_cep_t *cep)
+{
+  struct ibv_ah *result = NULL;
+
+  static gasnete_hashtable_t *ah_table = NULL;
+  static gasneti_mutex_t lock = GASNETI_MUTEX_INITIALIZER;
+  gasneti_mutex_lock(&lock);
+
+    if_pf (!ah_table) {
+      ah_table = gasnete_hashtable_create(MIN(10240, gasneti_nodes));  // WIP - env var knob
+      gasneti_assert(ah_table != NULL);
+    }
+
+    const gasnetc_epid_t epid = cep->epid;
+    if (gasnete_hashtable_search(ah_table, epid, (void **)&result)) {
+      struct ibv_ah_attr ah_attr = {0};
+      const gasnetc_port_info_t *port = gasnetc_epid2port(epid);
+      ah_attr.dlid     = port->remote_lids[gasnetc_epid2node(epid)];
+      ah_attr.port_num = port->port_num;
+      result = ibv_create_ah(cep->hca->pd, &ah_attr);
+      gasneti_assert(result != NULL);
+      gasneti_assert_zeroret( gasnete_hashtable_insert(ah_table, epid, result) );
+    }
+
+  gasneti_mutex_unlock(&lock);
+
+  return result;
+}
+
+#endif  // GASNETC_IBV_DC
