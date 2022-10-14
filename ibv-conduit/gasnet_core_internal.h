@@ -383,10 +383,9 @@ void gasnetc_counter_wait(gasnetc_counter_t *counter, int handler_context GASNET
 
   // Use AMO after Put to fence for strict memory model adherence
   extern int gasnetc_use_fenced_puts;
-  #define GASNETC_USE_FENCED_PUTS gasnetc_use_fenced_puts
   #define GASNETC_HAVE_FENCED_PUTS 1
 #else
-  #define GASNETC_USE_FENCED_PUTS 0
+  #define gasnetc_use_fenced_puts 0
   #undef GASNETC_HAVE_FENCED_PUTS
 #endif
 
@@ -394,7 +393,7 @@ void gasnetc_counter_wait(gasnetc_counter_t *counter, int handler_context GASNET
 
 // Either 0 or 1 to control use of IBV_SEND_SIGNALED
 // Currently only for fencing on multi-rail
-#define GASNETC_USE_SEND_SIGNALLED GASNETC_USE_FENCED_PUTS
+#define GASNETC_USE_SEND_SIGNALLED gasnetc_use_fenced_puts
 
 /* ------------------------------------------------------------------------------------ */
 // Optional per-cq serialization of calls to ibv_poll_cq()
