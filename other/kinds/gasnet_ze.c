@@ -238,4 +238,20 @@ done:
   return result;
 }
 
+
+void gasneti_mk_ze_dmabuf(gasneti_Segment_t i_segment, int *dmabuf_fd_p, uintptr_t *offset_p)
+{
+  my_MK_t kind = (my_MK_t) gasneti_import_mk_nonhost(i_segment->_kind);
+  ze_context_handle_t context = kind->context;
+  void *addr = i_segment->_addr;
+
+  ze_ipc_mem_handle_t handle;
+  gasneti_check_zecall( zeMemGetIpcHandle(context, addr, &handle) );
+  *dmabuf_fd_p = (int) *(uintptr_t*) handle.data;
+
+  void *base;
+  gasneti_check_zecall( zeMemGetAddressRange(context, addr, &base, NULL) );
+  *offset_p = (uintptr_t)addr - (uintptr_t)base;
+}
+
 #endif

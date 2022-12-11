@@ -2484,7 +2484,40 @@ static int gasnetc_segment_register(gasnetc_Segment_t segment, int is_attach)
       uintptr_t lb = GASNETI_PAGE_ALIGNDOWN(segment->_addr);
       uintptr_t ub = GASNETI_PAGE_ALIGNUP(segment->_ub);
       uintptr_t bb_size = ub - lb;
-      int rc = gasnetc_pin(hca, (void*)lb, bb_size, gasneti_seg_access_flags, &memreg);
+      int rc;
+
+
+    #if GASNET_HAVE_MK_CLASS_ZE
+      gex_MK_Class_t mk_class = (segment->_kind == GEX_MK_HOST)
+                              ? GEX_MK_CLASS_HOST
+                              : gex_MK_QueryClass(segment->_kind);
+      if (mk_class == GEX_MK_CLASS_ZE) {
+        int dmabuf_fd;
+        uintptr_t offset;
+        gasneti_mk_ze_dmabuf((gasneti_Segment_t)segment, &dmabuf_fd, &offset);
+        memreg.handle = ibv_reg_dmabuf_mr(hca->pd, offset,
+                                          segment->_size,
+                                          (uint64_t)segment->_addr,
+                                          dmabuf_fd,
+                                          gasneti_seg_access_flags);
+        rc = (memreg.handle == NULL);
+        if (!rc) {
+          memreg.addr = (uintptr_t)segment->_addr;
+          memreg.len = segment->_size;
+        #if GASNET_TRACE
+          gasnetc_pinned_blocks += 1;
+          gasnetc_pinned_bytes += memreg.len;
+        #endif
+        } else if (errno == EPROTONOSUPPORT || errno == EOPNOTSUPP) {
+          // kernel or driver doesn't support dmabuf?
+          goto fallback;
+        }
+      } else
+    #endif
+      {
+        fallback:
+        rc = gasnetc_pin(hca, (void*)lb, bb_size, gasneti_seg_access_flags, &memreg);
+      }
 
       if (rc) {
         if (gasneti_VerboseErrors) {

@@ -107,6 +107,7 @@ GASNETI_END_EXTERNC
 #if GASNETI_BUILDING_CONDUIT
   #if GASNET_HAVE_MK_CLASS_ZE
     extern int gasneti_mk_ze_device_ordinal(void *device_handle_arg);
+    extern void gasneti_mk_ze_dmabuf(gasneti_Segment_t i_segment, int *dmabuf_fd_p, uintptr_t *offset_p);
   #endif
 #endif
 
