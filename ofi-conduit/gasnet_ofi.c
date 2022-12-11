@@ -1931,6 +1931,17 @@ int gasnetc_ep_bindsegment(gasneti_EP_t i_ep, gasneti_Segment_t segment)
           break;
         #endif
 
+        #if GASNET_HAVE_MK_CLASS_ZE
+        case GEX_MK_CLASS_ZE:
+          attr.iface = FI_HMEM_ZE;
+          attr.device.ze = (int)(uintptr_t)i_mk->_mk_conduit;
+          c_ep->device_only_segment = 1;
+          #ifdef FI_HMEM_DEVICE_ONLY
+            flags |= FI_HMEM_DEVICE_ONLY;
+          #endif
+          break;
+        #endif
+
         default:
           gasneti_unreachable_error(("undefined or unsupported gex_MK_Class_t value: %d", mk_class));
           break;
@@ -2604,8 +2615,9 @@ gasnetc_rdma_put_non_bulk(gex_TM_t tm, gex_Rank_t rank, void* dest_addr, void* s
 
     PERIODIC_RMA_POLL();
 
-#if GASNET_HAVE_MK_CLASS_CUDA_UVA
+#if GASNET_HAVE_MK_CLASS_CUDA_UVA || GASNET_HAVE_MK_CLASS_ZE
     // CUDA device memory precludes bounce buffers and (at least currently) use of FI_INJECT
+    // WIP - true for ZE??
     if (c_ep->device_only_segment) goto block_anyways;
 #endif
 
@@ -2898,6 +2910,12 @@ int gasnetc_mk_create_hook(
       #if GASNET_HAVE_MK_CLASS_HIP
       case GEX_MK_CLASS_HIP:
         // No device needed for HIP
+        break;
+      #endif
+
+      #if GASNET_HAVE_MK_CLASS_ZE
+      case GEX_MK_CLASS_ZE:
+        kind->_mk_conduit = (void*)(uintptr_t)gasneti_mk_ze_device_ordinal(args->gex_args.gex_class_ze.gex_zeDevice);
         break;
       #endif
 

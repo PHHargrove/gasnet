@@ -790,6 +790,12 @@ static const char *gasnetc_segreg_failed(size_t size, enum gasnetc_segreg which,
       break;
     #endif
 
+    #if GASNET_HAVE_MK_CLASS_ZE
+    case GEX_MK_CLASS_ZE:
+      descr = " ZE";
+      break;
+    #endif
+
     default: // avoids unhandled case warnings
       break;
   }
