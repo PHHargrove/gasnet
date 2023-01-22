@@ -102,11 +102,8 @@ static short has_mr_scalable = SCALABLE_NOT_AUTO_DETECTED;
   #define GASNETC_OFI_HAS_MR_SCALABLE ((short)has_mr_scalable)
 #endif
 
-static short has_mr_prov_key = 0;
-// cast prevents erroneous use in preprocessor directives
-#define GASNETC_OFI_HAS_MR_PROV_KEY ((short)has_mr_prov_key)
-
 // Alias unless/until the properties are split
+#define GASNETC_OFI_HAS_MR_PROV_KEY (!GASNETC_OFI_HAS_MR_SCALABLE)
 #define GASNETC_OFI_HAS_MR_VIRT_ADDR (!GASNETC_OFI_HAS_MR_SCALABLE)
 
 // Table of remote registration keys, used only when GASNETC_OFI_HAS_MR_PROV_KEY
@@ -899,12 +896,27 @@ int gasnetc_ofi_init(void)
       else gasneti_console0_message("WARNING", msg, info->fabric_attr->prov_name);
   }
 
+  // Address bug 4553 by attempting the query again without FI_MR_PROV_KEY if present
+  // Correct for all currently supported providers, but perhpas not "future proof"?
+  if (info->domain_attr->mr_mode & FI_MR_PROV_KEY) {
+    hints->domain_attr->mr_mode ^= FI_MR_PROV_KEY;
+    struct fi_info *alt_info = gasnetc_ofi_getinfo(hints);
+    if (alt_info && !strcmp(info->fabric_attr->prov_name, alt_info->fabric_attr->prov_name)
+                 && !strcmp(info->domain_attr->name, alt_info->domain_attr->name)) {
+      fi_freeinfo(info);
+      info = alt_info;
+    } else {
+      if (alt_info) fi_freeinfo(alt_info);
+      hints->domain_attr->mr_mode ^= FI_MR_PROV_KEY;
+    }
+  }
+
 #if OFI_CONDUIT_VERSION >= FI_VERSION(1, 5)
   has_mr_scalable = !(info->domain_attr->mr_mode & FI_MR_VIRT_ADDR);
  #if GASNET_SEGMENT_EVERYTHING
   gasneti_assert_always_uint(has_mr_scalable ,==, !(info->domain_attr->mr_mode & FI_MR_ALLOCATED));
  #endif
-  has_mr_prov_key = !!(info->domain_attr->mr_mode & FI_MR_PROV_KEY);
+  gasneti_assert_always_uint(has_mr_scalable ,==, !(info->domain_attr->mr_mode & FI_MR_PROV_KEY));
   gasnetc_fi_mr_endpoint = (info->domain_attr->mr_mode & FI_MR_ENDPOINT);
 #else
   has_mr_scalable = (info->domain_attr->mr_mode == FI_MR_SCALABLE);
