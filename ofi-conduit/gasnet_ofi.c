@@ -897,12 +897,10 @@ int gasnetc_ofi_init(void)
   }
 
   // Address bug 4553 by attempting the query again without FI_MR_PROV_KEY if present
-  // Correct for all currently supported providers, but perhpas not "future proof"?
-  if (info->domain_attr->mr_mode & FI_MR_PROV_KEY) {
+  if (!strcmp("cxi", info->fabric_attr->prov_name) && (info->domain_attr->mr_mode & FI_MR_PROV_KEY)) {
     hints->domain_attr->mr_mode ^= FI_MR_PROV_KEY;
     struct fi_info *alt_info = gasnetc_ofi_getinfo(hints);
-    if (alt_info && !strcmp(info->fabric_attr->prov_name, alt_info->fabric_attr->prov_name)
-                 && !strcmp(info->domain_attr->name, alt_info->domain_attr->name)) {
+    if (alt_info && !strcmp("cxi", alt_info->fabric_attr->prov_name)) {
       fi_freeinfo(info);
       info = alt_info;
     } else {
