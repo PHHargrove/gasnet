@@ -110,9 +110,21 @@ typedef struct gasnetc_ofi_am_send_buf {
     } buf;
 } gasnetc_ofi_am_send_buf_t;
 
+#if GASNETC_OFI_MSG_CONTEXT_SIZE
+  // An opaque array of an even number of void*:
+  typedef struct fi_context gasnetc_msg_context_t[GASNETC_OFI_MSG_CONTEXT_SIZE];
+  #define GASNETC_OFI_MSG_CONTEXT_BYTES sizeof(gasnetc_msg_context_t)
+#else
+  #define GASNETC_OFI_MSG_CONTEXT_BYTES 0
+#endif
+
 // NOTE: first sizeof(void*) is overwritten when on freelist
 typedef struct gasnetc_ofi_send_ctxt {
-  struct fi_context             ctxt;
+#if GASNETC_OFI_MSG_CONTEXT_SIZE
+  gasnetc_msg_context_t         ctxt;
+#else
+  uintptr_t                     linkage;
+#endif
   gasneti_lifo_head_t           *pool;
   gasnetc_ofi_am_send_buf_t     sendbuf;
 } gasnetc_ofi_send_ctxt_t;
@@ -120,13 +132,15 @@ typedef struct gasnetc_ofi_send_ctxt {
         (offsetof(gasnetc_ofi_send_ctxt_t, sendbuf.buf.long_buf.data) + OFI_AM_MAX_DATA_LENGTH)
 
 typedef struct gasnetc_ofi_recv_ctxt {
-  struct fi_context ctxt; // An opaque array of an even number of void*
+#if GASNETC_OFI_MSG_CONTEXT_SIZE
+  gasnetc_msg_context_t ctxt;
+#endif
   uint64_t event_cntr;
 #if GASNETC_OFI_RETRY_RECVMSG
   struct gasnetc_ofi_recv_ctxt *next;
-  char _pad0[GASNETI_CACHE_PAD(sizeof(struct fi_context) + sizeof(uint64_t) + sizeof(void*))];
+  char _pad0[GASNETI_CACHE_PAD(GASNETC_OFI_MSG_CONTEXT_BYTES + sizeof(uint64_t) + sizeof(void*))];
 #else
-  char _pad0[GASNETI_CACHE_PAD(sizeof(struct fi_context) + sizeof(uint64_t))];
+  char _pad0[GASNETI_CACHE_PAD(GASNETC_OFI_MSG_CONTEXT_BYTES + sizeof(uint64_t))];
 #endif
 
   // accessed as a pair except when recycling the multi-recv buffer

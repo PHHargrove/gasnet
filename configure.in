@@ -4250,6 +4250,7 @@ if test "$enabled_ofi" = yes; then
     ofi_use_thread_domain=0
     ofi_use_multi_cq=0
     ofi_retry_recvmsg=0
+    ofi_msg_context_size=0
     # List of known providers in order of preference.
     # Presence on this list does not necessarily indicate support status.
     # Consult ofi-conduit/README for the status of supported libfabric providers.
@@ -4291,6 +4292,7 @@ if test "$enabled_ofi" = yes; then
             ofi_define_mr_prov_key=0
             ofi_define_use_av_map=0
             ofi_use_thread_domain=1
+            ofi_msg_context_size=1
         ;;
         cxi)
             ofi_define_mr_virt_addr=0
@@ -4348,6 +4350,7 @@ if test "$enabled_ofi" = yes; then
             GASNET_MSG_WARN([Using runtime provider feature detection in ofi-conduit $why.])
             ofi_use_multi_cq=1
             ofi_retry_recvmsg=1
+            ofi_msg_context_size=1
             ofi_single_provider='no'
         ;;
         *)
@@ -4427,6 +4430,15 @@ Runtime provider feature detection and conservative defaults will be used except
                  ])
     popdef([GASNET_SUPPRESSHELP])
 
+    GASNET_WITH(ofi-msg-context-size,
+                [Context size for MSG endpoints (advanced users only)],
+                [case "$withval" in
+                   yes|no) AC_MSG_ERROR([--with-ofi-msg-context-size requires an argument]) ;;
+                    0|1|2) ofi_msg_context_size="$withval" ;;
+                        *) AC_MSG_ERROR([--with-ofi-msg-context-size='$withval' is invalid.  Valid values are 0, 1 and 2.]) ;;
+                 esac],
+                [AC_MSG_ERROR([--with-ofi-msg-context-size requires an argument])])
+
     # Inform the user that settings were autodetected
     if test -n "$detected_ofi_provider" \
        && test "$ofi_define_use_av_map" != "no" \
@@ -4468,6 +4480,7 @@ configured for that provider. If that is not your desired provider, override thi
     AC_DEFINE_UNQUOTED(GASNETC_OFI_USE_THREAD_DOMAIN, [$ofi_use_thread_domain])
     AC_DEFINE_UNQUOTED(GASNETC_OFI_USE_MULTI_CQ, [$ofi_use_multi_cq])
     AC_DEFINE_UNQUOTED(GASNETC_OFI_RETRY_RECVMSG, [$ofi_retry_recvmsg])
+    AC_DEFINE_UNQUOTED(GASNETC_OFI_MSG_CONTEXT_SIZE, [$ofi_msg_context_size])
     GASNET_WITH(ofi-num-completions,
                 [Max number of completions for ofi-conduit to read from a CQ at one time (default 64)],
                 [if expr "$withval" : '[[0-9]]*$' >/dev/null 2>&1 && \
