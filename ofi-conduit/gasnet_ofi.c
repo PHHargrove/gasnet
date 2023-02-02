@@ -31,6 +31,8 @@ GASNETI_IDENT(gasnetc_IdentString_OfiUseMultiCQ,
               "$GASNetOfiUseMultiCQ: "_STRINGIFY(GASNETC_OFI_USE_MULTI_CQ)" $");
 GASNETI_IDENT(gasnetc_IdentString_OfiRetryRecvmsg,
               "$GASNetOfiRetryRecvmsg: "_STRINGIFY(GASNETC_OFI_RETRY_RECVMSG)" $");
+GASNETI_IDENT(gasnetc_IdentString_OfiMsgContextSize,
+              "$GASNetOfiMsgContextSize: "_STRINGIFY(GASNETC_OFI_MSG_CONTEXT_SIZE)" $");
 
 struct fid_fabric*    gasnetc_ofi_fabricfd;
 struct fid_domain*    gasnetc_ofi_domainfd;
@@ -386,21 +388,40 @@ static inline int gasnetc_is_exiting(void) {
 // The "to" operations include type checking that simple casts would not
 
 GASNETI_INLINE(gasnetc_send_ctxt_to_op_ctxt)
-void *gasnetc_send_ctxt_to_op_ctxt(gasnetc_ofi_send_ctxt_t *p)
-{ return &p->ctxt; }
+void *gasnetc_send_ctxt_to_op_ctxt(gasnetc_ofi_send_ctxt_t *p) {
+#if GASNETC_OFI_MSG_CONTEXT_SIZE
+  return &p->ctxt;
+#else
+  return (void *)p;
+#endif
+}
 
 GASNETI_INLINE(gasnetc_op_ctxt_to_send_ctxt)
-gasnetc_ofi_send_ctxt_t *gasnetc_op_ctxt_to_send_ctxt(void *p)
-{ return gasneti_container_of(p, gasnetc_ofi_send_ctxt_t, ctxt); }
+gasnetc_ofi_send_ctxt_t *gasnetc_op_ctxt_to_send_ctxt(void *p) {
+#if GASNETC_OFI_MSG_CONTEXT_SIZE
+  return gasneti_container_of(p, gasnetc_ofi_send_ctxt_t, ctxt);
+#else
+  return (gasnetc_ofi_send_ctxt_t *)p;
+#endif
+}
 
 GASNETI_INLINE(gasnetc_recv_ctxt_to_op_ctxt)
-void *gasnetc_recv_ctxt_to_op_ctxt(gasnetc_ofi_recv_ctxt_t *p)
-{ return &p->ctxt; }
+void *gasnetc_recv_ctxt_to_op_ctxt(gasnetc_ofi_recv_ctxt_t *p) {
+#if GASNETC_OFI_MSG_CONTEXT_SIZE
+  return &p->ctxt;
+#else
+  return (void *)p;
+#endif
+}
 
 GASNETI_INLINE(gasnetc_op_ctxt_to_recv_ctxt)
-gasnetc_ofi_recv_ctxt_t *gasnetc_op_ctxt_to_recv_ctxt(void *p)
-{ return gasneti_container_of(p, gasnetc_ofi_recv_ctxt_t, ctxt); }
-
+gasnetc_ofi_recv_ctxt_t *gasnetc_op_ctxt_to_recv_ctxt(void *p) {
+#if GASNETC_OFI_MSG_CONTEXT_SIZE
+  return gasneti_container_of(p, gasnetc_ofi_recv_ctxt_t, ctxt);
+#else
+  return (gasnetc_ofi_recv_ctxt_t *)p;
+#endif
+}
 
 // We reserve low 2 bits to hold per-operation "aux" data for RDMA callbacks
 // Assumes pointers have at least 4-bytes alignment in structs
@@ -917,14 +938,22 @@ int gasnetc_ofi_init(void)
   if (!strlen(gasnetc_ofi_device)) gasnetc_ofi_device = NULL;
   hints->domain_attr->name = gasnetc_ofi_device;
 
+#if (GASNETC_OFI_MSG_CONTEXT_SIZE == 0)
+  #define GASNETC_MSG_CONTEXT 0
+#elif (GASNETC_OFI_MSG_CONTEXT_SIZE == 1)
+  #define GASNETC_MSG_CONTEXT FI_CONTEXT
+#elif (GASNETC_OFI_MSG_CONTEXT_SIZE == 2)
+  #define GASNETC_MSG_CONTEXT (FI_CONTEXT | FI_CONTEXT2)
+#endif
+
   /* caps: fabric interface capabilities */
   hints->caps           = FI_RMA | FI_MSG | FI_MULTI_RECV;
 #if GASNET_HAVE_MK_CLASS_MULTIPLE
   hints->caps          |= FI_HMEM;
 #endif
   /* mode: convey requirements for application to use fabric interfaces */
-  hints->mode           = FI_CONTEXT;   /* fi_context is used for per
-                                           operation context parameter */
+  hints->mode           = GASNETC_MSG_CONTEXT;   /* fi_context is used for per
+                                                    operation context parameter */
   /* addr_format: expected address format for AV/CM calls */
   hints->addr_format        = FI_FORMAT_UNSPEC;
   hints->tx_attr->op_flags  = FI_DELIVERY_COMPLETE;
@@ -1333,13 +1362,18 @@ int gasnetc_ofi_init(void)
 
   /* Allocate a new active endpoint for AM operations buffer */
   hints->caps     = FI_MSG | FI_MULTI_RECV;
-  hints->mode     = FI_CONTEXT;
+  hints->mode     = GASNETC_MSG_CONTEXT;
 
   ret = fi_getinfo(OFI_CONDUIT_VERSION, NULL, NULL, 0ULL, hints, &gasnetc_msg_info);
   GASNETC_OFI_CHECK_RET(ret, "fi_getinfo() failed querying for MSG endpoints");
 
   // Sanity checks for bits we cannot support
+#if (GASNETC_OFI_MSG_CONTEXT_SIZE < 1)
+  GASNETC_PROHIBIT_MODE_BIT(gasnetc_msg_info, FI_CONTEXT, "MSG endpoints");
+#endif
+#if (GASNETC_OFI_MSG_CONTEXT_SIZE < 2)
   GASNETC_PROHIBIT_MODE_BIT(gasnetc_msg_info, FI_CONTEXT2, "MSG endpoints");
+#endif
   GASNETC_PROHIBIT_MODE_BIT(gasnetc_msg_info, FI_MSG_PREFIX, "MSG endpoints");
   GASNETC_PROHIBIT_MODE_BIT(gasnetc_msg_info, FI_RESTRICTED_COMP, "MSG endpoints");
 
