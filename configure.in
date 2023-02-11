@@ -4254,7 +4254,7 @@ if test "$enabled_ofi" = yes; then
     # List of known providers in order of preference.
     # Presence on this list does not necessarily indicate support status.
     # Consult ofi-conduit/README for the status of supported libfabric providers.
-    known_providers="cxi psm2 gni verbs;ofi_rxm efa sockets udp;ofi_rxd tcp;ofi_rxm"
+    known_providers="cxi psm2 opx gni verbs;ofi_rxm efa sockets udp;ofi_rxd tcp;ofi_rxm"
     
     GASNET_WITH(ofi-provider, [Statically configure ofi-conduit for the given provider],
         ofi_provider="$withval", )
@@ -4293,6 +4293,12 @@ if test "$enabled_ofi" = yes; then
             ofi_define_use_av_map=0
             ofi_use_thread_domain=1
             ofi_msg_context_size=1
+        ;;
+        opx)
+            ofi_define_mr_virt_addr=0
+            ofi_define_mr_prov_key=0
+            ofi_define_use_av_map=1
+            ofi_msg_context_size=2
         ;;
         cxi)
             ofi_define_mr_virt_addr=0
@@ -4350,7 +4356,7 @@ if test "$enabled_ofi" = yes; then
             GASNET_MSG_WARN([Using runtime provider feature detection in ofi-conduit $why.])
             ofi_use_multi_cq=1
             ofi_retry_recvmsg=1
-            ofi_msg_context_size=1
+            ofi_msg_context_size=2
             ofi_single_provider='no'
         ;;
         *)
