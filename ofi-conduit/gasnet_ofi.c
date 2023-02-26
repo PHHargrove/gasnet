@@ -33,6 +33,8 @@ GASNETI_IDENT(gasnetc_IdentString_OfiRetryRecvmsg,
               "$GASNetOfiRetryRecvmsg: "_STRINGIFY(GASNETC_OFI_RETRY_RECVMSG)" $");
 GASNETI_IDENT(gasnetc_IdentString_OfiMsgContextSize,
               "$GASNetOfiMsgContextSize: "_STRINGIFY(GASNETC_OFI_MSG_CONTEXT_SIZE)" $");
+GASNETI_IDENT(gasnetc_IdentString_OfiRmaContextSize,
+              "$GASNetOfiRmaContextSize: "_STRINGIFY(GASNETC_OFI_RMA_CONTEXT_SIZE)" $");
 
 struct fid_fabric*    gasnetc_ofi_fabricfd;
 struct fid_domain*    gasnetc_ofi_domainfd;
@@ -70,6 +72,16 @@ static int gasnetc_fi_hmem = 0;
   #error "Invalid GASNETC_OFI_MSG_CONTEXT_SIZE"
 #endif
 
+#if (GASNETC_OFI_RMA_CONTEXT_SIZE == 0)
+  #define GASNETC_RMA_CONTEXT 0
+#elif (GASNETC_OFI_RMA_CONTEXT_SIZE == 1)
+  #define GASNETC_RMA_CONTEXT FI_CONTEXT
+#elif (GASNETC_OFI_RMA_CONTEXT_SIZE == 2)
+  #define GASNETC_RMA_CONTEXT (FI_CONTEXT | FI_CONTEXT2)
+#else
+  #error "Invalid GASNETC_OFI_RMA_CONTEXT_SIZE"
+#endif
+
 #define GASNETC_PROHIBIT_MODE_BIT(info,bit,scope) do { \
     if (info->mode & bit) {                            \
       gasneti_fatalerror("Provider '%s' has set unsupported mode bit " #bit " for %s", \
@@ -82,6 +94,59 @@ size_t gasnetc_ofi_max_long;
 
 // Maximum size to use for RMA
 size_t gasnetc_max_rma_size;
+
+// Wrapper around gasnetc_ofi_nb_op_ctxt_t used when RMA needs gasnetc_fi_context_t
+#if GASNETC_OFI_RMA_CONTEXT_SIZE
+typedef struct gasnetc_ofi_nb_op_wrapper {
+    struct fi_context        provider_ctxt[GASNETC_OFI_RMA_CONTEXT_SIZE];
+    void                    *conduit_ctxt;
+} gasnetc_ofi_nb_op_wrapper_t;
+
+static gasneti_lifo_head_t ofi_nb_op_wrapper_pool = GASNETI_LIFO_INITIALIZER;
+
+GASNETI_NEVER_INLINE(gasnetc_refill_nb_op_wrapper_pool,
+static gasnetc_ofi_nb_op_wrapper_t *gasnetc_refill_nb_op_wrapper_pool(void)) {
+  size_t elem_sz = GASNETI_ALIGNUP(sizeof(gasnetc_ofi_nb_op_wrapper_t), GASNETI_CACHE_LINE_BYTES);
+  size_t count = GASNET_PAGESIZE / elem_sz;
+  gasnetc_ofi_nb_op_wrapper_t *result = gasneti_malloc_aligned(GASNETI_CACHE_LINE_BYTES, count * elem_sz);
+  gasneti_leak_aligned(result);
+  if (count > 1) {
+    // place all the extra allocated elements on the freelist in one lifo operation
+    void *head = (void*)(elem_sz + (uintptr_t)result);
+    void *tail = head;
+    size_t links = count - 2;
+    for (size_t i = 0; i < links; ++i) {
+      void *next = (void*)(elem_sz + (uintptr_t)tail);
+      gasneti_lifo_link(tail, next);
+      tail = next;
+    }
+    gasneti_lifo_push_many(&ofi_nb_op_wrapper_pool, head, tail);
+  }
+  return result;
+}
+
+GASNETI_INLINE(gasnetc_maybe_wrap_rdma_ctxt) GASNETI_MALLOC
+void *gasnetc_maybe_wrap_rdma_ctxt(void *conduit_ctxt) {
+  gasnetc_ofi_nb_op_wrapper_t *wrapper = gasneti_lifo_pop(&ofi_nb_op_wrapper_pool);
+  if_pf (!wrapper) {
+    wrapper = gasnetc_refill_nb_op_wrapper_pool();
+  }
+  wrapper->conduit_ctxt = conduit_ctxt;
+  return (void*)wrapper;
+}
+
+GASNETI_INLINE(gasnetc_maybe_unwrap_rdma_ctxt)
+void *gasnetc_maybe_unwrap_rdma_ctxt(void *wrapped_ctxt) {
+  gasnetc_ofi_nb_op_wrapper_t *wrapper = wrapped_ctxt;
+  void *op_ctxt = wrapper->conduit_ctxt;
+  gasneti_lifo_push(&ofi_nb_op_wrapper_pool, wrapper);
+  return op_ctxt;
+}
+
+#else // GASNETC_OFI_RMA_CONTEXT_SIZE
+  #define gasnetc_maybe_wrap_rdma_ctxt(p) (p)
+  #define gasnetc_maybe_unwrap_rdma_ctxt(p) (p)
+#endif
 
 typedef struct gasnetc_ofi_recv_metadata {
     struct iovec iov;
@@ -442,15 +507,15 @@ gasnetc_ofi_recv_ctxt_t *gasnetc_op_ctxt_to_recv_ctxt(void *p) {
 // This is for use with gasnetc_ofi_{nb,bounce,blocking}_op_ctxt_t,
 // where we use the callback function as the operation context.
 // The callbacks perform the reverse using gasneti_container_of().
-GASNETI_INLINE(gasnetc_rdma_ctxt_to_op_ctxt_inner) GASNETT_PURE
+GASNETI_INLINE(gasnetc_rdma_ctxt_to_op_ctxt_inner)
 void *gasnetc_rdma_ctxt_to_op_ctxt_inner(void *p, unsigned int aux)
 {
   uintptr_t raw = (uintptr_t)p;
   gasneti_assert(0 == (raw & ~GASNETC_CTXT_MASK));
   gasneti_assert(0 == (aux &  GASNETC_CTXT_MASK));
-  return (void *)(raw | aux | GASNETC_CTXT_IS_RMA);
+  void *op_ctxt = gasnetc_maybe_wrap_rdma_ctxt(p);
+  return (void*)((uintptr_t)op_ctxt | aux | GASNETC_CTXT_IS_RMA);
 }
-GASNETT_PUREP(gasnetc_rdma_ctxt_to_op_ctxt_inner)
 #define gasnetc_rdma_ctxt_to_op_ctxt(p,aux) \
         gasnetc_rdma_ctxt_to_op_ctxt_inner(&(p)->callback,aux)
 
@@ -458,7 +523,8 @@ GASNETT_PUREP(gasnetc_rdma_ctxt_to_op_ctxt_inner)
 GASNETI_INLINE(gasnetc_op_ctxt_run_rdma_callback)
 void gasnetc_op_ctxt_run_rdma_callback(void *raw, uintptr_t aux)
 {
-  void *ctxt = (void *)((uintptr_t)raw & GASNETC_CTXT_MASK);
+  void *tmp = (void *)((uintptr_t)raw & GASNETC_CTXT_MASK);
+  void *ctxt = gasnetc_maybe_unwrap_rdma_ctxt(tmp);
   gasnetc_rdma_callback_fn callback = *(gasnetc_rdma_callback_fn *)ctxt;
   callback(ctxt, aux);
 }
@@ -959,14 +1025,6 @@ int gasnetc_ofi_init(void)
   if (!strlen(gasnetc_ofi_device)) gasnetc_ofi_device = NULL;
   hints->domain_attr->name = gasnetc_ofi_device;
 
-#if (GASNETC_OFI_MSG_CONTEXT_SIZE == 0)
-  #define GASNETC_MSG_CONTEXT 0
-#elif (GASNETC_OFI_MSG_CONTEXT_SIZE == 1)
-  #define GASNETC_MSG_CONTEXT FI_CONTEXT
-#elif (GASNETC_OFI_MSG_CONTEXT_SIZE == 2)
-  #define GASNETC_MSG_CONTEXT (FI_CONTEXT | FI_CONTEXT2)
-#endif
-
   /* caps: fabric interface capabilities */
   hints->caps           = FI_RMA | FI_MSG | FI_MULTI_RECV;
 #if GASNET_HAVE_MK_CLASS_MULTIPLE
@@ -1361,19 +1419,22 @@ int gasnetc_ofi_init(void)
 #endif
   hints->tx_attr->op_flags = FI_DELIVERY_COMPLETE;
 
-  // We do not support FI_CONTEXT for an RMA endpoint due to many-to-one iop.
-  // However, we must set the bit as a work-around for psm2 provider in libfabric < 1.10 (bug 4567)
+  // Must set FI_CONTEXT bit as a work-around for psm2 provider in libfabric < 1.10 (bug 4567)
   int have_bug_4567 = using_psm_provider &&
                       (FI_VERSION(FI_MAJOR_VERSION, FI_MINOR_VERSION) < FI_VERSION(1, 10));
-  hints->mode = have_bug_4567 ? FI_CONTEXT : 0;
+  hints->mode = have_bug_4567 ? FI_CONTEXT : GASNETC_RMA_CONTEXT;
   GASNETI_TRACE_PRINTF(I,("Work-around for bug 4567 is %sabled.", have_bug_4567?"en":"dis"));
 
   ret = fi_getinfo(OFI_CONDUIT_VERSION, NULL, NULL, 0ULL, hints, &gasnetc_rma_info);
   GASNETC_OFI_CHECK_RET(ret, "fi_getinfo() failed querying for RMA endpoint");
 
   // Sanity checks for bits we cannot support
+#if (GASNETC_OFI_RMA_CONTEXT_SIZE < 1)
   if (!have_bug_4567) GASNETC_PROHIBIT_MODE_BIT(gasnetc_rma_info, FI_CONTEXT, "RMA endpoints");
+#endif
+#if (GASNETC_OFI_RMA_CONTEXT_SIZE < 2)
   GASNETC_PROHIBIT_MODE_BIT(gasnetc_rma_info, FI_CONTEXT2, "RMA endpoints");
+#endif
   GASNETC_PROHIBIT_MODE_BIT(gasnetc_rma_info, FI_MSG_PREFIX, "RMA endpoints");
   GASNETC_PROHIBIT_MODE_BIT(gasnetc_rma_info, FI_RESTRICTED_COMP, "RMA endpoints");
 
@@ -1941,8 +2002,8 @@ void gasnetc_ofi_handle_bounce_rdma(void *op_context, unsigned int aux)
         gasnetc_ofi_bounce_buf_t * bbuf_to_return;
         while (NULL != (bbuf_to_return = gasneti_lifo_pop(&op->bbuf_list)))
             gasneti_lifo_push(&ofi_bbuf_pool, bbuf_to_return);
-        /* These completions will always be RDMA, so call the callback directly */
-        gasnetc_ofi_handle_rdma(gasnetc_rdma_ctxt_to_op_ctxt(op->orig_op,0),0);
+        // Simply invoke the callback directly (RDMA, non-ALC)
+        gasnetc_ofi_handle_rdma(&op->orig_op->callback, 0);
         gasneti_lifo_push(&ofi_bbuf_ctxt_pool, op);
     }
 }
@@ -2761,6 +2822,7 @@ gasnetc_rdma_put_non_bulk(gex_TM_t tm, gex_Rank_t rank, void* dest_addr, void* s
         return GEX_EVENT_INVALID;
 
 out_imm_inject:
+        (void) gasnetc_maybe_unwrap_rdma_ctxt(msg.context);
         return GEX_EVENT_NO_OP;
     } 
     /* Bounce buffers are needed */
@@ -2824,6 +2886,7 @@ out_imm_bounce:
         }
         gasneti_lifo_init(&bbuf_ctxt->bbuf_list);
         gasneti_lifo_push(&ofi_bbuf_ctxt_pool, bbuf_ctxt);
+        (void) gasnetc_maybe_unwrap_rdma_ctxt(op_ctxt);
         return GEX_EVENT_NO_OP;
     }
     /* We tried our best to optimize this. Just wait for remote completion */
@@ -2920,6 +2983,7 @@ gasnetc_rdma_put(gex_TM_t tm, gex_Rank_t rank, void *dst_ptr, void *src_ptr, siz
 
 out_imm:
     gasneti_assert(remain == nbytes); // IMM failure only possible in single-chunk case
+    (void) gasnetc_maybe_unwrap_rdma_ctxt(op_ctxt);
     return 1;
 }
 
@@ -2986,6 +3050,7 @@ gasnetc_rdma_get(void *dst_ptr, gex_TM_t tm, gex_Rank_t rank, void *src_ptr, siz
 
 out_imm:
     gasneti_assert(remain == nbytes); // IMM failure only possible in single-chunk case
+    (void) gasnetc_maybe_unwrap_rdma_ctxt(op_ctxt);
     return 1;
 }
 
