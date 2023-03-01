@@ -236,20 +236,19 @@ uintptr_t gasnetc_remote_addr(gex_Rank_t jobrank, void *addr, int rem_epidx)
 GASNETI_PUREP(gasnetc_remote_addr)
 
 // Statements which launch a fi_write or fi_read, setting "ret"
-#define OFI_RMA(rw, c_ep, loc_addr, nbytes, jobrank, rem_epidx, rem_addr, ctxt_ptr, alc) \
+#define OFI_RMA(rw, c_ep, loc_addr, nbytes, jobrank, rem_epidx, rem_addr, op_ctxt) \
     do { \
         fi_addr_t _peer = gasnetc_fabric_addr(RDMA, jobrank); \
         uintptr_t _addr = gasnetc_remote_addr(jobrank, rem_addr, rem_epidx); \
         uint64_t _key   = gasnetc_remote_key(jobrank, rem_epidx); \
-        void *_op_ctxt  = gasnetc_rdma_ctxt_to_op_ctxt(ctxt_ptr, alc|GASNETC_CTXT_IS_RMA); \
         void *_desc     = gasneti_i_segment_kind_is_host(c_ep->_segment) ? NULL: fi_mr_desc(c_ep->mrfd); \
         struct fid_ep *_ofi_ep = gasnetc_ofi_rdma_epfd; /* TODO: ep isolation */ \
-        ret = fi_##rw(_ofi_ep, loc_addr, nbytes, _desc, _peer, _addr, _key, _op_ctxt); \
+        ret = fi_##rw(_ofi_ep, loc_addr, nbytes, _desc, _peer, _addr, _key, op_ctxt); \
     } while(0)
-#define OFI_WRITE(c_ep, src_addr, nbytes, jobrank, rem_epidx, dest_addr, ctxt_ptr, alc) \
-        OFI_RMA(write, c_ep, src_addr, nbytes, jobrank, rem_epidx, dest_addr, ctxt_ptr, alc)
-#define OFI_READ(c_ep, dest_addr, nbytes, jobrank, rem_epidx, src_addr, ctxt_ptr, alc) \
-        OFI_RMA(read, c_ep, dest_addr, nbytes, jobrank, rem_epidx, src_addr, ctxt_ptr, alc)
+#define OFI_WRITE(c_ep, src_addr, nbytes, jobrank, rem_epidx, dest_addr, op_ctxt) \
+        OFI_RMA(write, c_ep, src_addr, nbytes, jobrank, rem_epidx, dest_addr, op_ctxt)
+#define OFI_READ(c_ep, dest_addr, nbytes, jobrank, rem_epidx, src_addr, op_ctxt) \
+        OFI_RMA(read, c_ep, dest_addr, nbytes, jobrank, rem_epidx, src_addr, op_ctxt)
 
 /* Poll periodically on RMA injection to ensure efficient progress.
  * This is a data race, but it is safe as polling here is unnecessary, it
@@ -449,7 +448,7 @@ void *gasnetc_rdma_ctxt_to_op_ctxt_inner(void *p, unsigned int aux)
   uintptr_t raw = (uintptr_t)p;
   gasneti_assert(0 == (raw & ~GASNETC_CTXT_MASK));
   gasneti_assert(0 == (aux &  GASNETC_CTXT_MASK));
-  return (void *)(raw | aux);
+  return (void *)(raw | aux | GASNETC_CTXT_IS_RMA);
 }
 GASNETT_PUREP(gasnetc_rdma_ctxt_to_op_ctxt_inner)
 #define gasnetc_rdma_ctxt_to_op_ctxt(p,aux) \
@@ -2625,9 +2624,10 @@ int gasnetc_ofi_am_send_long(gex_Rank_t dest, gex_AM_Index_t handler,
         // TODO: following line is only correct until AM supported on non-primordial EP
         const int rem_epidx = gasnetc_in_auxseg(dest, dest_addr) ? -1 : 0;
         gasnetc_EP_t c_ep = (gasnetc_EP_t)gasneti_import_ep(gasneti_THUNK_EP);
+        void *op_ctxt = gasnetc_rdma_ctxt_to_op_ctxt(&lam_ctxt, 0);
         OFI_INJECT_RETRY(&gasnetc_ofi_locks.rdma_tx,
                          OFI_WRITE(c_ep, source_addr, nbytes,
-                                   dest, rem_epidx, dest_addr, &lam_ctxt, 0),
+                                   dest, rem_epidx, dest_addr, op_ctxt),
                          poll_type);
         GASNETC_OFI_CHECK_RET(ret, "fi_write failed for AM long");
 #if GASNET_DEBUG
@@ -2769,6 +2769,7 @@ out_imm_inject:
         int num_bufs_needed = (nbytes + ofi_bbuf_size - 1) / ofi_bbuf_size;
         size_t bytes_to_copy;
         gasnetc_ofi_bounce_buf_t* buffs[OFI_MAX_NUM_BOUNCE_BUFFERS];
+        void *op_ctxt;
 
         /* If there are not enough bounce buffers available, simply block as
          * we don't know when more will become available */
@@ -2792,9 +2793,10 @@ out_imm_inject:
             gasneti_lifo_push(&bbuf_ctxt->bbuf_list, buf_container);
             memcpy(buf_container->buf, (void*)src_ptr, bytes_to_copy);
 
+            op_ctxt = gasnetc_rdma_ctxt_to_op_ctxt(bbuf_ctxt, 0);
             OFI_INJECT_RETRY_IMM(&gasnetc_ofi_locks.rdma_tx,
                                  OFI_WRITE(c_ep, buf_container->buf, bytes_to_copy,
-                                           jobrank, rem_epidx, (void *)dest_ptr, bbuf_ctxt, 0),
+                                           jobrank, rem_epidx, (void *)dest_ptr, op_ctxt),
                                  OFI_POLL_ALL, imm, out_imm_bounce);
             imm = 0; // no going back once first buffer has been written
 
@@ -2862,6 +2864,7 @@ gasnetc_rdma_put(gex_TM_t tm, gex_Rank_t rank, void *dst_ptr, void *src_ptr, siz
     const int rem_epidx = gasnetc_in_auxseg(jobrank, dst_ptr) ? -1 : loc.gex_ep_index;
     gasnetc_EP_t c_ep = (gasnetc_EP_t)gasneti_e_tm_to_i_ep(tm);
     int ret = FI_SUCCESS;
+    void *op_ctxt;
 
     gasnetc_assert_callback_eq(ctxt_ptr, gasnetc_ofi_handle_rdma);
     gasneti_assert((alc == 0) || (alc == 1));
@@ -2886,9 +2889,10 @@ gasnetc_rdma_put(gex_TM_t tm, gex_Rank_t rank, void *dst_ptr, void *src_ptr, siz
       do {
         iop->initiated_put_cnt++;
         if (alc) GASNETE_IOP_LC_START(iop);
+        op_ctxt = gasnetc_rdma_ctxt_to_op_ctxt(ctxt_ptr, alc);
         OFI_INJECT_RETRY(&gasnetc_ofi_locks.rdma_tx,
                          OFI_WRITE(c_ep, (void*)src_addr, chunksz,
-                                   jobrank, rem_epidx, (void*)dst_addr, ctxt_ptr, alc),
+                                   jobrank, rem_epidx, (void*)dst_addr, op_ctxt),
                          OFI_POLL_ALL);
         GASNETC_OFI_CHECK_RET(ret, "fi_write failed");
 #if GASNET_DEBUG
@@ -2902,9 +2906,10 @@ gasnetc_rdma_put(gex_TM_t tm, gex_Rank_t rank, void *dst_ptr, void *src_ptr, siz
     }
 
     // Might honor GEX_FLAG_IMMEDIATE *only* if this is the first fi_write():
+    op_ctxt = gasnetc_rdma_ctxt_to_op_ctxt(ctxt_ptr, alc);
     OFI_INJECT_RETRY_IMM(&gasnetc_ofi_locks.rdma_tx,
                          OFI_WRITE(c_ep, (void*)src_addr, remain,
-                                   jobrank, rem_epidx, (void*)dst_addr, ctxt_ptr, alc),
+                                   jobrank, rem_epidx, (void*)dst_addr, op_ctxt),
                          OFI_POLL_ALL, flags & GEX_FLAG_IMMEDIATE, out_imm);
     GASNETC_OFI_CHECK_RET(ret, "fi_write failed");
 #if GASNET_DEBUG
@@ -2927,6 +2932,7 @@ gasnetc_rdma_get(void *dst_ptr, gex_TM_t tm, gex_Rank_t rank, void *src_ptr, siz
     const int rem_epidx = gasnetc_in_auxseg(jobrank, src_ptr) ? -1 : loc.gex_ep_index;
     gasnetc_EP_t c_ep = (gasnetc_EP_t)gasneti_e_tm_to_i_ep(tm);
     int ret = FI_SUCCESS;
+    void *op_ctxt;
 
     gasnetc_assert_callback_eq(ctxt_ptr, gasnetc_ofi_handle_rdma);
 
@@ -2948,9 +2954,10 @@ gasnetc_rdma_get(void *dst_ptr, gex_TM_t tm, gex_Rank_t rank, void *src_ptr, siz
       // TODO: is there any advantage to using the first chunk to achieve "good" alignment?
       do {
         iop->initiated_get_cnt++;
+        op_ctxt = gasnetc_rdma_ctxt_to_op_ctxt(ctxt_ptr, 0);
         OFI_INJECT_RETRY(&gasnetc_ofi_locks.rdma_tx,
                          OFI_READ(c_ep, (void*)dst_addr, chunksz,
-                                  jobrank, rem_epidx, (void*)src_addr, ctxt_ptr, 0),
+                                  jobrank, rem_epidx, (void*)src_addr, op_ctxt),
                          OFI_POLL_ALL);
         GASNETC_OFI_CHECK_RET(ret, "fi_read failed");
 #if GASNET_DEBUG
@@ -2964,9 +2971,10 @@ gasnetc_rdma_get(void *dst_ptr, gex_TM_t tm, gex_Rank_t rank, void *src_ptr, siz
     }
 
     // Might honor GEX_FLAG_IMMEDIATE *only* if this is the first fi_read():
+    op_ctxt = gasnetc_rdma_ctxt_to_op_ctxt(ctxt_ptr, 0);
     OFI_INJECT_RETRY_IMM(&gasnetc_ofi_locks.rdma_tx,
                          OFI_READ(c_ep, (void*)dst_addr, remain,
-                                  jobrank, rem_epidx, (void*)src_addr, ctxt_ptr, 0),
+                                  jobrank, rem_epidx, (void*)src_addr, op_ctxt),
                          OFI_POLL_ALL, flags & GEX_FLAG_IMMEDIATE, out_imm);
 
     GASNETC_OFI_CHECK_RET(ret, "fi_read failed");
