@@ -1643,6 +1643,12 @@ int gasnetc_ofi_init(void)
       bufp = (gasnetc_ofi_send_ctxt_t*)((uintptr_t)bufp - GASNETC_SIZEOF_AM_BUF_T);
   }
 
+  // TODO: remove this work-around when provider is fixed
+  if (!strcmp(gasnetc_ofi_provider, "opx")) {
+      // fi_writemsg(... FI_INJECT) never generates a TX completion!?
+      max_buffered_write = 0;
+  }
+
   gasnetc_ofi_inited = 1;
   return GASNET_OK;
 }
