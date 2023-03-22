@@ -90,8 +90,6 @@ static int gasnetc_init( gex_Client_t            *client_p,
 
   gasneti_init_done = 1; /* enable early to allow tracing */
 
-  gasneti_freezeForDebugger();
-
   #if GASNET_DEBUG_VERBOSE
     gasneti_console_message("gasnetc_init","about to spawn..."); 
   #endif
@@ -112,6 +110,8 @@ static int gasnetc_init( gex_Client_t            *client_p,
 
   /* Must init timers after global env, and preferably before tracing */
   GASNETI_TICKS_INIT();
+
+  gasneti_freezeForDebugger(); // bug 4597: must come AFTER worker process creation
 
   /* Now enable tracing of all the following steps */
   gasneti_trace_init(argc, argv);
