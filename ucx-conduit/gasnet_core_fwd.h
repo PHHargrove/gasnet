@@ -161,6 +161,7 @@
   /* this can be used to add conduit-specific 
      statistical collection values (see gasnet_trace.h) */
 #define GASNETC_CONDUIT_STATS(CNT,VAL,TIME)  \
+      CNT(C, RECV_FILL, cnt) \
       CNT(C, BORROW_REPLY_BUF, cnt) \
       VAL(C, EXTRA_REPLY_BUF, depth)
 

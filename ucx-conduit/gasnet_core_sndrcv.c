@@ -999,6 +999,7 @@ void gasnetc_poll_snd(gasnetc_lock_mode_t lmode GASNETI_THREAD_FARG)
     // No free recv requests remain.
     // Since we cannot process receives here to recycle,
     // we must post more to prevent deadlock.
+    GASNETI_STAT_EVENT(C, RECV_FILL);
     gasnetc_recv_fill();
   }
   GASNETC_LOCK_RELEASE(lmode);
@@ -1102,6 +1103,7 @@ void gasnetc_poll_snd(gasnetc_lock_mode_t lmode GASNETI_THREAD_FARG)
     // No free recv requests remain.
     // Since we cannot process receives here to recycle,
     // we must post more to prevent deadlock.
+    GASNETI_STAT_EVENT(C, RECV_FILL);
     gasnetc_recv_fill();
   }
   GASNETC_LOCK_RELEASE(lmode);
