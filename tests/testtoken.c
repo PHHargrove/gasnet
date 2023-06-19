@@ -63,7 +63,7 @@ gex_TI_t supported = GEX_TI_ALL; // will remove bits for any queries which fail
 gasnett_atomic_t error_cnt = gasnett_atomic_init(0);
 gasnett_atomic_t reply_cnt = gasnett_atomic_init(0);
 
-static void common(gex_Token_t token, gex_Rank_t srcrank, int is_req, int category, void *fnptr)
+static void common(gex_Token_t token, gex_Rank_t srcrank, int is_req, int category, gex_AM_Fn_t fnptr)
 {
   gex_Token_Info_t info;
   gex_TI_t mask = gex_Token_Info(token, &info, GEX_TI_ALL);
@@ -151,11 +151,12 @@ int main(int argc, char **argv)
   prev_rank = (myrank + nranks - 1) % nranks;
 
   GASNET_Safe(gex_EP_RegisterHandlers(myep, htable, sizeof(htable)/sizeof(gex_AM_Entry_t)));
-  gex_Event_Wait(gex_Coll_BarrierNB(myteam,0));
 
   GASNET_Safe(gex_Segment_Attach(&mysegment, myteam, TEST_SEGSZ_REQUEST));
   gex_Event_Wait(gex_EP_QueryBoundSegmentNB(myteam, next_rank, &next_base, NULL, NULL, 0));
   gex_Event_Wait(gex_EP_QueryBoundSegmentNB(myteam, prev_rank, &prev_base, NULL, NULL, 0));
+
+  gex_Event_Wait(gex_Coll_BarrierNB(myteam,0));
 
   gex_AM_RequestShort1 (myteam, next_rank, hidx_SReq,                                    0, myrank);
   gex_AM_RequestMedium1(myteam, next_rank, hidx_MReq, NULL, 0,            GEX_EVENT_NOW, 0, myrank);
