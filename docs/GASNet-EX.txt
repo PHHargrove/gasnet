@@ -79,19 +79,22 @@
 // Clients who are incrementally adopting GASNet-EX may have a period of time
 // when they are using deprecated GASNet-1 calls (see below).  A process using
 // such deprecated calls must enable legacy support, which is done implicitly
-// when when a client calls gasnet_init() or explicitly when a client passes
-// the GEX_FLAG_USES_GASNET1 flag to gex_Client_Init().
+// when a process calls gasnet_init() or explicitly when a caller passes the
+// GEX_FLAG_USES_GASNET1 flag to gex_Client_Init().
 //
-// The following GASNet-1 APIs are deprecated, and their use when legacy support
-// has not been enabled yields undefined behavior.
+// The following functions from GASNet-1 have been deprecated in favor of new
+// GASNet-EX equivalents. These `gasnet_`-prefixed deprecated functions shall
+// only be invoked if legacy support has been enabled.
 // + gasnet_AMRequest*()
 // + gasnet_get*(), including bulk, non-bulk, value-based and VIS
 // + gasnet_put*(), including bulk, non-bulk, value-based and VIS
+// + gasnet_memset*()
 // NOTE: This list is subject to expansion as new GASNet-EX APIs are
 // implemented which displace less-capable GASNet-1 APIs.
 //
 // Note that gasnet_init()/gasnet_attach() may only be called once per process,
-// and currently only one client per process can use GASNet-1 APIs.
+// and currently only one client per process can use the deprecated GASNet-1
+// functions listed above.
 //
 #define GEX_FLAG_USES_GASNET1 ((gex_Flags_t)???)
 
