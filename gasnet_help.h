@@ -1125,7 +1125,7 @@ extern int gasnete_maxthreadidx;
 #if GASNET_DEBUG
   #define _GASNETI_CHECK_LEGACY(fnname, tm, flags) do { \
     if (((flags) & GASNETI_FLAG_G2EX_DEBUG) && !(tm)) { \
-      gasneti_fatalerror("gasnet_" fnname "*() calls require gasnet_attach() or GEX_FLAG_USES_GASNET1"); \
+      gasneti_fatalerror("gasnet_" fnname "*() calls require gasnet_attach() or gex_Client_Init(..., GEX_FLAG_USES_GASNET1)"); \
     } \
   } while (0)
 #else
