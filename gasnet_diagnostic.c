@@ -894,19 +894,15 @@ static void progressfn_reph(gex_Token_t token, void *buf, size_t nbytes) {
   gasneti_weakatomic_increment(&progressfn_rep_rcvd,0);
 }
 static void progressfn_tester(int *counter) {
+  const int max_runs = 100000; // bound total work injected and prevent counter overflow
   static int active = 0; /* protocol provides mutual exclusion & recursion protection */
   int iamactive = 0;
   gex_HSL_Lock(&pf_lock);
-    (*counter)++;
-    if (!active) { active = 1; iamactive = 1; }
+    if (!active && (*counter < max_runs)) { active = 1; iamactive = 1; (*counter)++; }
   gex_HSL_Unlock(&pf_lock);
   if (!iamactive) return;
 
   /* do some work that should be legal inside a progress fn */
-#if 0
-  if ((gasneti_weakatomic_read(&progressfn_req_sent,0) -
-       gasneti_weakatomic_read(&progressfn_rep_rcvd,0)) <= 128U)
-#endif
   { static int tmp;
     // The outer context in progressfns_test() is performing RMA operations
     // which reference only the bottom halves of our segment and of the
@@ -933,7 +929,9 @@ static void progressfn_tester(int *counter) {
       }
       pf_events[1] = gasnete_end_nbi_accessregion(0 GASNETI_THREAD_GET);
     }
-    if (gasneti_diag_havehandlers) {
+    if (gasneti_diag_havehandlers &&
+        ((gasneti_weakatomic_read(&progressfn_req_sent,0) -
+          gasneti_weakatomic_read(&progressfn_rep_rcvd,0)) <= 128U)) {
       const size_t max_sz = MIN(gex_AM_MaxRequestMedium(myteam, peer, GEX_EVENT_NOW, 0, 0),
                                 MIN(64*1024,region_len));
       for (size_t sz = 1; sz <= max_sz; sz = (sz < 64?sz*2:sz*8)) {
