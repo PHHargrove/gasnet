@@ -53,6 +53,7 @@ int iamsender = 0;
 int unitsMB = 0;
 int doputs = 1;
 int dogets = 1;
+int nbufs = 1;
 
 #if GASNET_HAVE_MK_CLASS_MULTIPLE
   static int use_loc_gpu = 0;
@@ -195,8 +196,15 @@ void bulk_test_nbi(int iters, int doalc) {GASNET_BEGIN_FUNCTION();
 		if (iamsender && doputs) {
 			/* measure the throughput of sending a message */
 			begin = TIME();
-			for (i = 0; i < iters; i++) {
+			if (nbufs > 1) {
+			    for (i = 0; i < iters; i++) {
+				void *loc_addr = (void*)((uintptr_t)msgbuf + max_payload * (i%nbufs));
+				gex_RMA_PutNBI(myteam, peerproc, tgtmem, loc_addr, payload, lc_opt, 0);
+			    }
+			} else {
+			    for (i = 0; i < iters; i++) {
 				gex_RMA_PutNBI(myteam, peerproc, tgtmem, msgbuf, payload, lc_opt, 0);
+			    }
 			}
 			gex_NBI_Wait(doalc ? GEX_EC_ALL : GEX_EC_PUT, 0);
 			end = TIME();
@@ -215,8 +223,15 @@ void bulk_test_nbi(int iters, int doalc) {GASNET_BEGIN_FUNCTION();
 		if (iamsender && dogets && !doalc) {
 			/* measure the throughput of receiving a message */
 			begin = TIME();
-			for (i = 0; i < iters; i++) {
-			    gex_RMA_GetNBI(myteam, msgbuf, peerproc, tgtmem, payload, 0);
+			if (nbufs > 1) {
+			    for (i = 0; i < iters; i++) {
+				void *loc_addr = (void*)((uintptr_t)msgbuf + max_payload * (i%nbufs));
+				gex_RMA_GetNBI(myteam, loc_addr, peerproc, tgtmem, payload, 0);
+			    }
+			} else {
+			    for (i = 0; i < iters; i++) {
+				gex_RMA_GetNBI(myteam, msgbuf, peerproc, tgtmem, payload, 0);
+			    }
 			}
 			gex_NBI_Wait(GEX_EC_GET,0);
 			end = TIME();
@@ -351,6 +366,10 @@ int main(int argc, char **argv)
         ++arg;
         if (argc > arg) { max_step = gasnett_parse_int(argv[arg], 1); arg++; }
         else help = 1;
+      } else if (!strcmp(argv[arg], "-nbufs")) {
+        ++arg;
+        if (argc > arg) { nbufs = atoi(argv[arg]); arg++; }
+        else help = 1;
 #if GASNET_HAVE_MK_CLASS_CUDA_UVA
       // UNDOCUMENTED
       } else if (!strcmp(argv[arg], "-cuda-uva")) {
@@ -395,6 +414,13 @@ int main(int argc, char **argv)
     if (!max_step) max_step = maxsz;
     if (!min_payload) min_payload = 16;
 
+    if (!insegment) {
+        if ((nbufs <= 0) || (nbufs > iters)) nbufs = iters;
+    } else if (nbufs) {
+        MSG0("WARNING: Ignoring '-nbufs N' without '-out'.");
+        nbufs = 1;
+    }
+
     /* get SPMD info (needed for segment size) */
     myproc = gex_TM_QueryRank(myteam);
     numprocs = gex_TM_QuerySize(myteam);
@@ -415,7 +441,10 @@ int main(int argc, char **argv)
                "   nodes communicate with each other, while all other nodes sit idle.\n"
                "  The '-minsz N' option sets the minimum transfer size tested (default is 16).\n"
                "  The '-max-step N' option selects the maximum step between transfer sizes,\n"
-               "    which by default advance by doubling until maxsz is reached.");
+               "    which by default advance by doubling until maxsz is reached.\n"
+               "  The '-nbufs N' option is valid only with '-out' and sets the number of\n"
+               "    distinct initiator-side buffers to cycle through (default is 1)."
+              );
     if (help || argc > arg) test_usage();
     
     max_payload = maxsz;
@@ -509,20 +538,22 @@ int main(int argc, char **argv)
            msgbuf = (void *) myseg;
 #endif
         } else {
-	    alloc = (void *) test_calloc(maxsz+PAGESZ,1); /* calloc prevents valgrind warnings */
+            alloc = (void *) test_calloc(maxsz*nbufs+PAGESZ,1); /* calloc prevents valgrind warnings */
             msgbuf = (void *) alignup(((uintptr_t)alloc), PAGESZ); /* ensure page alignment of base */
         }
         assert(((uintptr_t)msgbuf) % PAGESZ == 0);
 
-        if (myproc == 0) 
-          MSG("Running %i iterations of %s%s%sbulk %s%s%s with local addresses %sside the segment for sizes: %"PRIuPTR"...%"PRIuPTR"\n", 
+        if (myproc == 0) {
+          MSG("Running %i iterations of %s%s%sbulk %s%s%s with %d local address%s %sside the segment for sizes: %"PRIuPTR"...%"PRIuPTR"", 
           iters, 
           (firstlastmode ? "first/last " : ""),
           (fullduplexmode ? "full-duplex ": ""),
           (crossmachinemode ? "cross-machine ": ""),
           doputs?"put":"", (doputs&&dogets)?"/":"", dogets?"get":"",
+          nbufs, (nbufs>1)?"s":"",
           insegment ? "in" : "out", 
           (uintptr_t)min_payload, (uintptr_t)max_payload);
+        }
         BARRIER();
 
         if (iamsender && !skipwarmup) { /* pay some warm-up costs */
@@ -539,6 +570,11 @@ int main(int argc, char **argv)
            }
            gex_RMA_PutBlocking(myteam, peerproc, tgtmem, msgbuf, max_payload, 0);
            gex_RMA_GetBlocking(myteam, msgbuf, peerproc, tgtmem, max_payload, 0);
+           for (i = 0; i < nbufs; i++) {
+              void * loc_addr = (void*)((uintptr_t)msgbuf + max_payload * i);
+              gex_RMA_PutBlocking(myteam, peerproc, tgtmem, loc_addr, max_payload, 0);
+              gex_RMA_GetBlocking(myteam, loc_addr, peerproc, tgtmem, max_payload, 0);
+           }
            gex_Event_WaitAll(h, warm_iters*2, 0);
            gex_NBI_Wait(GEX_EC_ALL,0);
            test_free(h);
