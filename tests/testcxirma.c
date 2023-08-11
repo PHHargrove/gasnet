@@ -241,7 +241,9 @@ void do_wireup(void) {
 #if 1
   // Allocate segment using posix_memalign()
   // With this logic enabled, use of a `craype-hugepages*` environment
-  // has been seen to eliminate the performance issue.
+  // has been seen to eliminate the specific performance issue which
+  // this reduced test case is meant to reproduce.  It it unknown if
+  // the same is true of any other cases.
   SAFE_CALL( posix_memalign(&my_segment, 4096, segsize) );
 #else
   // Allocate segment using mmap(MAP_HUGETLB | MAP_ANONYMOUS)
