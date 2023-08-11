@@ -248,7 +248,8 @@ void do_wireup(void) {
 #else
   // Allocate segment using mmap(MAP_HUGETLB | MAP_ANONYMOUS)
   // NOTE: With this logic enabled, use of a `craype-hugepages*` environment
-  // does *NOT* eliminate the performance issue.
+  // does *NOT* eliminate the performance issue.  In fact, the result with a
+  // large segment is *slower* than seen with GASNet-EX's testlarge benchmark.
   {
     // We need to align the allocation size to at least a multiple of 4096 to
     // keep mmap() happy, but use a multiple of 2MiB to be hugepage-friendly.
