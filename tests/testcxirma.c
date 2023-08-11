@@ -37,6 +37,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/mman.h>
 
 //======================================================================
 //  START OF UTILITY MACROS TO IMPROVE READABILITY
@@ -237,7 +238,28 @@ void do_wireup(void) {
   *(uint64_t *)my_buffer = 0; // zero-initialize first eight bytes
 
   // Allocate and register a segment w/ permissions for RMA access
+#if 1
+  // Allocate segment using posix_memalign()
+  // With this logic enabled, use of a `craype-hugepages*` environment
+  // has been seen to eliminate the performance issue.
   SAFE_CALL( posix_memalign(&my_segment, 4096, segsize) );
+#else
+  // Allocate segment using mmap(MAP_HUGETLB | MAP_ANONYMOUS)
+  // NOTE: With this logic enabled, use of a `craype-hugepages*` environment
+  // does *NOT* eliminate the performance issue.
+  {
+    // We need to align the allocation size to at least a multiple of 4096 to
+    // keep mmap() happy, but use a multiple of 2MiB to be hugepage-friendly.
+    size_t align = 2*MiB;
+    size_t aligned_segsz = (segsize + align - 1) & ~align;
+    // NOTE: performance issue remains regardless of MAP_SHARED vs MAP_PRIVATE
+    const int mmap_flags = MAP_HUGETLB | MAP_ANONYMOUS | MAP_SHARED;
+    my_segment = mmap(NULL, aligned_segsz, (PROT_READ|PROT_WRITE), mmap_flags, -1, 0);
+    if (my_segment == MAP_FAILED) {
+      FATAL("mmap() failed %d (%s)", errno, strerror(errno));
+    }
+  }
+#endif
   *(uint64_t *)my_segment = 0; // zero-initialize first eight bytes
   {
     struct iovec iov = { my_segment, segsize };
