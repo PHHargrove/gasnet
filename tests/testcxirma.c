@@ -239,17 +239,40 @@ void do_wireup(void) {
 
   // Allocate and register a segment w/ permissions for RMA access
 #if 1
-  // Allocate segment using posix_memalign()
+  // Option 1: Allocate segment using posix_memalign()
   // With this logic enabled, use of a `craype-hugepages*` environment
   // has been seen to eliminate the specific performance issue which
   // this reduced test case is meant to reproduce.  It it unknown if
   // the same is true of any other cases.
+  if (!rank) fprintf(stderr, "Using segment allocation option 1\n");
   SAFE_CALL( posix_memalign(&my_segment, 4096, segsize) );
-#else
-  // Allocate segment using mmap(MAP_HUGETLB | MAP_ANONYMOUS)
+#elif 0
+  // Option 2: Allocate 2MiB followed by segment, both using posix_memalign()
   // NOTE: With this logic enabled, use of a `craype-hugepages*` environment
   // does *NOT* eliminate the performance issue.  In fact, the result with a
   // large segment is *slower* than seen with GASNet-EX's testlarge benchmark.
+  // This is despite differing from Option 1 by a single 2MiB allocation!
+  if (!rank) fprintf(stderr, "Using segment allocation option 2\n");
+  void *unused_ptr;
+  SAFE_CALL( posix_memalign(&unused_ptr, 2*MiB, 2*MiB) );
+  SAFE_CALL( posix_memalign(&my_segment, 4096, segsize) );
+  free(unused_ptr);
+#elif 0
+  // Option 3: malloc(2MiB), followed by segment via posix_memalign()
+  // NOTE: With this logic enabled, use of a `craype-hugepages*` environment
+  // does *NOT* eliminate the performance issue.  In fact, the result with a
+  // large segment is *slower* than seen with GASNet-EX's testlarge benchmark.
+  // This is despite differing from Option 1 by a single 2MiB allocation!
+  if (!rank) fprintf(stderr, "Using segment allocation option 3\n");
+  void *unused_ptr = malloc(2*MiB);
+  SAFE_CALL( posix_memalign(&my_segment, 4096, segsize) );
+  free(unused_ptr);
+#else
+  // Option 4: Allocate segment using mmap(MAP_HUGETLB | MAP_ANONYMOUS)
+  // NOTE: With this logic enabled, use of a `craype-hugepages*` environment
+  // does *NOT* eliminate the performance issue.  In fact, the result with a
+  // large segment is *slower* than seen with GASNet-EX's testlarge benchmark.
+  if (!rank) fprintf(stderr, "Using segment allocation option 4\n");
   {
     // We need to align the allocation size to at least a multiple of 4096 to
     // keep mmap() happy, but use a multiple of 2MiB to be hugepage-friendly.
