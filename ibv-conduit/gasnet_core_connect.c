@@ -578,7 +578,7 @@ gasnetc_setup_ports(gasnetc_conn_info_t *conn_info)
 }
 
 /* Create and destroy QPs to determine the inline data limit */
-static void
+void
 gasnetc_check_inline_limit(int port_num, int send_wr)
 {
   const gasnetc_port_info_t *port = &gasnetc_port_tbl[port_num];
@@ -2439,7 +2439,7 @@ gasnetc_connect_init(gasnetc_EP_t ep0)
 {
   int fully_connected = 0;
 
-  /* Allocate node->cep lookup table */
+  // Allocate node->cep lookup table if needed
   { size_t size = gasneti_nodes*sizeof(gasnetc_cep_t *);
     if (! ep0->cep_table) {
       ep0->cep_table = (gasnetc_cep_t **)
@@ -2471,31 +2471,6 @@ gasnetc_connect_init(gasnetc_EP_t ep0)
     }
   }
 #endif
-
-  /* Determine the inline data limit given the QP parameters we will use. */
-  {
-    const size_t orig_inline_limit = gasnetc_inline_limit;
-    int i;
- 
-    for (i = 0; i < gasnetc_num_ports; ++i) {
-      gasnetc_check_inline_limit(i, gasnetc_op_oust_pp);
-      if (gasnetc_use_srq) {
-        /* Corresponds to a Request QP */
-        gasnetc_check_inline_limit(i, gasnetc_am_oust_pp);
-      }
-    }
-
-    /* warn on reduced inline limit */
-    if ((orig_inline_limit != (size_t)-1) && (gasnetc_inline_limit < orig_inline_limit)) {
-      if (gasnet_getenv("GASNET_INLINESEND_LIMIT") != NULL)
-        gasneti_console_message("WARNING",
-             "Requested GASNET_INLINESEND_LIMIT %d reduced to HCA limit %d",
-                (int)orig_inline_limit, (int)gasnetc_inline_limit);
-    }
-
-    GASNETI_TRACE_PRINTF(I, ("Final/effective GASNET_INLINESEND_LIMIT = %d", (int)gasnetc_inline_limit));
-    gasnetc_sndrcv_init_inline();
-  }
 
   /* Create static connections unless disabled */
   if (gasnetc_conn_static) {
