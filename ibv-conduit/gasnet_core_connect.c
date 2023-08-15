@@ -79,8 +79,6 @@ typedef struct {
 #endif
 
 
-static int gasnetc_create_dct_qps(gasnetc_EP_t ep, size_t num_dc);
-
 const char *gasnetc_connectfile_in  = NULL;
 const char *gasnetc_connectfile_out = NULL;
 
@@ -2463,13 +2461,6 @@ gasnetc_connect_static(gasnetc_EP_t ep)
     (void)gasnetc_qp_init2rtr(&conn_info[node], active);
   }
 
-#if GASNETC_IBV_DC
-  if (gasnetc_use_dc) {
-    size_t num_dc = 4; // WIP - environment knob
-    gasneti_assert_zeroret( gasnetc_create_dct_qps(ep, num_dc) );
-  }
-#endif
-
   /* QPs must reach RTR before we may continue to RTS
      (not strictly necessary in practice as long as we don't try to send until peers do.) */
   gasneti_bootstrapBarrier();
@@ -2862,7 +2853,7 @@ size_t gasnetc_dct_per_qpi, gasnetc_dct_per_node;
 uint32_t *gasnetc_my_dctns = NULL;
 uint32_t *gasnetc_all_dctns = NULL;
 
-// Create (at least) `2*num_dc` DC Target (DCT) QPs per port.
+// Create (at least) `2*num_dct` DC Target (DCT) QPs per port.
 //
 // In the worst case we need two per ingress port to be sure there is one a
 // reachable from every peer egress port (and then it is only of genuine concern
@@ -2880,10 +2871,10 @@ uint32_t *gasnetc_all_dctns = NULL;
 // used with ibv-conduit's own dynamic connections (if that even makes any
 // sense).
 static int
-gasnetc_create_dct_qps(gasnetc_EP_t ep, size_t num_dc)
+gasnetc_create_dct_qps(gasnetc_EP_t ep, size_t num_dct)
 {
-  gasnetc_dct_per_node = num_dc * gasnetc_alloc_qps;
-  gasnetc_dct_per_qpi = num_dc;
+  gasnetc_dct_per_node = num_dct * gasnetc_alloc_qps;
+  gasnetc_dct_per_qpi = num_dct;
 
   size_t local_count = gasnetc_dct_per_node;
   gasneti_assert(gasnetc_my_dct_qps == NULL);
@@ -2923,7 +2914,7 @@ gasnetc_create_dct_qps(gasnetc_EP_t ep, size_t num_dc)
     attr.path_mtu = gasnetc_max_mtu ? MIN(gasnetc_max_mtu, port->port.active_mtu)
                                     : port->port.active_mtu;
 
-    for (int i = 0; i < num_dc; ++i, ++idx) {
+    for (int i = 0; i < num_dct; ++i, ++idx) {
       struct ibv_qp *qp =  mlx5dv_create_qp(hca->handle, &init_attr, &dv_attr);
       enum ibv_qp_attr_mask mask;
       int rc;
@@ -2954,6 +2945,16 @@ gasnetc_create_dct_qps(gasnetc_EP_t ep, size_t num_dc)
   gasnetc_all_dctns = gasneti_malloc(global_count * sizeof(uint32_t));
   gasneti_leak(gasnetc_all_dctns);
   gasneti_bootstrapExchange(gasnetc_my_dctns, local_count * sizeof(uint32_t), gasnetc_all_dctns);
+
+  return GASNET_OK;
+}
+
+int gasnetc_dc_init(gasnetc_EP_t ep0)
+{
+  size_t num_dct = 4; // WIP - environment knob
+  gasneti_assert_zeroret( gasnetc_create_dct_qps(ep0, num_dct) );
+
+  // WIP - move DCI creation here?  What about inline limit?
 
   return GASNET_OK;
 }

@@ -2296,6 +2296,16 @@ static int gasnetc_init( gex_Client_t            *client_p,
     return i;
   }
 
+#if GASNETC_IBV_DC
+  /* allocate/initialize DC resources, if any */
+  if (gasnetc_use_dc) {
+    i = gasnetc_dc_init(gasnetc_ep0);
+    if (i != GASNET_OK) {
+      return i;
+    }
+  }
+#endif
+
   /* Establish static connections and prepare for dynamic ones */
   i = gasnetc_connect_init(gasnetc_ep0);
   if (i != GASNET_OK) {
