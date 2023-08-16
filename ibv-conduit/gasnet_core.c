@@ -1960,15 +1960,6 @@ static int gasnetc_init( gex_Client_t            *client_p,
               "         To suppress this message set environment variable\n"
               "         GASNET_USE_XRC=0 or reconfigure with --disable-ibv-xrc.\n"
              );
-  } else if (gasnetc_use_xrc && gasnetc_use_dc) {
-    gasnetc_use_xrc = 0;
-    gasneti_console0_message(
-              "WARNING","GASNET_USE_XRC and GASNET_USE_DC are both requested but\n"
-              "         are mutually exclusive.  XRC has been disabled in favor of DC.\n"
-              "         To suppress this message, set either environment variable\n"
-              "         GASNET_USE_XRC=0 or GASNET_USE_DC=0.  Alternatively, one\n"
-              "         may reconfigure using --disable-ibv-xrc or --disable-ibv-dc.\n"
-             );
   } else if (gasnetc_use_xrc) {
     GASNETC_FOR_ALL_HCA(hca) {
       if (0 == (hca->hca_cap.device_cap_flags & IBV_DEVICE_XRC)) {
@@ -2034,6 +2025,18 @@ static int gasnetc_init( gex_Client_t            *client_p,
     GASNETI_TRACE_PRINTF(I, ("Ignoring GASNET_USE_DC in a single-process job"));
   }
 #endif // GASNETC_IBV_DC
+#if GASNETC_IBV_XRC && GASNETC_IBV_DC
+  if (gasnetc_use_xrc && gasnetc_use_dc) {
+    gasnetc_use_xrc = 0;
+    gasneti_console0_message(
+              "WARNING","GASNET_USE_XRC and GASNET_USE_DC are both requested but\n"
+              "         are mutually exclusive.  XRC has been disabled in favor of DC.\n"
+              "         To suppress this message, set either environment variable\n"
+              "         GASNET_USE_XRC=0 or GASNET_USE_DC=0.  Alternatively, one\n"
+              "         may reconfigure using --disable-ibv-xrc or --disable-ibv-dc.\n"
+             );
+  }
+#endif
 
   // Detect configuration differences (likely to be) due to heterogeneous clusters
   {
