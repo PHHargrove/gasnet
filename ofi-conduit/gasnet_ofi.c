@@ -19,6 +19,14 @@
 #include <rdma/fi_cm.h>
 #include <rdma/fi_errno.h>
 
+// WIP - configure probe instead of __has_include
+#ifdef __has_include
+  #if __has_include(<rdma/fi_cxi_ext.h>)
+    #include <stdbool.h>
+    #include <rdma/fi_cxi_ext.h>
+  #endif
+#endif
+
 #if HAVE_SYS_UIO_H
 #include <sys/uio.h> /* For struct iovec */
 #endif
@@ -223,21 +231,32 @@ uintptr_t gasnetc_remote_addr(gex_Rank_t jobrank, void *addr, int rem_epidx)
 }
 GASNETI_PUREP(gasnetc_remote_addr)
 
+// WIP - any cases this should optimize away to NULL?
+GASNETI_INLINE(gasnetc_local_desc) GASNETI_PURE
+void * gasnetc_local_desc(gasnetc_EP_t c_ep, const void *ptr, size_t nbytes) {
+  gasneti_Segment_t i_segment = c_ep->_segment;
+  if (i_segment && _gasneti_in_segment_t(ptr, nbytes, gasneti_export_segment(i_segment))) {
+    return fi_mr_desc(c_ep->mrfd);
+  } else {
+    return NULL;
+  }
+}
+GASNETI_PUREP(gasnetc_local_desc)
+
 // Statements which launch a fi_write or fi_read, setting "ret"
-#define OFI_RMA(rw, c_ep, loc_addr, nbytes, jobrank, rem_epidx, rem_addr, ctxt_ptr, aux) \
+#define OFI_RMA(rw, desc, loc_addr, nbytes, jobrank, rem_epidx, rem_addr, ctxt_ptr, aux) \
     do { \
         fi_addr_t _peer = gasnetc_fabric_addr(RDMA, jobrank); \
         uintptr_t _addr = gasnetc_remote_addr(jobrank, rem_addr, rem_epidx); \
         uint64_t _key   = gasnetc_remote_key(jobrank, rem_epidx); \
         void *_op_ctxt  = gasnetc_rdma_ctxt_to_op_ctxt(ctxt_ptr, aux); \
-        void *_desc     = gasneti_i_segment_kind_is_host(c_ep->_segment) ? NULL: fi_mr_desc(c_ep->mrfd); \
         struct fid_ep *_ofi_ep = gasnetc_ofi_rdma_epfd; /* TODO: ep isolation */ \
-        ret = fi_##rw(_ofi_ep, loc_addr, nbytes, _desc, _peer, _addr, _key, _op_ctxt); \
+        ret = fi_##rw(_ofi_ep, loc_addr, nbytes, desc, _peer, _addr, _key, _op_ctxt); \
     } while(0)
-#define OFI_WRITE(c_ep, src_addr, nbytes, jobrank, rem_epidx, dest_addr, ctxt_ptr, aux) \
-        OFI_RMA(write, c_ep, src_addr, nbytes, jobrank, rem_epidx, dest_addr, ctxt_ptr, aux)
-#define OFI_READ(c_ep, dest_addr, nbytes, jobrank, rem_epidx, src_addr, ctxt_ptr, aux) \
-        OFI_RMA(read, c_ep, dest_addr, nbytes, jobrank, rem_epidx, src_addr, ctxt_ptr, aux)
+#define OFI_WRITE(desc, src_addr, nbytes, jobrank, rem_epidx, dest_addr, ctxt_ptr, aux) \
+        OFI_RMA(write, desc, src_addr, nbytes, jobrank, rem_epidx, dest_addr, ctxt_ptr, aux)
+#define OFI_READ(desc, dest_addr, nbytes, jobrank, rem_epidx, src_addr, ctxt_ptr, aux) \
+        OFI_RMA(read, desc, dest_addr, nbytes, jobrank, rem_epidx, src_addr, ctxt_ptr, aux)
 
 /* Poll periodically on RMA injection to ensure efficient progress.
  * This is a data race, but it is safe as polling here is unnecessary, it
@@ -1213,6 +1232,19 @@ int gasnetc_ofi_init(void)
 
   // Now read user-provided environment settings
   gasnetc_ofi_read_env_vars(gasnetc_ofi_provider, gasnetc_ofi_domain);
+
+#ifdef FI_CXI_DOM_OPS_3
+  if (1) { // WIP - env var control to disable hybrid mode
+    struct fi_cxi_dom_ops *ops;
+    ret = fi_open_ops(&gasnetc_ofi_domainfd->fid, FI_CXI_DOM_OPS_3, 0, (void **)&ops, NULL);
+    if (FI_SUCCESS == ret) {
+      ret = ops->enable_hybrid_mr_desc(&gasnetc_ofi_domainfd->fid, true);
+      if (FI_SUCCESS == ret) {
+        GASNETI_TRACE_PRINTF(I, ("CXI hybrid registration mode enabled"));
+      }
+    }
+  }
+#endif
 
   /* Allocate a new active endpoint for RDMA operations */
   hints->caps = FI_RMA;
@@ -2443,11 +2475,11 @@ int gasnetc_ofi_am_send_long(gex_Rank_t dest, gex_AM_Index_t handler,
         lam_ctxt.complete = 0;
         lam_ctxt.callback = gasnetc_ofi_handle_blocking;
 
-        // TODO: following line is only correct until AM supported on non-primordial EP
+        // TODO: following two lines are only correct until AM supported on non-primordial EP
         const int rem_epidx = gasnetc_in_auxseg(dest, dest_addr) ? -1 : 0;
-        gasnetc_EP_t c_ep = (gasnetc_EP_t)gasneti_import_ep(gasneti_THUNK_EP);
+        void *desc = NULL;
         OFI_INJECT_RETRY(&gasnetc_ofi_locks.rdma_tx,
-                         OFI_WRITE(c_ep, source_addr, nbytes,
+                         OFI_WRITE(desc, source_addr, nbytes,
                                    dest, rem_epidx, dest_addr, &lam_ctxt, 0),
                          poll_type);
         GASNETC_OFI_CHECK_RET(ret, "fi_write failed for AM long");
@@ -2613,8 +2645,9 @@ out_imm_inject:
             gasneti_lifo_push(&bbuf_ctxt->bbuf_list, buf_container);
             memcpy(buf_container->buf, (void*)src_ptr, bytes_to_copy);
 
+            void *desc = NULL;  // WIP - registration of bounce buffers?
             OFI_INJECT_RETRY_IMM(&gasnetc_ofi_locks.rdma_tx,
-                                 OFI_WRITE(c_ep, buf_container->buf, bytes_to_copy,
+                                 OFI_WRITE(desc, buf_container->buf, bytes_to_copy,
                                            jobrank, rem_epidx, (void *)dest_ptr, bbuf_ctxt, 0),
                                  OFI_POLL_ALL, imm, out_imm_bounce);
             imm = 0; // no going back once first buffer has been written
@@ -2682,6 +2715,7 @@ gasnetc_rdma_put(gex_TM_t tm, gex_Rank_t rank, void *dst_ptr, void *src_ptr, siz
     const gex_Rank_t jobrank = loc.gex_rank;
     const int rem_epidx = gasnetc_in_auxseg(jobrank, dst_ptr) ? -1 : loc.gex_ep_index;
     gasnetc_EP_t c_ep = (gasnetc_EP_t)gasneti_e_tm_to_i_ep(tm);
+    void *desc = gasnetc_local_desc(c_ep, src_ptr, nbytes);
     int ret = FI_SUCCESS;
 
     gasnetc_assert_callback_eq(ctxt_ptr, gasnetc_ofi_handle_rdma);
@@ -2707,7 +2741,7 @@ gasnetc_rdma_put(gex_TM_t tm, gex_Rank_t rank, void *dst_ptr, void *src_ptr, siz
         iop->initiated_put_cnt++;
         if (alc) GASNETE_IOP_LC_START(iop);
         OFI_INJECT_RETRY(&gasnetc_ofi_locks.rdma_tx,
-                         OFI_WRITE(c_ep, (void*)src_addr, chunksz,
+                         OFI_WRITE(desc, (void*)src_addr, chunksz,
                                    jobrank, rem_epidx, (void*)dst_addr, ctxt_ptr, alc),
                          OFI_POLL_ALL);
         GASNETC_OFI_CHECK_RET(ret, "fi_write failed");
@@ -2723,7 +2757,7 @@ gasnetc_rdma_put(gex_TM_t tm, gex_Rank_t rank, void *dst_ptr, void *src_ptr, siz
 
     // Might honor GEX_FLAG_IMMEDIATE *only* if this is the first fi_write():
     OFI_INJECT_RETRY_IMM(&gasnetc_ofi_locks.rdma_tx,
-                         OFI_WRITE(c_ep, (void*)src_addr, remain,
+                         OFI_WRITE(desc, (void*)src_addr, remain,
                                    jobrank, rem_epidx, (void*)dst_addr, ctxt_ptr, alc),
                          OFI_POLL_ALL, flags & GEX_FLAG_IMMEDIATE, out_imm);
     GASNETC_OFI_CHECK_RET(ret, "fi_write failed");
@@ -2746,6 +2780,7 @@ gasnetc_rdma_get(void *dst_ptr, gex_TM_t tm, gex_Rank_t rank, void *src_ptr, siz
     const gex_Rank_t jobrank = loc.gex_rank;
     const int rem_epidx = gasnetc_in_auxseg(jobrank, src_ptr) ? -1 : loc.gex_ep_index;
     gasnetc_EP_t c_ep = (gasnetc_EP_t)gasneti_e_tm_to_i_ep(tm);
+    void *desc = gasnetc_local_desc(c_ep, src_ptr, nbytes);
     int ret = FI_SUCCESS;
 
     gasnetc_assert_callback_eq(ctxt_ptr, gasnetc_ofi_handle_rdma);
@@ -2769,7 +2804,7 @@ gasnetc_rdma_get(void *dst_ptr, gex_TM_t tm, gex_Rank_t rank, void *src_ptr, siz
       do {
         iop->initiated_get_cnt++;
         OFI_INJECT_RETRY(&gasnetc_ofi_locks.rdma_tx,
-                         OFI_READ(c_ep, (void*)dst_addr, chunksz,
+                         OFI_READ(desc, (void*)dst_addr, chunksz,
                                   jobrank, rem_epidx, (void*)src_addr, ctxt_ptr, 0),
                          OFI_POLL_ALL);
         GASNETC_OFI_CHECK_RET(ret, "fi_read failed");
@@ -2785,7 +2820,7 @@ gasnetc_rdma_get(void *dst_ptr, gex_TM_t tm, gex_Rank_t rank, void *src_ptr, siz
 
     // Might honor GEX_FLAG_IMMEDIATE *only* if this is the first fi_read():
     OFI_INJECT_RETRY_IMM(&gasnetc_ofi_locks.rdma_tx,
-                         OFI_READ(c_ep, (void*)dst_addr, remain,
+                         OFI_READ(desc, (void*)dst_addr, remain,
                                   jobrank, rem_epidx, (void*)src_addr, ctxt_ptr, 0),
                          OFI_POLL_ALL, flags & GEX_FLAG_IMMEDIATE, out_imm);
 
