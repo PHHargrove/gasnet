@@ -2949,6 +2949,60 @@ gasnetc_create_dct_qps(gasnetc_EP_t ep, size_t num_dct)
   return GASNET_OK;
 }
 
+#if 0
+gasnetc_create_dci_qps(size_t num_dci)
+{
+    gasnetc_qp_init_attr  qp_init_attr;
+    const int                   max_recv_wr = gasnetc_use_srq ? 0 : gasnetc_am_oust_pp * 2;
+    int                         max_send_wr = gasnetc_op_oust_pp;
+
+    qp_init_attr.cap.max_inline_data = gasnetc_inline_limit;
+    qp_init_attr.cap.max_send_wr     = max_send_wr;
+    qp_init_attr.cap.max_recv_wr     = max_recv_wr;
+    qp_init_attr.cap.max_send_sge    = GASNETC_MAX_SEND_SGE;
+    qp_init_attr.cap.max_recv_sge    = 1;
+    qp_init_attr.qp_context          = NULL; /* XXX: Can/should we use this? */
+    qp_init_attr.qp_type             = IBV_QPT_RC;
+    qp_init_attr.sq_sig_all          = !GASNETC_USE_SEND_SIGNALLED;
+    qp_init_attr.srq                 = NULL;
+
+
+    for (int i = 0; i < GASNETC_MAX_DCI; ++i) {
+      // WIP - NOT VALID FOR MULTI-HCA
+      gasnetc_hca_t *hca = &gasnetc_hca[0];
+
+      qp_init_attr.send_cq         = hca->snd_cq;
+      qp_init_attr.recv_cq         = hca->rcv_cq;
+//WIP - fix this mess
+//WIP - need per-channel QPs, REQ and REP
+
+        if (GASNETC_QPI_IS_REQ(qpi)) {
+          qp_init_attr.srq = hca->rqst_srq;
+          qp_init_attr.cap.max_send_wr = gasnetc_am_oust_pp;
+          qp_init_attr.cap.max_send_sge = GASNETC_MAX_SEND_SGE;
+        } else {
+          qp_init_attr.srq = hca->repl_srq;
+          qp_init_attr.cap.max_send_wr = gasnetc_op_oust_pp;
+          qp_init_attr.cap.max_send_sge = GASNETC_MAX_SEND_SGE;
+        }
+        cep->srq = qp_init_attr.srq;
+        max_send_wr = qp_init_attr.cap.max_send_wr;
+  
+      struct ibv_qp * hndl = gasnetc_create_qp_ex(hca, &qp_init_attr);
+      GASNETC_IBV_CHECK_PTR(hndl, "from ibv_create_qp(DCI)");
+
+      gasnetc_dci_hndl[i] = gasnetc_create_qp_ex(hca, &qp_init_attr);
+      gasnetc_dci_state[i] = IBV_QPS_RESET;
+
+      gasneti_assert(qp_init_attr.cap.max_recv_wr >= max_recv_wr);
+      gasneti_assert(qp_init_attr.cap.max_send_wr >= max_send_wr);
+      gasneti_assert(qp_init_attr.cap.max_inline_data >= gasnetc_inline_limit);
+   }
+
+    return GASNET_OK;
+}
+#endif
+
 int gasnetc_dc_init(gasnetc_EP_t ep0)
 {
   size_t num_dct = 4; // WIP - environment knob
