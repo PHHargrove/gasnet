@@ -761,6 +761,7 @@ GASNET_TRY_CACHE_RUN([for working C99 printf specifiers],c99_format,
   ],[ have_c99_format=1 ],[ have_c99_format=0 ])
 AC_DEFINE_UNQUOTED(HAVE_C99_FORMAT_SPECIFIERS,[$have_c99_format])
 
+dnl QQQ start of GASNET_SET_MISCFLAGS which includes ABI flags
 dnl GASNET_SET_MISCFLAGS(CC|MPI_CC, compliancecode)
 AC_DEFUN([GASNET_SET_MISCFLAGS],[
 # Set MISC_CFLAGS: flags to be used by all C compilations, regardless of optimization/debugging level
@@ -1073,6 +1074,7 @@ case "$CC_FAMILY" in
 esac
 AC_SUBST(KEEPTMP_CFLAGS)      # flags to preserve intermediate file (,i, .s, etc.)
 
+dnl QQQ RPATH
 # Global opt-in to (semi-)automatic RPATH support
 GASNET_IF_ENABLED(rpath,
   [Build GASNet libraries using RPATH for dependent libraries (disabled by default)],
@@ -1674,6 +1676,7 @@ AC_DEFUN([GASNET_PACKAGE_CFLAGS],[
   GASNET_FUN_END([$0])
 ])
 
+dnl QQQ defun(GASNET_PACKAGE_LDFLAGS)
 dnl GASNET_PACKAGE_LDFLAGS(PREFIX, libnames, [extra flags], [noenv])
 dnl   Construct [PREFIX]_LDFLAGS to contain the proper "-L$[PREFIX]_HOME/lib{,32,64}" plus [extra flags]
 dnl   Optionally includes an RPATH option, based on --enable-rpath and --(en|dis)able-[PREFIX]-rpath.
@@ -3094,6 +3097,7 @@ AC_DEFUN([GASNET_LINKHELPER_TRY_RUN],[GASNET_LINKHELPER_TRY_INNER([RUN_WITHCC],$
 # C++ configuration
   AC_LANG_SAVE
 
+dnl QQQ start of MISC_CXXFLAGS
   MISC_CXXFLAGS="" # start with a clean slate
   # Note: autoconf uses CPPFLAGS for both C and C++, so there is NO CXXCPPFLAGS
 
