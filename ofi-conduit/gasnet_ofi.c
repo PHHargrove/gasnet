@@ -616,6 +616,13 @@ static void gasnetc_ofi_read_env_vars(const char *provider, const char *domain) 
     const char* num_multirecv_buffs_env = "GASNET_OFI_NUM_RECEIVE_BUFFS";
     const char* multirecv_size_env = "GASNET_OFI_RECEIVE_BUFF_SIZE";
     const char *env_val = gasnet_getenv(multirecv_size_env);
+
+    // TODO: remove this work-around when provider is fixed
+    if (!strcmp(gasnetc_ofi_provider, "opx")) {
+        // SIGSEGV in fi_setopt(..., FI_OPT_ENDPOINT, FI_OPT_MIN_MULTI_RECV, ...)
+        env_val = "RECV";
+    }
+
     if (! gasneti_strcasecmp("SINGLE", env_val) || ! gasneti_strcasecmp("RECV", env_val)) {
         const char *value = gasneti_dynsprintf("%s => %d", env_val, (int)min_multi_recv);
         gasneti_envstr_display(multirecv_size_env, value, 0);
