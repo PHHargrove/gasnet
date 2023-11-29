@@ -198,13 +198,12 @@ int main(int argc, char **argv)
 
         for (uint32_t j = 0; j < deviceCount; ++j) {
           ze_device_handle_t device = deviceArray[j];
-          ze_device_properties_t deviceProperties = {0,};
+          ze_device_properties_t deviceProperties = {ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES,};
           check_zecall( zeDeviceGetProperties(device, &deviceProperties) );
           if (deviceProperties.type != ZE_DEVICE_TYPE_GPU) continue;
 
           if (count < maxGPUs) {
-            ze_context_desc_t cDesc = {0,};
-            cDesc.stype = ZE_STRUCTURE_TYPE_CONTEXT_DESC;
+            ze_context_desc_t cDesc = {ZE_STRUCTURE_TYPE_CONTEXT_DESC,};
             check_zecall( zeContextCreate(driver, &cDesc, &myGPUs[count].context) );
             myGPUs[count].device = device;
           }
@@ -239,7 +238,7 @@ int main(int argc, char **argv)
       uint8_t *client_gpu1 = NULL;
       uint8_t *client_gpu2 = NULL;
       if (client_segment) {
-        ze_device_mem_alloc_desc_t aDesc = {0,};
+        ze_device_mem_alloc_desc_t aDesc = {ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC,};
         check_zecall( zeMemAllocDevice( context, &aDesc, TEST_SEGSZ_REQUEST, 64, device, (void**)&client_gpu1 ) );
         check_zecall( zeMemAllocDevice( context, &aDesc, TEST_SEGSZ_REQUEST, 64, device, (void**)&client_gpu2 ) );
       }

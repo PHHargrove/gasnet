@@ -91,7 +91,7 @@ static int gasneti_MK_Segment_Create_ze(
 
   if (addr) { // Client-allocated
     // check that addr properties match the kind
-    ze_memory_allocation_properties_t props = {0,};
+    ze_memory_allocation_properties_t props = {ZE_STRUCTURE_TYPE_MEMORY_ALLOCATION_PROPERTIES,};
     ze_device_handle_t device = NULL;
     gasneti_check_zecall( zeMemGetAllocProperties(kind->context, addr, &props, &device) );
     if (props.type == ZE_MEMORY_TYPE_UNKNOWN) {
@@ -103,7 +103,7 @@ static int gasneti_MK_Segment_Create_ze(
     }
   } else { // GASNet-allocated
     // WIP - error handling, including OOM and device's maxium allocation size
-    ze_device_mem_alloc_desc_t allocDesc = {0,};
+    ze_device_mem_alloc_desc_t allocDesc = {ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC,};
     allocDesc.ordinal = kind->ordinal;
     result = zeMemAllocDevice( kind->context, &allocDesc, size, 0, kind->device, &addr );
     switch (result) {
@@ -218,7 +218,7 @@ int gasneti_mk_ze_device_ordinal(void *device_handle_arg)
 
       // Only count GPU devices in our enumeration
       // This is needed because, in general, we don't control the zeInit() arguments
-      ze_device_properties_t deviceProperties = {0,};
+      ze_device_properties_t deviceProperties = {ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES,};
       gasneti_check_zecall( zeDeviceGetProperties(currDevice, &deviceProperties) );
       if (deviceProperties.type != ZE_DEVICE_TYPE_GPU) continue;
 
