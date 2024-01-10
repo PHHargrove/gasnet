@@ -1689,6 +1689,9 @@ void gasnetc_ofi_exit(void)
     //gasneti_munmap(am_buffers_region_start, am_buffers_region_size);
   #endif
 
+  if (!strcmp(gasnetc_ofi_provider, "opx"))
+      return; // Work around failures to fi_close() the MSG endpoints
+
   if(fi_close(&gasnetc_ofi_reply_epfd->fid)!=FI_SUCCESS) {
     gasneti_fatalerror("close am reply epfd failed\n");
   }
