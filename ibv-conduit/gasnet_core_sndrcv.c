@@ -1740,6 +1740,18 @@ void gasnetc_snd_post_common(gasnetc_sreq_t *sreq, struct ibv_send_wr *sr_desc, 
 #if GASNETC_USE_RCV_THREAD
 static void gasnetc_rcv_thread(struct ibv_wc *comp_p, void *arg)
 {
+  static int first = 1;
+  if_pf (first) {
+    int pu = gasneti_getenv_int_withdefault("GASNET_RCV_THREAD_PIN", -1, 0);
+    if (pu >= 0) {
+      GASNETI_TRACE_PRINTF(I, ("Receive progress thread pinned to pu #%d", pu));
+      gasneti_set_affinity(pu);
+    } else {
+      GASNETI_TRACE_PRINTF(I, ("Receive progress thread not pinned"));
+    }
+    first = 0;
+  }
+
   gasnetc_hca_t * const hca = (gasnetc_hca_t *)arg;
   gasnetc_rbuf_t ** const spare_p = &hca->rcv_thread_priv;
 
@@ -1783,6 +1795,18 @@ static void gasnetc_rcv_thread(struct ibv_wc *comp_p, void *arg)
 #if GASNETC_USE_SND_THREAD
 static void gasnetc_snd_thread(struct ibv_wc *comp_p, void *arg)
 {
+  static int first = 1;
+  if_pf (first) {
+    int pu = gasneti_getenv_int_withdefault("GASNET_SND_THREAD_PIN", -1, 0);
+    if (pu >= 0) {
+      GASNETI_TRACE_PRINTF(I, ("Send progress thread pinned to pu #%d", pu));
+      gasneti_set_affinity(pu);
+    } else {
+      GASNETI_TRACE_PRINTF(I, ("Send progress thread not pinned"));
+    }
+    first = 0;
+  }
+
   gasnetc_hca_t * const hca = (gasnetc_hca_t *)arg;
 
   gasneti_assert(gasnetc_use_snd_thread);
