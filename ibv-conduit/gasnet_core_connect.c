@@ -1313,6 +1313,18 @@ static int conn_snd_poll(void)
 
 static void gasnetc_conn_thread(struct ibv_wc *comp_p, void *arg /* unused */)
 {
+  static int first = 1;
+  if_pf (first) {
+    int pu = gasneti_getenv_int_withdefault("GASNET_CONN_THREAD_PIN", -1, 0);
+    if (pu >= 0) {
+      GASNETI_TRACE_PRINTF(I, ("Connection progress thread pinned to pu #%d", pu));
+      gasneti_set_affinity(pu);
+    } else {
+      GASNETI_TRACE_PRINTF(I, ("Connection progress thread not pinned"));
+    }
+    first = 0;
+  }
+
   gasneti_assert((comp_p->opcode == IBV_WC_RECV) ||
                  (comp_p->status != IBV_WC_SUCCESS));
   if_pf (comp_p->status != IBV_WC_SUCCESS) {
