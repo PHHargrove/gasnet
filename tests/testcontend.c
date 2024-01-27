@@ -153,6 +153,7 @@ AMPINGPONG(ampingpong_barrier_active, BARRIER_UNTIL)
     static int nonzero_present = 0;                                                     \
     gasnett_tick_t start, end;                                                          \
     signal_done = 0;                                                                    \
+if (mythread == 0) gasnett_atomic_set(&pgcounter,0,0);                              \
     if (mythread != 0) nonzero_present = 1;                                             \
     thread_barrier();                                                                   \
     if (mythread == 0) {                                                                \
@@ -165,6 +166,7 @@ AMPINGPONG(ampingpong_barrier_active, BARRIER_UNTIL)
       end = gasnett_ticks_now();                                                        \
       gex_AM_RequestShort0(myteam, peer, hidx_markdone_shorthandler, 0);            \
       gex_AM_RequestShort0(myteam, myrank, hidx_markdone_shorthandler, 0); \
+gasnett_atomic_add(&pgcounter,iters,0);                                           \
       if (!nonzero_present) {                                                           \
         mythread = 1; /* ensure it runs once, impersonating thread1 */                  \
         POLLUNTIL(signal_done);                                                         \
@@ -205,9 +207,10 @@ PUTGETPINGPONG(get_barrier_active, BARRIER_UNTIL, gex_RMA_GetBlocking(myteam, &l
       for (i = 0; i < iters; i++) {                                                     \
         putgetstmt_loner;                                                               \
       }                                                                                 \
+signal_done = 1; gasnett_local_wmb(); \
       end = gasnett_ticks_now();                                                        \
       gex_AM_RequestShort0(myteam, peer, hidx_markdone_shorthandler, 0);            \
-      gex_AM_RequestShort0(myteam, myrank, hidx_markdone_shorthandler, 0); \
+      /*gex_AM_RequestShort0(myteam, myrank, hidx_markdone_shorthandler, 0);*/ \
       gasnett_atomic_add(&pgcounter,iters,0);                                           \
     } else {                                                                            \
       gasnett_atomic_val_t count = 0;                                                   \
@@ -263,19 +266,19 @@ typedef struct {
 } fntable_t;
 
 fntable_t fntable[] = {
-  { "AM Ping-pong vs. spin-AMPoll()", ampingpong_poll_active, poll_passive },
-  { "AM Ping-pong vs. BLOCKUNTIL",    ampingpong_block_active, block_passive },
-  { "gex_RMA_PutBlocking vs. spin-AMPoll()", put_poll_active, poll_passive },
-  { "gex_RMA_PutBlocking vs. BLOCKUNTIL",    put_block_active, block_passive },
-  { "gex_RMA_GetBlocking vs. spin-AMPoll()", get_poll_active, poll_passive },
-  { "gex_RMA_GetBlocking vs. BLOCKUNTIL",    get_block_active, block_passive },
-  { "gex_RMA_PutBlocking vs. gex_RMA_PutBlocking",    put_put_active, poll_passive },
-  { "gex_RMA_PutBlocking vs. gex_RMA_GetBlocking",    put_get_active, poll_passive },
-  { "gex_RMA_GetBlocking vs. gex_RMA_PutBlocking",    get_put_active, poll_passive },
-  { "gex_RMA_GetBlocking vs. gex_RMA_GetBlocking",    get_get_active, poll_passive },
-  { "AM Ping-pong vs. local barrier", ampingpong_barrier_active, barrier_passive },
-  { "gex_RMA_PutBlocking vs. local barrier",   put_barrier_active, barrier_passive },
-  { "gex_RMA_GetBlocking vs. local barrier",   get_barrier_active, barrier_passive },
+  /*A*/{ "AM Ping-pong vs. spin-AMPoll()", ampingpong_poll_active, poll_passive },
+  /*B*/{ "AM Ping-pong vs. BLOCKUNTIL",    ampingpong_block_active, block_passive },
+  /*C*/{ "gex_RMA_PutBlocking vs. spin-AMPoll()", put_poll_active, poll_passive },
+  /*D*/{ "gex_RMA_PutBlocking vs. BLOCKUNTIL",    put_block_active, block_passive },
+  /*E*/{ "gex_RMA_GetBlocking vs. spin-AMPoll()", get_poll_active, poll_passive },
+  /*F*/{ "gex_RMA_GetBlocking vs. BLOCKUNTIL",    get_block_active, block_passive },
+  /*G*/{ "gex_RMA_PutBlocking vs. gex_RMA_PutBlocking",    put_put_active, poll_passive },
+  /*H*/{ "gex_RMA_PutBlocking vs. gex_RMA_GetBlocking",    put_get_active, poll_passive },
+  /*I*/{ "gex_RMA_GetBlocking vs. gex_RMA_PutBlocking",    get_put_active, poll_passive },
+  /*J*/{ "gex_RMA_GetBlocking vs. gex_RMA_GetBlocking",    get_get_active, poll_passive },
+  /*K*/{ "AM Ping-pong vs. local barrier", ampingpong_barrier_active, barrier_passive },
+  /*L*/{ "gex_RMA_PutBlocking vs. local barrier",   put_barrier_active, barrier_passive },
+  /*M*/{ "gex_RMA_GetBlocking vs. local barrier",   get_barrier_active, barrier_passive },
 };
 #define NUM_FUNC (sizeof(fntable)/sizeof(fntable_t))
 int tcountentries;
@@ -284,6 +287,15 @@ threadcnt_t *tcount;
 void *workerthread(void *args) {
   int fnidx;
   int mythread = ARG2THREAD(args);
+  int total_iters = iters;
+#if JLSE_SKYLAKE
+ int cores = 28;
+ int pe = (mythread % cores) + 2 * cores * (mythread / cores);
+#else // SINGLE SOCKET
+ int pe = mythread;
+#endif
+ //if (!myrank) fprintf(stderr,"@ thr %d: pe=%d\n", mythread, pe);
+ gasnett_set_affinity(pe);
   for (fnidx = 0; fnidx < NUM_FUNC; fnidx++) {
     int tcountpos;
 
@@ -309,6 +321,7 @@ void *workerthread(void *args) {
     for (tcountpos = 0; tcountpos < tcountentries; tcountpos++) {
       threadmain_t mainfn = amactive ? fntable[fnidx].activefunc : fntable[fnidx].passivefunc;
       int participating_threads = amactive ? tcount[tcountpos].activecnt : tcount[tcountpos].passivecnt;
+iters = total_iters / tcount[tcountpos].activecnt;
       thread_barrier();
       if (mythread < participating_threads) mainfn(args);
       else { /* match barriers */
@@ -322,6 +335,7 @@ void *workerthread(void *args) {
           tcount[tcountpos].activecnt, tcount[tcountpos].passivecnt, rpt);
       }
     }
+iters = total_iters;
   }
   return NULL;
 }
@@ -369,12 +383,12 @@ int main(int argc, char **argv) {
         if (myrank == 0) {
           MSG("Running testcontend with 1..%i threads and %i iterations", maxthreads, iters);
         }
-        tcountentries = 3 * maxthreads;
+        tcountentries = 1 * maxthreads;
         tcount = test_malloc(tcountentries * sizeof(threadcnt_t));
         ptcount = tcount;
         for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = i; ptcount->passivecnt = 1; ptcount++; }
-        for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = 1; ptcount->passivecnt = i; ptcount++; }
-        for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = i; ptcount->passivecnt = i; ptcount++; }
+        //for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = 1; ptcount->passivecnt = i; ptcount++; }
+        //for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = i; ptcount->passivecnt = i; ptcount++; }
         peer = (myrank + 1) % numranks;
         amactive = (myrank % 2 == 0);
 
