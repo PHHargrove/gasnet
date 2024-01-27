@@ -15,6 +15,8 @@
 #error This test can only be built for GASNet PAR configuration
 #endif
 
+static const double goal_sec = 1.0;
+
 static gex_Client_t      myclient;
 static gex_EP_t    myep;
 static gex_TM_t myteam;
@@ -95,7 +97,7 @@ void report(gasnett_tick_t ticks) {
   double timeus = (double)gasnett_ticks_to_ns(ticks)/1000;
   char pgcount[32] = {0};
   gasnett_atomic_val_t count = gasnett_atomic_swap(&pgcounter,0,0);
-  if (count && (timeus > 0.)) snprintf(pgcount, sizeof(pgcount), "%12lu ops/s", (unsigned long)(count/(timeus*1e-6)));
+  if (count && (timeus > 0.)) snprintf(pgcount, sizeof(pgcount), "%12lu ops/s", (unsigned long)count);
   snprintf(_reportstr, sizeof(_reportstr),
      "%7.3f us\t%5.3f sec%s", 
      timeus/iters, timeus/1000000, pgcount);
@@ -153,6 +155,7 @@ AMPINGPONG(ampingpong_barrier_active, BARRIER_UNTIL)
     static int nonzero_present = 0;                                                     \
     gasnett_tick_t start, end;                                                          \
     signal_done = 0;                                                                    \
+if (mythread == 0) gasnett_atomic_set(&pgcounter,0,0); /* OUT OF DATE */            \
     if (mythread != 0) nonzero_present = 1;                                             \
     thread_barrier();                                                                   \
     if (mythread == 0) {                                                                \
@@ -165,6 +168,7 @@ AMPINGPONG(ampingpong_barrier_active, BARRIER_UNTIL)
       end = gasnett_ticks_now();                                                        \
       gex_AM_RequestShort0(myteam, peer, hidx_markdone_shorthandler, 0);            \
       gex_AM_RequestShort0(myteam, myrank, hidx_markdone_shorthandler, 0); \
+gasnett_atomic_add(&pgcounter,iters,0);                                           \
       if (!nonzero_present) {                                                           \
         mythread = 1; /* ensure it runs once, impersonating thread1 */                  \
         POLLUNTIL(signal_done);                                                         \
@@ -199,26 +203,32 @@ PUTGETPINGPONG(get_barrier_active, BARRIER_UNTIL, gex_RMA_GetBlocking(myteam, &l
     signal_done = 0;                                                                    \
     if (mythread == 0) gasnett_atomic_set(&pgcounter,0,0);                              \
     thread_barrier();                                                                   \
+    uint64_t count = 0;                                                   \
+    start = gasnett_ticks_now();                                                      \
     if (mythread == 0) {                                                                \
-      int i;                                                                            \
-      start = gasnett_ticks_now();                                                      \
-      for (i = 0; i < iters; i++) {                                                     \
+      for (int i = 0; i < iters; i++) {                                                     \
         putgetstmt_loner;                                                               \
       }                                                                                 \
       end = gasnett_ticks_now();                                                        \
+signal_done = 1; gasnett_local_wmb(); \
       gex_AM_RequestShort0(myteam, peer, hidx_markdone_shorthandler, 0);            \
-      gex_AM_RequestShort0(myteam, myrank, hidx_markdone_shorthandler, 0); \
-      gasnett_atomic_add(&pgcounter,iters,0);                                           \
+      /*gex_AM_RequestShort0(myteam, myrank, hidx_markdone_shorthandler, 0);*/ \
+      count = iters; \
     } else {                                                                            \
-      gasnett_atomic_val_t count = 0;                                                   \
       while(!signal_done) {                                                             \
         putgetstmt_rest;                                                                \
         count++;                                                                        \
       }                                                                                 \
-      gasnett_atomic_add(&pgcounter,count,0);                                           \
+      end = gasnett_ticks_now();                                                        \
     }                                                                                   \
+    double elapsed_sec = (double)gasnett_ticks_to_ns(end-start) * 1e-9; \
+    gasnett_atomic_val_t rate = count / elapsed_sec; \
+    gasnett_atomic_add(&pgcounter,rate,0); \
     thread_barrier();                                                                   \
-    if (mythread == 0 && amactive) report(end-start);                                   \
+    if (mythread == 0 && amactive) { \
+      report(end-start);                                   \
+      iters *= (goal_sec / elapsed_sec); \
+    }                                                                                   \
     return NULL;                                                                        \
   }                                                                                     \
 
@@ -263,19 +273,19 @@ typedef struct {
 } fntable_t;
 
 fntable_t fntable[] = {
-  { "AM Ping-pong vs. spin-AMPoll()", ampingpong_poll_active, poll_passive },
-  { "AM Ping-pong vs. BLOCKUNTIL",    ampingpong_block_active, block_passive },
-  { "gex_RMA_PutBlocking vs. spin-AMPoll()", put_poll_active, poll_passive },
-  { "gex_RMA_PutBlocking vs. BLOCKUNTIL",    put_block_active, block_passive },
-  { "gex_RMA_GetBlocking vs. spin-AMPoll()", get_poll_active, poll_passive },
-  { "gex_RMA_GetBlocking vs. BLOCKUNTIL",    get_block_active, block_passive },
-  { "gex_RMA_PutBlocking vs. gex_RMA_PutBlocking",    put_put_active, poll_passive },
-  { "gex_RMA_PutBlocking vs. gex_RMA_GetBlocking",    put_get_active, poll_passive },
-  { "gex_RMA_GetBlocking vs. gex_RMA_PutBlocking",    get_put_active, poll_passive },
-  { "gex_RMA_GetBlocking vs. gex_RMA_GetBlocking",    get_get_active, poll_passive },
-  { "AM Ping-pong vs. local barrier", ampingpong_barrier_active, barrier_passive },
-  { "gex_RMA_PutBlocking vs. local barrier",   put_barrier_active, barrier_passive },
-  { "gex_RMA_GetBlocking vs. local barrier",   get_barrier_active, barrier_passive },
+  /*A*/{ "AM Ping-pong vs. spin-AMPoll()", ampingpong_poll_active, poll_passive },
+  /*B*/{ "AM Ping-pong vs. BLOCKUNTIL",    ampingpong_block_active, block_passive },
+  /*C*/{ "gex_RMA_PutBlocking vs. spin-AMPoll()", put_poll_active, poll_passive },
+  /*D*/{ "gex_RMA_PutBlocking vs. BLOCKUNTIL",    put_block_active, block_passive },
+  /*E*/{ "gex_RMA_GetBlocking vs. spin-AMPoll()", get_poll_active, poll_passive },
+  /*F*/{ "gex_RMA_GetBlocking vs. BLOCKUNTIL",    get_block_active, block_passive },
+  /*G*/{ "gex_RMA_PutBlocking vs. gex_RMA_PutBlocking",    put_put_active, poll_passive },
+  /*H*/{ "gex_RMA_PutBlocking vs. gex_RMA_GetBlocking",    put_get_active, poll_passive },
+  /*I*/{ "gex_RMA_GetBlocking vs. gex_RMA_PutBlocking",    get_put_active, poll_passive },
+  /*J*/{ "gex_RMA_GetBlocking vs. gex_RMA_GetBlocking",    get_get_active, poll_passive },
+  /*K*/{ "AM Ping-pong vs. local barrier", ampingpong_barrier_active, barrier_passive },
+  /*L*/{ "gex_RMA_PutBlocking vs. local barrier",   put_barrier_active, barrier_passive },
+  /*M*/{ "gex_RMA_GetBlocking vs. local barrier",   get_barrier_active, barrier_passive },
 };
 #define NUM_FUNC (sizeof(fntable)/sizeof(fntable_t))
 int tcountentries;
@@ -284,6 +294,20 @@ threadcnt_t *tcount;
 void *workerthread(void *args) {
   int fnidx;
   int mythread = ARG2THREAD(args);
+#ifdef GASNET_TEST_CORES // Assumes 2-way SMT
+  { int core = mythread % GASNET_TEST_CORES;
+    int pu = mythread / GASNET_TEST_CORES;
+    check_zeroret( gasnett_set_affinity(core + 2*GASNET_TEST_CORES*pu) );
+  }
+#else // LINEAR
+  check_zeroret( gasnett_set_affinity(mythread) );
+#endif
+  if (!myrank && gasnett_getenv_yesno_withdefault("GASNET_TEST_BIND_VERBOSE",0)) {
+    sleep(mythread);
+    char cmd[1000];
+    sprintf(cmd, "echo -n '@ thr %d: '; hwloc-bind --get", mythread);
+    system(cmd);
+  }
   for (fnidx = 0; fnidx < NUM_FUNC; fnidx++) {
     int tcountpos;
 
@@ -369,12 +393,12 @@ int main(int argc, char **argv) {
         if (myrank == 0) {
           MSG("Running testcontend with 1..%i threads and %i iterations", maxthreads, iters);
         }
-        tcountentries = 3 * maxthreads;
+        tcountentries = 1 * maxthreads;
         tcount = test_malloc(tcountentries * sizeof(threadcnt_t));
         ptcount = tcount;
         for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = i; ptcount->passivecnt = 1; ptcount++; }
-        for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = 1; ptcount->passivecnt = i; ptcount++; }
-        for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = i; ptcount->passivecnt = i; ptcount++; }
+        //for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = 1; ptcount->passivecnt = i; ptcount++; }
+        //for (i = 1; i <= maxthreads; i++) { ptcount->activecnt = i; ptcount->passivecnt = i; ptcount++; }
         peer = (myrank + 1) % numranks;
         amactive = (myrank % 2 == 0);
 
