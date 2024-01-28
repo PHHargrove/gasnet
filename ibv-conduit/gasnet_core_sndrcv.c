@@ -91,6 +91,7 @@ typedef struct {
   /* Thread-local list of sreq's. */
   gasnetc_sreq_t	*sreqs;
   
+  uint32_t qpi;
   /* Nothing else yet, but lockfree algorithms for (at least) x84_64 will also need
    * some thread-local data if they are ever implemented. */
 } gasnetc_per_thread_t;
@@ -278,6 +279,7 @@ void gasnetc_per_thread_init(gasnetc_per_thread_t *td)
   gasnetc_sreq_t *tail;
   gasnetc_alloc_sreqs(&td->sreqs, &tail GASNETI_THREAD_PASS);
   tail->next = td->sreqs;
+  td->qpi = GASNETI_MYTHREAD->threadidx % gasnetc_num_qps;
 }
 
 extern void
@@ -1048,11 +1050,12 @@ static int gasnetc_snd_reap(int limit) {
 }
 
 /* Take *unbound* epid, return a qp number */
-gasnetc_epid_t gasnetc_epid_select_qpi(gasnetc_cep_t *ceps, gasnetc_epid_t epid)
+gasnetc_epid_t gasnetc_epid_select_qpi(gasnetc_cep_t *ceps, gasnetc_epid_t epid GASNETI_THREAD_FARG)
 {
   gasnetc_epid_t qpi = gasnetc_epid2qpi(epid);
 
   if_pt (qpi == 0) {
+ // TODO?  switch instead of compile-time selection?
  #if 0
     /* Select by largest space avail */
     uint32_t best_space = gasnetc_sema_read(GASNETC_CEP_SQ_SEMA(ceps+0));
@@ -1063,11 +1066,46 @@ gasnetc_epid_t gasnetc_epid_select_qpi(gasnetc_cep_t *ceps, gasnetc_epid_t epid)
         qpi = i;
       }
     }
- #else
+ #elif 1
     GASNETC_WEAK_COUNTER_DECL(prev, 0);
     qpi = GASNETC_WEAK_COUNTER_READ(prev);
     qpi = ((qpi == 0) ? gasnetc_num_qps : qpi) - 1;
     GASNETC_WEAK_COUNTER_WRITE(prev, qpi);
+ #elif 1
+    // Select by largest space avail (with local "last")
+    gasnetc_per_thread_t *td = gasnetc_my_perthread();
+    int i = td->qpi;
+    uint32_t best_space = gasnetc_sema_read(GASNETC_CEP_SQ_SEMA(ceps+i));
+    for (int j = 1; j < gasnetc_num_qps; ++j) {
+      i = ((i == 0) ? gasnetc_num_qps : i) - 1;
+      uint32_t space = gasnetc_sema_read(GASNETC_CEP_SQ_SEMA(ceps+i));
+      if (space > best_space) {
+        best_space = space;
+        qpi = i;
+      }
+    }
+    td->qpi = qpi;
+ #elif 1
+    // Independent (per-thread round-robin) selection
+    gasnetc_per_thread_t *td = gasnetc_my_perthread();
+    qpi = td->qpi;
+    qpi = ((qpi == 0) ? gasnetc_num_qps : qpi) - 1;
+    td->qpi = qpi;
+ #elif 1
+    // Select by first with space avail (NF = non-full), starting at tid
+    gasnetc_per_thread_t *td = gasnetc_my_perthread();
+    int i = td->qpi;
+    qpi = i;
+    if (! gasnetc_sema_read(GASNETC_CEP_SQ_SEMA(ceps+i))) {
+      for (int j = 1; j < gasnetc_num_qps; ++j) {
+        i = ((i == 0) ? gasnetc_num_qps : i) - 1;
+        if (gasnetc_sema_read(GASNETC_CEP_SQ_SEMA(ceps+i))) {
+          qpi = i;
+          break;
+        }
+      }
+    }
+    td->qpi = qpi;
  #endif
     gasneti_assert(qpi < gasnetc_num_qps);
   } else {
@@ -1082,7 +1120,7 @@ gasnetc_epid_t gasnetc_epid_select_qpi(gasnetc_cep_t *ceps, gasnetc_epid_t epid)
 #if GASNETC_DYNAMIC_CONNECT || GASNETC_IBV_SRQ
 gasnetc_cep_t *gasnetc_bind_cep_inner(gasnetc_EP_t ep, gasnetc_epid_t epid, gasnetc_sreq_t *sreq, int is_reply GASNETI_THREAD_FARG)
 #else
-gasnetc_cep_t *gasnetc_bind_cep_inner(gasnetc_EP_t ep, gasnetc_epid_t epid, gasnetc_sreq_t *sreq)
+gasnetc_cep_t *gasnetc_bind_cep_inner(gasnetc_EP_t ep, gasnetc_epid_t epid, gasnetc_sreq_t *sreq GASNETI_THREAD_FARG)
 #endif
 {
   gasnetc_cep_t *ceps = gasnetc_get_cep(ep, gasnetc_epid2node(epid));
@@ -1091,7 +1129,7 @@ gasnetc_cep_t *gasnetc_bind_cep_inner(gasnetc_EP_t ep, gasnetc_epid_t epid, gasn
 
   /* Loop until space is available on the selected SQ for 1 new entry.
    * If we hold the last one then threads sending to the same node will stall. */
-  qpi = gasnetc_epid_select_qpi(ceps, epid);
+  qpi = gasnetc_epid_select_qpi(ceps, epid GASNETI_THREAD_PASS);
   cep = &ceps[qpi];
   if_pf (!gasnetc_sema_trydown(GASNETC_CEP_SQ_SEMA(cep))) {
     GASNETC_TRACE_WAIT_BEGIN();
@@ -1156,7 +1194,7 @@ gasnetc_cep_t *gasnetc_bind_cep_inner(gasnetc_EP_t ep, gasnetc_epid_t epid, gasn
       {
         gasnetc_snd_reap(1);
         /* Redo load balancing choice */
-        qpi = gasnetc_epid_select_qpi(ceps, epid);
+        qpi = gasnetc_epid_select_qpi(ceps, epid GASNETI_THREAD_PASS);
         cep = &ceps[qpi];
         MAYBE_POLL_RCV(ep, cep);
       });

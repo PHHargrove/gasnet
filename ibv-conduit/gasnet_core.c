@@ -3832,7 +3832,7 @@ extern int gasnetc_AMPoll(GASNETI_THREAD_FARG_ALONE) {
 
 // Helper to select an IB-level cep for AM Request injection
 static
-gasnetc_cep_t *gasnetc_am_select_cep(gasnetc_EP_t ep, gasnetc_epid_t dest)
+gasnetc_cep_t *gasnetc_am_select_cep(gasnetc_EP_t ep, gasnetc_epid_t dest GASNETI_THREAD_FARG)
 {
 #if GASNETC_IBV_SHUTDOWN
   /* Currently only the shutdown code uses dest to specify a "bound" value */
@@ -3870,7 +3870,7 @@ gasnetc_cep_t *gasnetc_am_select_cep(gasnetc_EP_t ep, gasnetc_epid_t dest)
     }
     cep += qpi;
 #else
-    cep += gasnetc_epid_select_qpi(cep, dest);
+    cep += gasnetc_epid_select_qpi(cep, dest GASNETI_THREAD_PASS);
 #endif
   }
 
@@ -4286,7 +4286,7 @@ int gasnetc_RequestGeneric(gasnetc_EP_t ep,
   gasneti_assert(!GASNETI_NBRHD_JOBRANK_IS_LOCAL(gasnetc_epid2node(dest))); // never local
 
   return gasnetc_ReqRepGeneric(
-                        ep, category, 0,  gasnetc_am_select_cep(ep, dest),
+                        ep, category, 0,  gasnetc_am_select_cep(ep, dest GASNETI_THREAD_PASS),
                         handler, src_addr, nbytes, dst_addr, flags, numargs,
                         local_cnt, local_cb, counter, argptr GASNETI_THREAD_PASS);
 }
@@ -5125,7 +5125,7 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareRequestMedium(
 
         gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_e_tm_to_i_ep(tm);
         gasneti_assert(ep == gasnetc_ep0);
-        gasnetc_cep_t *cep = gasnetc_am_select_cep(ep, jobrank);
+        gasnetc_cep_t *cep = gasnetc_am_select_cep(ep, jobrank GASNETI_THREAD_PASS);
         if (gasnetc_am_get_credit(ep, cep, immediate GASNETI_THREAD_PASS)) {
             goto out_immediate;
         } else if (gasnetc_prepare_common(sd, gasneti_Medium, 0, cep, client_buf,
@@ -5210,7 +5210,7 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareRequestLong(
 
         gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_e_tm_to_i_ep(tm);
         gasneti_assert(ep == gasnetc_ep0);
-        gasnetc_cep_t *cep = gasnetc_am_select_cep(ep, jobrank);
+        gasnetc_cep_t *cep = gasnetc_am_select_cep(ep, jobrank GASNETI_THREAD_PASS);
         if (gasnetc_am_get_credit(ep, cep, immediate GASNETI_THREAD_PASS)) {
             goto out_immediate;
         } else if (gasnetc_prepare_common(sd, gasneti_Long, 0, cep, client_buf,
