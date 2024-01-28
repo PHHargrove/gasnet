@@ -1014,15 +1014,15 @@ GASNETI_MALLOCP(gasnetc_get_bbuf)
 extern gasnetc_sreq_t *gasnetc_get_sreq(gasnetc_sreq_opcode_t opcode GASNETI_THREAD_FARG) GASNETI_MALLOC;
 GASNETI_MALLOCP(gasnetc_get_sreq)
 
-extern gasnetc_epid_t gasnetc_epid_select_qpi(gasnetc_cep_t *ceps, gasnetc_epid_t epid);
+extern gasnetc_epid_t gasnetc_epid_select_qpi(gasnetc_cep_t *ceps, gasnetc_epid_t epid GASNETI_THREAD_FARG);
 #if GASNETC_DYNAMIC_CONNECT || GASNETC_IBV_SRQ
   extern gasnetc_cep_t *gasnetc_bind_cep_inner(gasnetc_EP_t ep, gasnetc_epid_t epid, gasnetc_sreq_t *sreq, int is_reply GASNETI_THREAD_FARG);
   #define gasnetc_bind_cep(ep,id,s)       gasnetc_bind_cep_inner((ep),(id),(s),0 GASNETI_THREAD_PASS)
   #define gasnetc_bind_cep_am(ep,id,s,i)  gasnetc_bind_cep_inner((ep),(id),(s),(i) GASNETI_THREAD_PASS)
 #else
-  extern gasnetc_cep_t *gasnetc_bind_cep_inner(gasnetc_EP_t ep, gasnetc_epid_t epid, gasnetc_sreq_t *sreq);
-  #define gasnetc_bind_cep(ep,id,s)       gasnetc_bind_cep_inner((ep),(id),(s))
-  #define gasnetc_bind_cep_am(ep,id,s,i)  gasnetc_bind_cep_inner((ep),(id),(s))
+  extern gasnetc_cep_t *gasnetc_bind_cep_inner(gasnetc_EP_t ep, gasnetc_epid_t epid, gasnetc_sreq_t *sreq GASNETI_THREAD_FARG);
+  #define gasnetc_bind_cep(ep,id,s)       gasnetc_bind_cep_inner((ep),(id),(s) GASNETI_THREAD_PASS)
+  #define gasnetc_bind_cep_am(ep,id,s,i)  gasnetc_bind_cep_inner((ep),(id),(s) GASNETI_THREAD_PASS)
 #endif
 extern void gasnetc_snd_post_common(
                   gasnetc_sreq_t *sreq, struct ibv_send_wr *sr_desc,
