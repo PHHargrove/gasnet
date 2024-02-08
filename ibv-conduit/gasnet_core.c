@@ -3384,6 +3384,18 @@ static void gasnetc_exit_body(void) {
   /* once we start a shutdown, ignore all future SIGQUIT signals or we risk reentrancy */
   (void)gasneti_reghandler(SIGQUIT, SIG_IGN);
 
+#if 0
+  {
+    if (gasneti_nodes > 1) { /* attempt to chdir into a private per-process dir */
+      char path[80];
+      sprintf(path,"./gmon.out.%i", (int)gasneti_mynode);
+      mkdir(path, 0777); /* ignore errors - if it fails, it fails */
+      chdir(path);
+    }
+    _mcleanup();
+  }
+#endif
+
   /* Ensure only one thread ever continues past this point.
    * Others will spin here until time to die.
    * We can't/shouldn't use mutex code here since it is not signal-safe.
