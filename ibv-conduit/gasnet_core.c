@@ -3816,9 +3816,13 @@ extern gex_TI_t gasnetc_Token_Info(
   return GASNETI_TOKEN_INFO_RETURN(result, info, mask);
 }
 
+gasneti_atomic_t gasnetc_have_useful_work = gasneti_atomic_init(0);
+
 extern int gasnetc_AMPoll(GASNETI_THREAD_FARG_ALONE) {
   GASNETI_CHECKATTACH();
+if (! gasneti_atomic_read(&gasnetc_have_useful_work,0) ) {
   gasnetc_poll_both();
+}
 
   return GASNET_OK;
 }
