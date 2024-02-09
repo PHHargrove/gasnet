@@ -3557,8 +3557,6 @@ extern int gasnetc_rdma_put(
   gasnetc_EP_t ep = (gasnetc_EP_t) gasneti_e_tm_to_i_ep(tm);
   GASNETC_DECL_SR_DESC(sr_desc, GASNETC_SND_SG);
 
-gasneti_atomic_increment(&gasnetc_have_useful_work,0);
-
   // TODO-EX:
   //     This will be replaced by general multi-registration support later
   const gex_EP_Location_t loc = gasneti_e_tm_rank_to_location(tm, rank, 0);
@@ -3591,7 +3589,6 @@ gasneti_atomic_increment(&gasnetc_have_useful_work,0);
   if ((nbytes <= gasnetc_inline_limit) && !device_mem)
   {
     gasnetc_do_put_inline(ep, jobrank, rem_epidx, sr_desc, nbytes, remote_cnt, remote_cb GASNETI_THREAD_PASS);
-gasneti_atomic_decrement(&gasnetc_have_useful_work,0);
     return 0;
   }
 
@@ -3657,7 +3654,6 @@ gasneti_atomic_decrement(&gasnetc_have_useful_work,0);
 
   if (bias_remote_cnt) remote_cb(remote_cnt);
 
-gasneti_atomic_decrement(&gasnetc_have_useful_work,0);
   return 0;
 }
 
