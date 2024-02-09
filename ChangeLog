@@ -21,6 +21,16 @@ GASNet-EX ChangeLog
 ----------------------------------------------------------------------
 20XX-YY-ZZ: PENDING
 
+* InfiniBand Verbs (details in ibv-conduit README)
+  - A new send progress thread can be enabled to process completion events
+    related to communication injection, potentially reducing the cost of
+    `gasnet_AMPoll()` calls by application threads.  See the ibv-conduit README
+    for information on the `GASNET_SND_THREAD*` family of environment variables.
+  - The receive and send progress threads can now be kept active for some period
+    of time after their completion queues first test as empty.  See the
+    ibv-conduit README for information on the `GASNET_RCV_THREAD_MIN_IDLE_NS`
+    and `GASNET_SND_THREAD_MIN_IDLE_NS` environment variables.
+
 * Notable bugs fixed in this release: (details at https://gasnet-bugs.lbl.gov)
   - bug4682: ibv: rare failure of bogus assertion
   - bug4683: GASNET_FREEZE ignored by udp-conduit with ssh spawn
