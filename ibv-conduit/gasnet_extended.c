@@ -253,14 +253,7 @@ extern int gasnete_put  (gex_TM_t tm,
                    NULL, NULL,
                    &req_oust.initiated, gasnetc_cb_counter
                    GASNETI_THREAD_PASS);
-#if 0
   gasnetc_counter_wait(&req_oust, 0 GASNETI_THREAD_PASS);
-#else
-  const gasnetc_atomic_val_t initiated = (req_oust.initiated & GASNETI_ATOMIC_MAX);
-  gasnetc_atomic_t * const completed = &req_oust.completed;
-  GASNETI_SPIN_UNTIL((initiated == gasnetc_atomic_read(completed, 0)),
-                     { if (! gasneti_atomic_read(&gasnetc_have_useful_work,0)) gasnetc_poll_snd(); });
-#endif
   return 0;
 }   
 
