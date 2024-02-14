@@ -1066,12 +1066,12 @@ gasnetc_epid_t gasnetc_epid_select_qpi(gasnetc_cep_t *ceps, gasnetc_epid_t epid 
         qpi = i;
       }
     }
- #elif 1
+ #elif 0
     GASNETC_WEAK_COUNTER_DECL(prev, 0);
     qpi = GASNETC_WEAK_COUNTER_READ(prev);
     qpi = ((qpi == 0) ? gasnetc_num_qps : qpi) - 1;
     GASNETC_WEAK_COUNTER_WRITE(prev, qpi);
- #elif 1
+ #elif 0
     // Select by largest space avail (with local "last")
     gasnetc_per_thread_t *td = gasnetc_my_perthread();
     int i = td->qpi;
@@ -1085,13 +1085,13 @@ gasnetc_epid_t gasnetc_epid_select_qpi(gasnetc_cep_t *ceps, gasnetc_epid_t epid 
       }
     }
     td->qpi = qpi;
- #elif 1
+ #elif 0
     // Independent (per-thread round-robin) selection
     gasnetc_per_thread_t *td = gasnetc_my_perthread();
     qpi = td->qpi;
     qpi = ((qpi == 0) ? gasnetc_num_qps : qpi) - 1;
     td->qpi = qpi;
- #elif 1
+ #elif 0
     // Select by first with space avail (NF = non-full), starting at tid
     gasnetc_per_thread_t *td = gasnetc_my_perthread();
     int i = td->qpi;
@@ -1106,6 +1106,10 @@ gasnetc_epid_t gasnetc_epid_select_qpi(gasnetc_cep_t *ceps, gasnetc_epid_t epid 
       }
     }
     td->qpi = qpi;
+ #elif 1
+    // static per-thread assignment of QP
+    gasnetc_per_thread_t *td = gasnetc_my_perthread();
+    qpi = td->qpi;
  #endif
     gasneti_assert(qpi < gasnetc_num_qps);
   } else {
