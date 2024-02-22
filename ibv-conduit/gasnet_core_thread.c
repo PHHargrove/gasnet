@@ -79,6 +79,28 @@ static void * gasnetc_progress_thread(void *arg)
 
   gasneti_assert_uint(pthr_p->keep_alive.timestamp ,==, 0);
 
+#if GASNETI_STATS_OR_TRACE
+  gasneti_tick_t wake_ticks = GASNETI_TICKS_NOW_IFENABLED(X);
+  unsigned long event_count = 0;
+  unsigned long idle_intervals = 0;
+  unsigned long idle_polls = 0;
+  #define TRACE_THREAD_ACTIVITY() do { \
+      if (GASNETI_TRACE_ENABLED(X)) { \
+        uint64_t elapsed = gasneti_ticks_to_ns(gasneti_ticks_now()-wake_ticks); \
+        if (keep_alive_ns) { \
+          GASNETI_TRACE_PRINTF(X, ("%s thread ran %"PRIu64" ns, %lu events, %lu idle polls in %lu intervals", \
+                                    pthr_p->name, elapsed, event_count, idle_polls, idle_intervals)); \
+        } else { \
+          GASNETI_TRACE_PRINTF(X, ("%s thread ran %"PRIu64" ns, %lu events", \
+                                   pthr_p->name, elapsed, event_count)); \
+        } \
+      } \
+      event_count = idle_intervals = idle_polls = 0; \
+    } while (0)
+#else
+  #define TRACE_THREAD_ACTIVITY() ((void)0)
+#endif
+
   while (!pthr_p->done) {
     struct ibv_wc comp;
     int rc;
@@ -95,6 +117,10 @@ static void * gasnetc_progress_thread(void *arg)
     }
 
     if (rc == 1) {
+#if GASNETI_STATS_OR_TRACE
+      event_count++;
+#endif
+
       (fn)(&comp, fn_arg);
 
       /* Throttle thread's rate */
@@ -123,11 +149,17 @@ static void * gasnetc_progress_thread(void *arg)
 
       // Keep alive?
       if (keep_alive_ns) {
+#if GASNETI_STATS_OR_TRACE
+        idle_polls++;
+#endif
         uint64_t prev = pthr_p->keep_alive.timestamp;
         uint64_t now = gasneti_ticks_now();
         if (! prev) {
           // Start a new keep-alive interval
           pthr_p->keep_alive.timestamp = now;
+#if GASNETI_STATS_OR_TRACE
+          idle_intervals++;
+#endif
           continue;
         } else {
           // Check for expiration of the keep-alive interval
@@ -138,6 +170,8 @@ static void * gasnetc_progress_thread(void *arg)
         // Ensure we start a *new* one when we next wake:
         pthr_p->keep_alive.timestamp = 0;
       }
+
+     TRACE_THREAD_ACTIVITY();
 
       /* block for event on the empty CQ */
       my_cancel_enable();
@@ -156,14 +190,21 @@ static void * gasnetc_progress_thread(void *arg)
       rc = ibv_req_notify_cq(cq_hndl, 0);
       GASNETC_IBV_CHECK(rc, "from ibv_req_notify_cq");
 
+#if GASNETI_STATS_OR_TRACE
+      wake_ticks = GASNETI_TICKS_NOW_IFENABLED(X);
+#endif
       /* loop to poll for the new completion */
     } else {
       GASNETC_IBV_CHECK(rc, "from ibv_poll_cq in async thread");
     }
   }
 
+  TRACE_THREAD_ACTIVITY();
+
   pthread_cleanup_pop(1);
   return NULL;
+
+#undef TRACE_THREAD_ACTIVITY
 }
 
 extern void
