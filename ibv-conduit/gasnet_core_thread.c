@@ -113,6 +113,9 @@ static void * gasnetc_progress_thread(void *arg)
         }
         pthr_p->thread_rate.timestamp = gasneti_ticks_now();
       }
+
+      // Now "active".  So cancel any keep-alive interval.
+      pthr_p->keep_alive.timestamp = 0;
     } else if (rc == 0) {
       struct ibv_cq * the_cq;
       void *the_ctx;
@@ -121,11 +124,19 @@ static void * gasnetc_progress_thread(void *arg)
       // Keep alive?
       if (keep_alive_ns) {
         uint64_t prev = pthr_p->keep_alive.timestamp;
-        uint64_t now = pthr_p->keep_alive.timestamp = gasneti_ticks_now();
-        if (prev) {
+        uint64_t now = gasneti_ticks_now();
+        if (! prev) {
+          // Start a new keep-alive interval
+          pthr_p->keep_alive.timestamp = now;
+          continue;
+        } else {
+          // Check for expiration of the keep-alive interval
           uint64_t elapsed = gasneti_ticks_to_ns(now - prev);
           if (elapsed < keep_alive_ns) continue;
         }
+        // Keep-alive interval has expired.
+        // Ensure we start a *new* one when we next wake:
+        pthr_p->keep_alive.timestamp = 0;
       }
 
       /* block for event on the empty CQ */
@@ -150,7 +161,6 @@ static void * gasnetc_progress_thread(void *arg)
       GASNETC_IBV_CHECK(rc, "from ibv_poll_cq in async thread");
     }
   }
-  pthr_p->keep_alive.timestamp = 0;
 
   pthread_cleanup_pop(1);
   return NULL;
