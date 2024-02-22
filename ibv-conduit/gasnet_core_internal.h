@@ -304,6 +304,7 @@ typedef gasnetc_cons_atomic(val_t)        gasnetc_atomic_val_t;
 #define gasnetc_atomic_read               gasnetc_cons_atomic(read)
 #define gasnetc_atomic_set                gasnetc_cons_atomic(set)
 #define gasnetc_atomic_increment          gasnetc_cons_atomic(increment)
+#define gasnetc_atomic_decrement          gasnetc_cons_atomic(decrement)
 #define gasnetc_atomic_decrement_and_test gasnetc_cons_atomic(decrement_and_test)
 #define gasnetc_atomic_compare_and_swap   gasnetc_cons_atomic(compare_and_swap)
 #define gasnetc_atomic_swap               gasnetc_cons_atomic(swap)
@@ -1020,9 +1021,20 @@ void gasnetc_do_poll(int poll_rcv, int poll_snd GASNETI_THREAD_FARG) {
     (void)gasnetc_snd_reap(GASNETC_SND_REAP_LIMIT);
   }
 }
-#define gasnetc_poll_rcv()    gasnetc_do_poll(1,0 GASNETI_THREAD_PASS)
-#define gasnetc_poll_snd()    gasnetc_do_poll(0,1 GASNETI_THREAD_PASS)
-#define gasnetc_poll_both()   gasnetc_do_poll(1,1 GASNETI_THREAD_PASS)
+#define gasnetc_poll_rcv()             gasnetc_do_poll(1,0 GASNETI_THREAD_PASS)
+#if GASNETI_THROTTLE_FEATURE_ENABLED
+  extern gasnetc_atomic_t gasnetc_active_snd_count;
+  #define gasnetc_suspend_snd_poll()  gasnetc_atomic_increment(&gasnetc_active_snd_count,0)
+  #define gasnetc_resume_snd_poll()   gasnetc_atomic_decrement(&gasnetc_active_snd_count,0)
+  #define gasnetc_may_poll_snd(active) \
+    (active || !gasnetc_atomic_read(&gasnetc_active_snd_count,0))
+#else
+  #define gasnetc_suspend_snd_poll()      (void)0
+  #define gasnetc_resume_snd_poll()       (void)0
+  #define gasnetc_may_poll_snd(active)    1
+#endif
+#define gasnetc_poll_snd(active)    gasnetc_do_poll(0,gasnetc_may_poll_snd(active) GASNETI_THREAD_PASS)
+#define gasnetc_poll_both(active)   gasnetc_do_poll(1,gasnetc_may_poll_snd(active) GASNETI_THREAD_PASS)
 
 /* Routines in gasnet_core_thread.c */
 #if GASNETI_CONDUIT_THREADS

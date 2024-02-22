@@ -67,6 +67,9 @@ int					gasnetc_num_qps;
 int                                     gasnetc_rcv_thread_poll_serialize = -1;
 int                                     gasnetc_rcv_thread_poll_exclusive = -1;
 #endif
+#if GASNETI_THROTTLE_FEATURE_ENABLED
+gasnetc_atomic_t                        gasnetc_active_snd_count = gasnetc_atomic_init(0);
+#endif
 
 #if GASNETC_PIN_SEGMENT
   // Rkeys for non-primordial remote EPs
@@ -1130,6 +1133,7 @@ gasnetc_cep_t *gasnetc_bind_cep_inner(gasnetc_EP_t ep, gasnetc_epid_t epid, gasn
   #define MAYBE_POLL_RCV(_ep, _cep) ((void)0)
 #endif
 
+    gasnetc_suspend_snd_poll();
     GASNETI_SPIN_DOUNTIL(
       gasnetc_sema_trydown(GASNETC_CEP_SQ_SEMA(cep)),
       {
@@ -1139,10 +1143,13 @@ gasnetc_cep_t *gasnetc_bind_cep_inner(gasnetc_EP_t ep, gasnetc_epid_t epid, gasn
         cep = &ceps[qpi];
         MAYBE_POLL_RCV(ep, cep);
       });
+    gasnetc_resume_snd_poll();
+
     GASNETC_TRACE_WAIT_END(POST_SR_STALL_SQ);
 
 #undef MAYBE_POLL_RCV
 #undef MAYBE_POLL_RCV_PSHM
+
   }
   cep->used = 1;
 
@@ -1435,15 +1442,19 @@ gasnetc_buffer_t *gasnetc_get_bbuf_inner(const int is_reply, const int block GAS
   bbuf = gasnetc_bbuf_pop_helper(is_reply);
   if_pt (bbuf) {
     // done
-  } else if (block) {
-    GASNETI_SPIN_DOUNTIL(bbuf, {
-        gasnetc_poll_snd();
-        bbuf = gasnetc_bbuf_pop_helper(is_reply);
-      });
-    GASNETC_TRACE_WAIT_END(GET_BBUF_STALL);
   } else {
-    gasnetc_poll_snd();
-    bbuf = gasnetc_bbuf_pop_helper(is_reply);
+    gasnetc_suspend_snd_poll();
+    if (block) {
+      GASNETI_SPIN_DOUNTIL(bbuf, {
+          gasnetc_poll_snd(1);
+          bbuf = gasnetc_bbuf_pop_helper(is_reply);
+        });
+      GASNETC_TRACE_WAIT_END(GET_BBUF_STALL);
+    } else {
+      gasnetc_poll_snd(1);
+      bbuf = gasnetc_bbuf_pop_helper(is_reply);
+    }
+    gasnetc_resume_snd_poll();
   }
   gasneti_assert((bbuf != NULL) || !block);
 
@@ -1595,8 +1606,10 @@ gasnetc_snd_post_inner(gasnetc_cep_t * const cep, struct ibv_send_wr *sr_desc, i
   // Loop until space is available for 1 new entry on the CQ.
   // If we hold the last one then threads sending to ANY node will stall.
   // So this is the last resource to acquire
+  gasnetc_suspend_snd_poll();
   GASNETI_SPIN_UNTIL_TRACE(gasnetc_sema_trydown(cep->snd_cq_sema_p),
-                           C, POST_SR_STALL_CQ, gasnetc_poll_snd());
+                           C, POST_SR_STALL_CQ, gasnetc_poll_snd(1));
+  gasnetc_resume_snd_poll();
 
   // Post the operation
   struct ibv_send_wr *bad_wr;
@@ -1677,6 +1690,7 @@ void gasnetc_snd_post_common(gasnetc_sreq_t *sreq, struct ibv_send_wr *sr_desc, 
     // multiple threads in a PAR build are all doing the same.
     // Even in a SEQ or PARSYNC build, there is an advantage to posting the
     // Put without unnecessary delay.
+    gasnetc_suspend_snd_poll();
     if_pf (!gasnetc_sema_trydown(GASNETC_CEP_SQ_SEMA(cep)) &&
            (gasnetc_snd_reap(1), !gasnetc_sema_trydown(GASNETC_CEP_SQ_SEMA(cep)))) {
       // Since we failed to get a second SQ slot we split the two post operations
@@ -1697,6 +1711,7 @@ void gasnetc_snd_post_common(gasnetc_sreq_t *sreq, struct ibv_send_wr *sr_desc, 
       GASNETI_SPIN_UNTIL_TRACE(gasnetc_sema_trydown(GASNETC_CEP_SQ_SEMA(cep)),
                                C, POST_SR_STALL_SQ2, gasnetc_snd_reap(1));
     }
+    gasnetc_resume_snd_poll();
   }
 #endif
 
@@ -3186,7 +3201,7 @@ gasnetc_sndrcv_quiesce(void) {
         int remain = gasnetc_am_oust_pp;
         gasnetc_sema_t *sema = &cep->am_rem;
         GASNETI_SPIN_WHILE((remain -= gasnetc_sema_trydown_partial(sema, remain)),
-                           gasnetc_poll_both());
+                           gasnetc_poll_both(1));
       }
     }
   }
@@ -3206,7 +3221,7 @@ gasnetc_sndrcv_quiesce(void) {
         /* OK if some other AM Request gets in this gap; we'll block for the reply. */
         gasnetc_RequestSysShort(cep->epid, &dummy, gasneti_handleridx(gasnetc_sys_close_reqh), 0);
       }
-      GASNETI_SPIN_UNTIL(gasnetc_close_recvd[shift], gasnetc_poll_both());
+      GASNETI_SPIN_UNTIL(gasnetc_close_recvd[shift], gasnetc_poll_both(1));
       gasnetc_close_recvd[shift] = 0;
     }
   }
@@ -3216,7 +3231,7 @@ gasnetc_sndrcv_quiesce(void) {
     int remain = hca->snd_cq->cqe;
     gasnetc_sema_t *sema = hca->snd_cq_sema_p;
     GASNETI_SPIN_WHILE((remain -= gasnetc_sema_trydown_partial(sema, remain)),
-                       gasnetc_poll_both());
+                       gasnetc_poll_both(1));
   }
 
   /* Resume credit coallescing (in any) */
@@ -3323,10 +3338,10 @@ extern void gasnetc_counter_wait_aux(gasnetc_counter_t *counter, int handler_con
   if (handler_context) {
     // must not poll rcv queue in hander context
     GASNETI_SPIN_DOUNTIL((initiated == gasnetc_atomic_read(completed, 0)),
-                         gasnetc_poll_snd());
+                         gasnetc_poll_snd(0));
   } else {
     GASNETI_SPIN_DOUNTIL((initiated == gasnetc_atomic_read(completed, 0)),
-                         { gasnetc_poll_both(); GASNETI_PROGRESSFNS_RUN(); });
+                         { gasnetc_poll_both(0); GASNETI_PROGRESSFNS_RUN(); });
   }
 }
 

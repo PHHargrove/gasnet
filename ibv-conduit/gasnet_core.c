@@ -3785,7 +3785,7 @@ extern gex_TI_t gasnetc_Token_Info(
 
 extern int gasnetc_AMPoll(GASNETI_THREAD_FARG_ALONE) {
   GASNETI_CHECKATTACH();
-  gasnetc_poll_both();
+  gasnetc_poll_both(0);
 
   return GASNET_OK;
 }
