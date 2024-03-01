@@ -5,6 +5,10 @@
  */
 
 #include <gasnetex.h>
+#ifdef GASNET_DEBUG
+#error foobar
+#endif
+
 
 int numnode = 0;
 uintptr_t maxsz = 0;
