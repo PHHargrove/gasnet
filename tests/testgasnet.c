@@ -157,17 +157,17 @@ void test_threadinfo(int threadid, int numthreads) {
   assert(threadid < numthreads && numthreads <= MAX_THREADS);
   all_ti[threadid] = my_ti;
   PTHREAD_LOCALBARRIER(numthreads);
-  if (my_ti) {
+  //if (my_ti) {
     // If non-NULL, IDs must be unique 
     for (i = 0; i < numthreads; i++) {
       if (i != threadid) assert_always(my_ti != all_ti[i]);
     }
-  } else {
+  //} else {
     // If *any* ID is NULL, *all* must be NULL
     for (i = 0; i < numthreads; i++) {
       assert_always(all_ti[i] == NULL);
     }
-  }
+  //}
   PTHREAD_LOCALBARRIER(numthreads);
 }
 /* ------------------------------------------------------------------------------------ */
