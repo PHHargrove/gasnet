@@ -50,6 +50,9 @@ struct fid_mr*        gasnetc_segment_mrfd = NULL;
 struct fid_mr*        gasnetc_auxseg_mrfd = NULL;
 size_t gasnetc_ofi_bbuf_threshold;
 
+struct fid_mr*        gasnetc_amsend_mrfd;
+struct fid_mr*        gasnetc_amrecv_mrfd;
+
 #ifdef FI_MR_ENDPOINT
 static int gasnetc_fi_mr_endpoint = 0;
 #endif
@@ -1518,6 +1521,30 @@ int gasnetc_ofi_init(void)
                               valstr, num_multirecv_buffs));
   }
 
+  // Statically register the recv buffer allocation
+  const char* amrecv_reg_key_env = "GASNET_OFI_AMRECV_REG_KEY"; // WIP: UNDOCUMENTED
+  uint64_t amrecv_reg_key = gasneti_getenv_int_withdefault(amrecv_reg_key_env, 1022, 0);
+  if (amrecv_reg_key) { // Zero disables (and is reserved for aux segment)
+    ret = fi_mr_reg(gasnetc_ofi_domainfd,
+                    receive_region_start, receive_region_size,
+                    FI_REMOTE_READ,
+                    /*offset*/0, amrecv_reg_key, /*flags*/0,
+                    &gasnetc_amrecv_mrfd, /*conext*/NULL);
+    // WIP: need to select from options for error handling:
+    // 1. errors fatal (current)
+    // 2. errors warn, including the (undocumented?) knob
+    // 3. errors silent
+    GASNETC_OFI_CHECK_RET(ret, "fi_mr_reg failed for AM recv buffers");
+#ifdef FI_MR_ENDPOINT
+    if (gasnetc_fi_mr_endpoint) {
+      ret = fi_mr_bind(gasnetc_amrecv_mrfd, &gasnetc_ofi_rdma_epfd->fid, 0); // WIP!!
+      GASNETC_OFI_CHECK_RET(ret, "fi_mr_bind(request_ep) failed for AM recv buffers");
+      ret = fi_mr_enable(gasnetc_amrecv_mrfd);
+      GASNETC_OFI_CHECK_RET(ret, "fi_mr_enable failed for AM recv buffers");
+    }
+#endif
+  }
+
   for(i = 0; i < num_multirecv_buffs; i++) {
         gasnetc_ofi_recv_metadata_t* metadata = metadata_array + i;
         metadata->iov.iov_base = ((char*)receive_region_start) + multirecv_buff_size*i;
@@ -1572,6 +1599,30 @@ int gasnetc_ofi_init(void)
     gasneti_format_number(am_buffers_region_size, valstr, sizeof(valstr), 1);
     GASNETI_TRACE_PRINTF(I, ("Allocated %s for %"PRIuSZ " (out of max %"PRIuSZ ") AM send buffers",
                               valstr, total_init, max_am_request_buffs + max_am_reply_buffs));
+  }
+
+  // Statically register this initial allocation
+  const char* amsend_reg_key_env = "GASNET_OFI_AMSEND_REG_KEY"; // WIP: UNDOCUMENTED
+  uint64_t amsend_reg_key = gasneti_getenv_int_withdefault(amsend_reg_key_env, 1023, 0);
+  if (amsend_reg_key) { // Zero disables (and is reserved for aux segment)
+    ret = fi_mr_reg(gasnetc_ofi_domainfd,
+                    am_buffers_region_start, am_buffers_region_size,
+                    FI_REMOTE_READ | FI_REMOTE_WRITE,
+                    /*offset*/0, amsend_reg_key, /*flags*/0,
+                    &gasnetc_amsend_mrfd, /*conext*/NULL);
+    // WIP: need to select from options for error handling:
+    // 1. errors fatal (current)
+    // 2. errors warn, including the (undocumented?) knob
+    // 3. errors silent
+    GASNETC_OFI_CHECK_RET(ret, "fi_mr_reg failed for AM send buffers");
+#ifdef FI_MR_ENDPOINT
+    if (gasnetc_fi_mr_endpoint) {
+      ret = fi_mr_bind(gasnetc_amsend_mrfd, &gasnetc_ofi_rdma_epfd->fid, 0); // WIP!!
+      GASNETC_OFI_CHECK_RET(ret, "fi_mr_bind failed for AM send buffers");
+      ret = fi_mr_enable(gasnetc_amsend_mrfd);
+      GASNETC_OFI_CHECK_RET(ret, "fi_mr_enable failed for AM send buffers");
+    }
+#endif
   }
 
   /* Add the buffers to the stack in reverse order to be friendly to the cache. */
@@ -1632,6 +1683,10 @@ void gasnetc_ofi_exit(void)
     //gasneti_munmap(am_buffers_region_start, am_buffers_region_size);
   #endif
 
+  if (gasnetc_amrecv_mrfd && (fi_close(&gasnetc_amrecv_mrfd->fid) != FI_SUCCESS)) {
+    gasneti_fatalerror("close AM recv buffer mrfd failed\n");
+  }
+
   if(fi_close(&gasnetc_ofi_reply_epfd->fid)!=FI_SUCCESS) {
     gasneti_fatalerror("close am reply epfd failed\n");
   }
@@ -1656,6 +1711,10 @@ void gasnetc_ofi_exit(void)
 
   if (gasnetc_auxseg_mrfd && (fi_close(&gasnetc_auxseg_mrfd->fid) != FI_SUCCESS)) {
     gasneti_fatalerror("close auxseg mrfd failed\n");
+  }
+
+  if (gasnetc_amsend_mrfd && (fi_close(&gasnetc_amsend_mrfd->fid) != FI_SUCCESS)) {
+    gasneti_fatalerror("close AM send buffer mrfd failed\n");
   }
 
   // This must follow closing MRs if bound due to FI_MR_ENDPOINT
