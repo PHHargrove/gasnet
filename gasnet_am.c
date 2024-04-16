@@ -757,7 +757,12 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareReplyLong(
 #endif // GASNETC_BUILD_NP_REP_LONG
 
 #if GASNETC_BUILD_NP_REQ_MEDIUM
-void gasnetc_AM_CommitRequestMediumM(
+  #if GASNETC_AM_COMMIT_REQ_MEDIUM_IMMEDIATE
+    int
+  #else
+    void
+  #endif
+    gasnetc_AM_CommitRequestMediumM(
                        gex_AM_Index_t          handler,
                        size_t                  nbytes
                        GASNETI_THREAD_FARG,
@@ -772,6 +777,7 @@ void gasnetc_AM_CommitRequestMediumM(
 
     GASNETI_COMMON_COMMIT_REQ(sd,handler,nbytes,NULL,nargs_arg,Medium);
 
+    int rc = 0; // assume success
     va_list argptr;
     va_start(argptr, sd_arg);
     if (sd->_is_nbrhd) {
@@ -782,23 +788,38 @@ void gasnetc_AM_CommitRequestMediumM(
         void *src_addr         = sd->_addr;
         gex_Event_t *lc_opt    = sd->_lc_opt ? sd->_lc_opt : /* GASNet-owned buffer: */ GEX_EVENT_NOW;
         gex_Flags_t flags      = sd->_flags & ~(GEX_FLAG_IMMEDIATE |
+                                                GEX_FLAG_IMMEDIATE_COMMIT |
                                                 GEX_FLAG_AM_PREPARE_LEAST_CLIENT |
                                                 GEX_FLAG_AM_PREPARE_LEAST_ALLOC);
         unsigned int nargs     = sd->_nargs;
 
-        int rc = gasneti_AMRequestMediumV(tm, rank, handler, src_addr, nbytes, lc_opt, flags, nargs, argptr);
-        gasneti_assert(!rc); // IMMEDIATE is only permissible reason to return non-zero
+      #if GASNETC_AM_COMMIT_REQ_MEDIUM_IMMEDIATE
+        if (sd->_flags & GEX_FLAG_IMMEDIATE_COMMIT) flags |= GEX_FLAG_IMMEDIATE; // map this flag for FPAM call
+      #endif
+        rc = gasneti_AMRequestMediumV(tm, rank, handler, src_addr, nbytes, lc_opt, flags, nargs, argptr);
 
         if (sd->_tofree) {
           gasneti_free_npam_buffer(sd);
         }
     }
     va_end(argptr);
+
+  #if GASNETC_AM_COMMIT_REQ_MEDIUM_IMMEDIATE
+    gasneti_assert(!rc || (sd->_flags & GEX_FLAG_IMMEDIATE_COMMIT));
+    return rc;
+  #else
+    gasneti_assert(!rc);
+  #endif
 }
 #endif // GASNETC_BUILD_NP_REQ_MEDIUM
 
 #if GASNETC_BUILD_NP_REP_MEDIUM
-void gasnetc_AM_CommitReplyMediumM(
+  #if GASNETC_AM_COMMIT_REP_MEDIUM_IMMEDIATE
+    int
+  #else
+    void
+  #endif
+    gasnetc_AM_CommitReplyMediumM(
                        gex_AM_Index_t          handler,
                        size_t                  nbytes,
                      #if GASNET_DEBUG
@@ -812,6 +833,7 @@ void gasnetc_AM_CommitReplyMediumM(
 
     GASNETI_COMMON_COMMIT_REP(sd,handler,nbytes,NULL,nargs_arg,Medium);
 
+    int rc = 0; // assume success
     va_list argptr;
     va_start(argptr, sd_arg);
     if (sd->_is_nbrhd) {
@@ -821,23 +843,38 @@ void gasnetc_AM_CommitReplyMediumM(
         void *src_addr         = sd->_addr;
         gex_Event_t *lc_opt    = sd->_lc_opt ? sd->_lc_opt : /* GASNet-owned buffer: */ GEX_EVENT_NOW;
         gex_Flags_t flags      = sd->_flags & ~(GEX_FLAG_IMMEDIATE |
+                                                GEX_FLAG_IMMEDIATE_COMMIT |
                                                 GEX_FLAG_AM_PREPARE_LEAST_CLIENT |
                                                 GEX_FLAG_AM_PREPARE_LEAST_ALLOC);
         unsigned int nargs     = sd->_nargs;
 
-        int rc = gasneti_AMReplyMediumV(token, handler, src_addr, nbytes, lc_opt, flags, nargs, argptr);
-        gasneti_assert(!rc); // IMMEDIATE is only permissible reason to return non-zero
+      #if GASNETC_AM_COMMIT_REP_MEDIUM_IMMEDIATE
+        if (sd->_flags & GEX_FLAG_IMMEDIATE_COMMIT) flags |= GEX_FLAG_IMMEDIATE; // map this flag for FPAM call
+      #endif
+        rc = gasneti_AMReplyMediumV(token, handler, src_addr, nbytes, lc_opt, flags, nargs, argptr);
 
         if (sd->_tofree) {
           gasneti_free_npam_buffer(sd);
         }
     }
     va_end(argptr);
+
+  #if GASNETC_AM_COMMIT_REP_MEDIUM_IMMEDIATE
+    gasneti_assert(!rc || (sd->_flags & GEX_FLAG_IMMEDIATE_COMMIT));
+    return rc;
+  #else
+    gasneti_assert(!rc);
+  #endif
 }
 #endif // GASNETC_BUILD_NP_REP_MEDIUM
 
 #if GASNETC_BUILD_NP_REQ_LONG
-void gasnetc_AM_CommitRequestLongM(
+  #if GASNETC_AM_COMMIT_REQ_LONG_IMMEDIATE
+    int
+  #else
+    void
+  #endif
+    gasnetc_AM_CommitRequestLongM(
                        gex_AM_Index_t          handler,
                        size_t                  nbytes,
                        void                    *dest_addr
@@ -853,6 +890,7 @@ void gasnetc_AM_CommitRequestLongM(
 
     GASNETI_COMMON_COMMIT_REQ(sd,handler,nbytes,dest_addr,nargs_arg,Long);
 
+    int rc = 0; // assume success
     va_list argptr;
     va_start(argptr, sd_arg);
     if (sd->_is_nbrhd) {
@@ -863,23 +901,38 @@ void gasnetc_AM_CommitRequestLongM(
         void *src_addr         = sd->_addr;
         gex_Event_t *lc_opt    = sd->_lc_opt ? sd->_lc_opt : /* GASNet-owned buffer: */ GEX_EVENT_NOW;
         gex_Flags_t flags      = sd->_flags & ~(GEX_FLAG_IMMEDIATE |
+                                                GEX_FLAG_IMMEDIATE_COMMIT |
                                                 GEX_FLAG_AM_PREPARE_LEAST_CLIENT |
                                                 GEX_FLAG_AM_PREPARE_LEAST_ALLOC);
         unsigned int nargs     = sd->_nargs;
 
-        int rc = gasneti_AMRequestLongV(tm, rank, handler, src_addr, nbytes, dest_addr, lc_opt, flags, nargs, argptr);
-        gasneti_assert(!rc); // IMMEDIATE is only permissible reason to return non-zero
+      #if GASNETC_AM_COMMIT_REQ_LONG_IMMEDIATE
+        if (sd->_flags & GEX_FLAG_IMMEDIATE_COMMIT) flags |= GEX_FLAG_IMMEDIATE; // map this flag for FPAM call
+      #endif
+        rc = gasneti_AMRequestLongV(tm, rank, handler, src_addr, nbytes, dest_addr, lc_opt, flags, nargs, argptr);
 
         if (sd->_tofree) {
           gasneti_free_npam_buffer(sd);
         }
     }
     va_end(argptr);
+
+  #if GASNETC_AM_COMMIT_REQ_LONG_IMMEDIATE
+    gasneti_assert(!rc || (sd->_flags & GEX_FLAG_IMMEDIATE_COMMIT));
+    return rc;
+  #else
+    gasneti_assert(!rc);
+  #endif
 }
 #endif // GASNETC_BUILD_NP_REQ_LONG
 
 #if GASNETC_BUILD_NP_REP_LONG
-void gasnetc_AM_CommitReplyLongM(
+  #if GASNETC_AM_COMMIT_REP_LONG_IMMEDIATE
+    int
+  #else
+    void
+  #endif
+    gasnetc_AM_CommitReplyLongM(
                        gex_AM_Index_t          handler,
                        size_t                  nbytes,
                        void                    *dest_addr,
@@ -894,6 +947,7 @@ void gasnetc_AM_CommitReplyLongM(
 
     GASNETI_COMMON_COMMIT_REP(sd,handler,nbytes,dest_addr,nargs_arg,Long);
 
+    int rc = 0; // assume success
     va_list argptr;
     va_start(argptr, sd_arg);
     if (sd->_is_nbrhd) {
@@ -903,18 +957,28 @@ void gasnetc_AM_CommitReplyLongM(
         void *src_addr         = sd->_addr;
         gex_Event_t *lc_opt    = sd->_lc_opt ? sd->_lc_opt : /* GASNet-owned buffer: */ GEX_EVENT_NOW;
         gex_Flags_t flags      = sd->_flags & ~(GEX_FLAG_IMMEDIATE |
+                                                GEX_FLAG_IMMEDIATE_COMMIT |
                                                 GEX_FLAG_AM_PREPARE_LEAST_CLIENT |
                                                 GEX_FLAG_AM_PREPARE_LEAST_ALLOC);
         unsigned int nargs     = sd->_nargs;
 
-        int rc = gasneti_AMReplyLongV(token, handler, src_addr, nbytes, dest_addr, lc_opt, flags, nargs, argptr);
-        gasneti_assert(!rc); // IMMEDIATE is only permissible reason to return non-zero
+      #if GASNETC_AM_COMMIT_REP_LONG_IMMEDIATE
+        if (sd->_flags & GEX_FLAG_IMMEDIATE_COMMIT) flags |= GEX_FLAG_IMMEDIATE; // map this flag for FPAM call
+      #endif
+        rc = gasneti_AMReplyLongV(token, handler, src_addr, nbytes, dest_addr, lc_opt, flags, nargs, argptr);
 
         if (sd->_tofree) {
           gasneti_free_npam_buffer(sd);
         }
     }
     va_end(argptr);
+
+  #if GASNETC_AM_COMMIT_REP_LONG_IMMEDIATE
+    gasneti_assert(!rc || (sd->_flags & GEX_FLAG_IMMEDIATE_COMMIT));
+    return rc;
+  #else
+    gasneti_assert(!rc);
+  #endif
 }
 #endif // GASNETC_BUILD_NP_REP_LONG
 

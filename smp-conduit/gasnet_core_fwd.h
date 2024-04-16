@@ -137,6 +137,18 @@
 //#define GASNETC_AM_COMMIT_REQ_LONG_NARGS 1
 //#define GASNETC_AM_COMMIT_REP_LONG_NARGS 1
 
+  /* uncomment for each conduit-provided Commit function which implements
+     GEX_FLAG_IMMEDIATE_COMMIT (must have int return type, rather than void)
+     *OR* if using the reference impl with a {Request,Reply}{Medium,Long}V()
+     which implements GEX_FLAG_IMMEDIATE for the network (non-nbrhd)
+   */
+// smp-conduit is a special case w/o a network, in which
+// loopback and nbrhd NPAM will never fail at Commit
+//#define GASNETC_AM_COMMIT_REQ_MEDIUM_IMMEDIATE 1
+//#define GASNETC_AM_COMMIT_REP_MEDIUM_IMMEDIATE 1
+//#define GASNETC_AM_COMMIT_REQ_LONG_IMMEDIATE 1
+//#define GASNETC_AM_COMMIT_REP_LONG_IMMEDIATE 1
+
   /* uncomment if your conduit's gasnetc_AMRequest{Short,Medium,Long}V()
      include a call to gasneti_AMPoll (or equivalent) for progress.
      The preferred implementation is to Poll only in the M-suffixed calls

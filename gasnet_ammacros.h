@@ -342,7 +342,16 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareRequestMedium(
                 gex_Flags_t _flags
                 GASNETI_THREAD_FARG,
                 unsigned int _numargs);
-extern void gasnetc_AM_CommitRequestMediumM(
+#if GASNETC_AM_COMMIT_REQ_MEDIUM_IMMEDIATE
+  #define gasnetc_AM_CommitRequestMedium_(args) \
+          gasnetc_AM_CommitRequestMediumM args
+  extern int
+#else
+  #define gasnetc_AM_CommitRequestMedium_(args) \
+          (gasnetc_AM_CommitRequestMediumM args, 0)
+  extern void
+#endif
+  gasnetc_AM_CommitRequestMediumM(
                 gex_AM_Index_t _handler,
                 size_t _nbytes
                 GASNETI_THREAD_FARG,
@@ -358,7 +367,16 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareReplyMedium(
                 gex_Event_t *_lc_opt,
                 gex_Flags_t _flags,
                 unsigned int _numargs);
-extern void gasnetc_AM_CommitReplyMediumM(
+#if GASNETC_AM_COMMIT_REP_MEDIUM_IMMEDIATE
+  #define gasnetc_AM_CommitReplyMedium_(args) \
+          gasnetc_AM_CommitReplyMediumM args
+  extern int
+#else
+  #define gasnetc_AM_CommitReplyMedium_(args) \
+          (gasnetc_AM_CommitReplyMediumM args, 0)
+  extern void
+#endif
+  gasnetc_AM_CommitReplyMediumM(
                 gex_AM_Index_t _handler,
                 size_t _nbytes,
               #if GASNETC_AM_COMMIT_REP_MEDIUM_NARGS
@@ -378,7 +396,16 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareRequestLong(
                 gex_Flags_t _flags
                 GASNETI_THREAD_FARG,
                 unsigned int _numargs);
-extern void gasnetc_AM_CommitRequestLongM(
+#if GASNETC_AM_COMMIT_REQ_LONG_IMMEDIATE
+  #define gasnetc_AM_CommitRequestLong_(args) \
+          gasnetc_AM_CommitRequestLongM args
+  extern int
+#else
+  #define gasnetc_AM_CommitRequestLong_(args) \
+          (gasnetc_AM_CommitRequestLongM args, 0)
+  extern void
+#endif
+  gasnetc_AM_CommitRequestLongM(
                 gex_AM_Index_t _handler,
                 size_t _nbytes,
                 void *_dest_addr
@@ -396,7 +423,16 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareReplyLong(
                 gex_Event_t *_lc_opt,
                 gex_Flags_t _flags,
                 unsigned int _numargs);
-extern void gasnetc_AM_CommitReplyLongM(
+#if GASNETC_AM_COMMIT_REP_LONG_IMMEDIATE
+  #define gasnetc_AM_CommitReplyLong_(args) \
+          gasnetc_AM_CommitReplyLongM args
+  extern int
+#else
+  #define gasnetc_AM_CommitReplyLong_(args) \
+          (gasnetc_AM_CommitReplyLongM args, 0)
+  extern void
+#endif
+  gasnetc_AM_CommitReplyLongM(
                 gex_AM_Index_t _handler,
                 size_t _nbytes,
                 void *_dest_addr,
@@ -439,156 +475,156 @@ extern void gasnetc_AM_CommitReplyLongM(
 #endif
 
 #define gex_AM_CommitRequestMedium0(sd, handler, nbytes) \
-       gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(0), sd)
+       gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(0), sd))
 #define gex_AM_CommitRequestMedium1(sd, handler, nbytes, a0) \
-       gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(1), sd, (gex_AM_Arg_t)(a0))
+       gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(1), sd, (gex_AM_Arg_t)(a0)))
 #define gex_AM_CommitRequestMedium2(sd, handler, nbytes, a0, a1) \
-       gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(2), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1))
+       gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(2), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1)))
 #define gex_AM_CommitRequestMedium3(sd, handler, nbytes, a0, a1, a2) \
-       gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(3), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2))
+       gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(3), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2)))
 #define gex_AM_CommitRequestMedium4(sd, handler, nbytes, a0, a1, a2, a3) \
-       gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(4), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3))
+       gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(4), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3)))
 
 #define gex_AM_CommitRequestMedium5(sd, handler, nbytes, a0, a1, a2, a3, a4) \
-       gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(5), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4))
+       gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(5), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4)))
 #define gex_AM_CommitRequestMedium6(sd, handler, nbytes, a0, a1, a2, a3, a4, a5) \
-       gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(6), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5))
+       gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(6), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5)))
 #define gex_AM_CommitRequestMedium7(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6) \
-       gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(7), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6))
+       gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(7), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6)))
 #define gex_AM_CommitRequestMedium8(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7) \
-       gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(8), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7))
+       gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(8), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7)))
 
 #define gex_AM_CommitRequestMedium9(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8 ) \
-        gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(9), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8))
+        gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(9), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8)))
 #define gex_AM_CommitRequestMedium10(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9) \
-        gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(10), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9))
+        gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(10), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9)))
 #define gex_AM_CommitRequestMedium11(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) \
-        gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(11), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10))
+        gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(11), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10)))
 #define gex_AM_CommitRequestMedium12(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) \
-        gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(12), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11))
+        gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(12), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11)))
 
 #define gex_AM_CommitRequestMedium13(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) \
-        gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(13), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12))
+        gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(13), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12)))
 #define gex_AM_CommitRequestMedium14(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) \
-        gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(14), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13))
+        gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(14), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13)))
 #define gex_AM_CommitRequestMedium15(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) \
-        gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(15), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14))
+        gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(15), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14)))
 #define gex_AM_CommitRequestMedium16(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) \
-        gasnetc_AM_CommitRequestMediumM(handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(16), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14), (gex_AM_Arg_t)(a15))
+        gasnetc_AM_CommitRequestMedium_((handler, nbytes GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_MEDIUM_NARGS(16), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14), (gex_AM_Arg_t)(a15)))
 
 #define gex_AM_CommitReplyMedium0(sd, handler, nbytes) \
-       gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(0), sd)
+       gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(0), sd))
 #define gex_AM_CommitReplyMedium1(sd, handler, nbytes, a0) \
-       gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(1), sd, (gex_AM_Arg_t)(a0))
+       gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(1), sd, (gex_AM_Arg_t)(a0)))
 #define gex_AM_CommitReplyMedium2(sd, handler, nbytes, a0, a1) \
-       gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(2), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1))
+       gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(2), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1)))
 #define gex_AM_CommitReplyMedium3(sd, handler, nbytes, a0, a1, a2) \
-       gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(3), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2))
+       gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(3), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2)))
 #define gex_AM_CommitReplyMedium4(sd, handler, nbytes, a0, a1, a2, a3) \
-       gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(4), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3))
+       gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(4), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3)))
 
 #define gex_AM_CommitReplyMedium5(sd, handler, nbytes, a0, a1, a2, a3, a4) \
-       gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(5), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4))
+       gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(5), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4)))
 #define gex_AM_CommitReplyMedium6(sd, handler, nbytes, a0, a1, a2, a3, a4, a5) \
-       gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(6), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5))
+       gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(6), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5)))
 #define gex_AM_CommitReplyMedium7(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6) \
-       gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(7), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6))
+       gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(7), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6)))
 #define gex_AM_CommitReplyMedium8(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7) \
-       gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(8), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7))
+       gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(8), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7)))
 
 #define gex_AM_CommitReplyMedium9(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8 ) \
-        gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(9), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8))
+        gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(9), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8)))
 #define gex_AM_CommitReplyMedium10(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9) \
-        gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(10), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9))
+        gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(10), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9)))
 #define gex_AM_CommitReplyMedium11(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) \
-        gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(11), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10))
+        gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(11), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10)))
 #define gex_AM_CommitReplyMedium12(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) \
-        gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(12), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11))
+        gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(12), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11)))
 
 #define gex_AM_CommitReplyMedium13(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) \
-        gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(13), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12))
+        gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(13), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12)))
 #define gex_AM_CommitReplyMedium14(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) \
-        gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(14), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13))
+        gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(14), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13)))
 #define gex_AM_CommitReplyMedium15(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) \
-        gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(15), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14))
+        gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(15), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14)))
 #define gex_AM_CommitReplyMedium16(sd, handler, nbytes, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) \
-        gasnetc_AM_CommitReplyMediumM(handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(16), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14), (gex_AM_Arg_t)(a15))
+        gasnetc_AM_CommitReplyMedium_((handler, nbytes GASNETI_AM_COMMIT_REP_MEDIUM_NARGS(16), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14), (gex_AM_Arg_t)(a15)))
 /* ------------------------------------------------------------------------------------ */
 #define gex_AM_CommitRequestLong0(sd, handler, nbytes, dest_addr) \
-       gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(0), sd)
+       gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(0), sd))
 #define gex_AM_CommitRequestLong1(sd, handler, nbytes, dest_addr, a0) \
-       gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(1), sd, (gex_AM_Arg_t)(a0))
+       gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(1), sd, (gex_AM_Arg_t)(a0)))
 #define gex_AM_CommitRequestLong2(sd, handler, nbytes, dest_addr, a0, a1) \
-       gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(2), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1))
+       gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(2), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1)))
 #define gex_AM_CommitRequestLong3(sd, handler, nbytes, dest_addr, a0, a1, a2) \
-       gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(3), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2))
+       gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(3), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2)))
 #define gex_AM_CommitRequestLong4(sd, handler, nbytes, dest_addr, a0, a1, a2, a3) \
-       gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(4), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3))
+       gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(4), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3)))
 
 #define gex_AM_CommitRequestLong5(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4) \
-       gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(5), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4))
+       gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(5), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4)))
 #define gex_AM_CommitRequestLong6(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5) \
-       gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(6), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5))
+       gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(6), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5)))
 #define gex_AM_CommitRequestLong7(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6) \
-       gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(7), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6))
+       gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(7), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6)))
 #define gex_AM_CommitRequestLong8(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7) \
-       gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(8), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7))
+       gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(8), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7)))
 
 #define gex_AM_CommitRequestLong9(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8 ) \
-        gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(9), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8))
+        gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(9), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8)))
 #define gex_AM_CommitRequestLong10(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9) \
-        gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(10), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9))
+        gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(10), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9)))
 #define gex_AM_CommitRequestLong11(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) \
-        gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(11), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10))
+        gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(11), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10)))
 #define gex_AM_CommitRequestLong12(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) \
-        gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(12), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11))
+        gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(12), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11)))
 
 #define gex_AM_CommitRequestLong13(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) \
-        gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(13), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12))
+        gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(13), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12)))
 #define gex_AM_CommitRequestLong14(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) \
-        gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(14), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13))
+        gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(14), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13)))
 #define gex_AM_CommitRequestLong15(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) \
-        gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(15), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14))
+        gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(15), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14)))
 #define gex_AM_CommitRequestLong16(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) \
-        gasnetc_AM_CommitRequestLongM(handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(16), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14), (gex_AM_Arg_t)(a15))
+        gasnetc_AM_CommitRequestLong_((handler, nbytes, dest_addr GASNETI_THREAD_GET GASNETI_AM_COMMIT_REQ_LONG_NARGS(16), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14), (gex_AM_Arg_t)(a15)))
 
 #define gex_AM_CommitReplyLong0(sd, handler, nbytes, dest_addr) \
-       gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(0), sd)
+       gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(0), sd))
 #define gex_AM_CommitReplyLong1(sd, handler, nbytes, dest_addr, a0) \
-       gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(1), sd, (gex_AM_Arg_t)(a0))
+       gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(1), sd, (gex_AM_Arg_t)(a0)))
 #define gex_AM_CommitReplyLong2(sd, handler, nbytes, dest_addr, a0, a1) \
-       gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(2), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1))
+       gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(2), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1)))
 #define gex_AM_CommitReplyLong3(sd, handler, nbytes, dest_addr, a0, a1, a2) \
-       gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(3), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2))
+       gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(3), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2)))
 #define gex_AM_CommitReplyLong4(sd, handler, nbytes, dest_addr, a0, a1, a2, a3) \
-       gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(4), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3))
+       gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(4), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3)))
 
 #define gex_AM_CommitReplyLong5(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4) \
-       gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(5), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4))
+       gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(5), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4)))
 #define gex_AM_CommitReplyLong6(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5) \
-       gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(6), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5))
+       gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(6), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5)))
 #define gex_AM_CommitReplyLong7(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6) \
-       gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(7), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6))
+       gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(7), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6)))
 #define gex_AM_CommitReplyLong8(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7) \
-       gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(8), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7))
+       gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(8), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7)))
 
 #define gex_AM_CommitReplyLong9(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8 ) \
-        gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(9), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8))
+        gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(9), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8)))
 #define gex_AM_CommitReplyLong10(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9) \
-        gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(10), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9))
+        gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(10), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9)))
 #define gex_AM_CommitReplyLong11(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) \
-        gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(11), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10))
+        gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(11), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10)))
 #define gex_AM_CommitReplyLong12(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) \
-        gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(12), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11))
+        gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(12), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11)))
 
 #define gex_AM_CommitReplyLong13(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) \
-        gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(13), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12))
+        gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(13), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12)))
 #define gex_AM_CommitReplyLong14(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) \
-        gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(14), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13))
+        gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(14), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13)))
 #define gex_AM_CommitReplyLong15(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) \
-        gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(15), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14))
+        gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(15), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14)))
 #define gex_AM_CommitReplyLong16(sd, handler, nbytes, dest_addr, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) \
-        gasnetc_AM_CommitReplyLongM(handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(16), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14), (gex_AM_Arg_t)(a15))
+        gasnetc_AM_CommitReplyLong_((handler, nbytes, dest_addr GASNETI_AM_COMMIT_REP_LONG_NARGS(16), sd, (gex_AM_Arg_t)(a0), (gex_AM_Arg_t)(a1), (gex_AM_Arg_t)(a2), (gex_AM_Arg_t)(a3), (gex_AM_Arg_t)(a4), (gex_AM_Arg_t)(a5), (gex_AM_Arg_t)(a6), (gex_AM_Arg_t)(a7), (gex_AM_Arg_t)(a8), (gex_AM_Arg_t)(a9), (gex_AM_Arg_t)(a10), (gex_AM_Arg_t)(a11), (gex_AM_Arg_t)(a12), (gex_AM_Arg_t)(a13), (gex_AM_Arg_t)(a14), (gex_AM_Arg_t)(a15)))
 
 /* ------------------------------------------------------------------------------------ */
 #endif

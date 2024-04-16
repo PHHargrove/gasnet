@@ -146,6 +146,7 @@ typedef uint32_t gex_OP_t;
 typedef uint32_t gex_Flags_t;
 
 #define GEX_FLAG_IMMEDIATE              (1U <<  0)
+#define GEX_FLAG_IMMEDIATE_COMMIT       (1U <<  1)
 
 #define GEX_FLAG_SELF_SEG_UNKNOWN       (1U <<  3)
 #define GEX_FLAG_SELF_SEG_SOME          (1U <<  4)

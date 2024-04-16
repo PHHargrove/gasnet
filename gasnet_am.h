@@ -20,6 +20,7 @@
     GASNETI_CHECK_LEGACY_REQUEST(tm,flags);                                    \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_CLIENT));              \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_ALLOC));               \
+    gasneti_assert(! (flags & GEX_FLAG_IMMEDIATE_COMMIT));                     \
     gasneti_assert_int(numargs ,>=, 0);                                        \
     gasneti_assert_int(numargs ,<=, gex_AM_MaxArgs());                         \
     GASNETI_TRACE_AMREQUESTSHORT(tm,rank,handler,flags,numargs);               \
@@ -31,6 +32,7 @@
     GASNETI_CHECK_LEGACY_REQUEST(tm,flags);                                          \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_CLIENT));                    \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_ALLOC));                     \
+    gasneti_assert(! (flags & GEX_FLAG_IMMEDIATE_COMMIT));                           \
     gasneti_assert_int(numargs ,>=, 0);                                        \
     gasneti_assert_int(numargs ,<=, gex_AM_MaxArgs());                         \
     GASNETI_TRACE_AMREQUESTMEDIUM(tm,rank,handler,source_addr,nbytes,flags,numargs); \
@@ -46,6 +48,7 @@
     GASNETI_CHECK_LEGACY_REQUEST(tm,flags);                                                  \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_CLIENT));                            \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_ALLOC));                             \
+    gasneti_assert(! (flags & GEX_FLAG_IMMEDIATE_COMMIT));                                   \
     gasneti_assert_int(numargs ,>=, 0);                                                      \
     gasneti_assert_int(numargs ,<=, gex_AM_MaxArgs());                                       \
     GASNETI_TRACE_AMREQUESTLONG(tm,rank,handler,source_addr,nbytes,dest_addr,flags,numargs); \
@@ -62,6 +65,7 @@
 #define GASNETI_COMMON_AMREPLYSHORT(token,handler,flags,numargs) do {    \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_CLIENT));  \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_ALLOC));   \
+    gasneti_assert(! (flags & GEX_FLAG_IMMEDIATE_COMMIT));         \
     gasneti_assert_int(numargs ,>=, 0);                            \
     gasneti_assert_int(numargs ,<=, gex_AM_MaxArgs());             \
     GASNETI_TRACE_AMREPLYSHORT(token,handler,flags,numargs);       \
@@ -70,6 +74,7 @@
 #define GASNETI_COMMON_AMREPLYMEDIUM(token,handler,source_addr,nbytes,lc_opt,flags,numargs) do { \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_CLIENT));                   \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_ALLOC));                    \
+    gasneti_assert(! (flags & GEX_FLAG_IMMEDIATE_COMMIT));                          \
     gasneti_assert_int(numargs ,>=, 0);                                             \
     gasneti_assert_int(numargs ,<=, gex_AM_MaxArgs());                              \
     GASNETI_TRACE_AMREPLYMEDIUM(token,handler,source_addr,nbytes,flags,numargs);    \
@@ -83,6 +88,7 @@
 #define GASNETI_COMMON_AMREPLYLONG(token,handler,source_addr,nbytes,dest_addr,lc_opt,flags,numargs) do { \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_CLIENT));                           \
     gasneti_assert(! (flags & GEX_FLAG_AM_PREPARE_LEAST_ALLOC));                            \
+    gasneti_assert(! (flags & GEX_FLAG_IMMEDIATE_COMMIT));                                  \
     gasneti_assert_int(numargs ,>=, 0);                                                     \
     gasneti_assert_int(numargs ,<=, gex_AM_MaxArgs());                                      \
     GASNETI_TRACE_AMREPLYLONG(token,handler,source_addr,nbytes,dest_addr,flags,numargs);    \
@@ -1075,6 +1081,8 @@ gasneti_AM_SrcDesc_t gasnetc_nbrhd_PrepareRequest(
 
 // Parameter 'category' will be a manifest constant
 // which should lead to specialization of the code upon inlining.
+// NOTE: has void (not int) return type because Prepare has allocated
+// all the necessary resources such that Commit will never fail.
 GASNETI_INLINE(gasnetc_nbrhd_CommitRequest)
 void gasnetc_nbrhd_CommitRequest(
                         gasneti_AM_SrcDesc_t sd,
@@ -1146,6 +1154,8 @@ gasneti_AM_SrcDesc_t gasnetc_nbrhd_PrepareReply(
 
 // Parameter 'category' will be a manifest constant
 // which should lead to specialization of the code upon inlining.
+// NOTE: has void (not int) return type because Prepare has allocated
+// all the necessary resources such that Commit will never fail.
 GASNETI_INLINE(gasnetc_nbrhd_CommitReply)
 void gasnetc_nbrhd_CommitReply(
                         gasneti_AM_SrcDesc_t sd,

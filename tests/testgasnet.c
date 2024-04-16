@@ -1082,6 +1082,8 @@ void doit0(int partner, int *partnerseg) {
   static gex_Flags_t const flags_arr[] = { // ensure all the flags exist
     COMM_INIT_FLAGS
 
+    GEX_FLAG_IMMEDIATE_COMMIT,
+
     GEX_FLAG_AM_PREPARE_LEAST_CLIENT,
     GEX_FLAG_AM_PREPARE_LEAST_ALLOC,
 
@@ -1131,6 +1133,11 @@ void doit0(int partner, int *partnerseg) {
     COMM_INIT_FLAGS
   };
   assert_arr_unaliased(gex_Flags_t, flags_rma);
+  static gex_Flags_t const flags_prep[] = { // gex_AM_Prepare*
+    COMM_INIT_FLAGS
+    GEX_FLAG_IMMEDIATE_COMMIT
+  };
+  assert_arr_unaliased(gex_Flags_t, flags_prep);
   static gex_Flags_t const flags_ammax[] = { // gex_AM_Max* prepare-specific
     GEX_FLAG_AM_PREPARE_LEAST_CLIENT,
     GEX_FLAG_AM_PREPARE_LEAST_ALLOC,

@@ -170,6 +170,22 @@
 #define GASNETC_AM_COMMIT_REP_LONG_NARGS 1
 #endif
 
+  /* uncomment for each conduit-provided Commit function which implements
+     GEX_FLAG_IMMEDIATE_COMMIT (must have int return type, rather than void)
+     *OR* if using the reference impl with a {Request,Reply}{Medium,Long}V()
+     which implements GEX_FLAG_IMMEDIATE for the network (non-nbrhd)
+   */
+// Medium: native NPAM w/o GEX_FLAG_IMMEDIATE_COMMIT support
+//#define GASNETC_AM_COMMIT_REQ_MEDIUM_IMMEDIATE 1
+//#define GASNETC_AM_COMMIT_REP_MEDIUM_IMMEDIATE 1
+#if GASNETC_PIN_SEGMENT
+// Long: native NPAM w/o support for GEX_FLAG_IMMEDIATE_COMMIT
+#else
+// Long: reference NPAM over FPAM w/ GEX_FLAG_IMMEDIATE support
+#define GASNETC_AM_COMMIT_REQ_LONG_IMMEDIATE 1
+#define GASNETC_AM_COMMIT_REP_LONG_IMMEDIATE 1
+#endif
+
 #define GASNETI_AM_SRCDESC_EXTRA \
         int                 _have_flow;         \
         int                 _head_len;          \

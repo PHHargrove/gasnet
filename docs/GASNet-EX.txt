@@ -2265,11 +2265,16 @@ size_t gex_AM_SrcDescSize(gex_AM_SrcDesc_t sd);
 //  gex_Flags_t flags
 //   + Bitwise OR of flags valid for the corresponding
 //     fixed-payload AM injection
-//   + GEX_FLAG_IMMEDIATE: the Prepare call may return
-//     GEX_AM_SRCDESC_NO_OP==0 if injection resources (in
-//     particular a buffer of size least_payload or longer) cannot
+//   + GEX_FLAG_IMMEDIATE: the Prepare call is permitted (but not required) to
+//     return GEX_AM_SRCDESC_NO_OP==0 if it can be determined that injection
+//     resources (in particular a buffer of size least_payload or longer) cannot
 //     be obtained.
 //     The Commit-time behavior is unaffected by this flag.
+//   + GEX_FLAG_IMMEDIATE_COMMIT: the Commit call is permitted (but not
+//     required) to return a non-zero value, without initiating any
+//     communication, if the conduit could determine that it would need to
+//     block temporarily to obtain the necessary resources.
+//     Otherwise, the Commit call returns 0.
 //   + [UNIMPLEMENTED] GEX_FLAG_SELF_SEG_OFFSET: is prohibited
 //   + [UNIMPLEMENTED] GEX_FLAG_SELF_SEG_*: these flags may only be 
 //     passed if client_buf is non-NULL, and assert segment disposition
@@ -2342,7 +2347,12 @@ extern gex_AM_SrcDesc_t gex_AM_PrepareReplyLong(
 //   (added in C99 and C++11) the "[M]" may optionally be omitted entirely and
 //   is inferred based on the argument count.
 //
-// RETURNS: void
+// RETURNS: int
+//   + Non-zero if and only if the flag `GEX_FLAG_IMMEDIATE_COMMIT` was passed
+//     to the immediately preceding Prepare call on this thread call and this
+//     Commit call did not initiate communication due to a shortage of some
+//     required resource.  Note: the `sd` is still consumed in this case.
+//   + Zero otherwise
 // ARGUMENTS:
 //  gex_AM_SrcDesc sd
 //   + The value returned by the immediately preceding Prepare
@@ -2359,23 +2369,23 @@ extern gex_AM_SrcDesc_t gex_AM_PrepareReplyLong(
 //   + If non-NULL dest_addr was passed to Prepare, this must
 //     be the same value
 //
-extern void gex_AM_CommitRequestMedium[M](
+extern int gex_AM_CommitRequestMedium[M](
                 gex_AM_SrcDesc_t sd,
                 gex_AM_Index_t   handler,
                 size_t           nbytes
                 [,arg0, ... ,argM-1]);
-extern void gex_AM_CommitReplyMedium[M](
+extern int gex_AM_CommitReplyMedium[M](
                 gex_AM_SrcDesc_t sd,
                 gex_AM_Index_t   handler,
                 size_t           nbytes
                 [,arg0, ... ,argM-1]);
-extern void gex_AM_CommitRequestLong[M](
+extern int gex_AM_CommitRequestLong[M](
                 gex_AM_SrcDesc_t sd,
                 gex_AM_Index_t   handler,
                 size_t           nbytes,
                 void             *dest_addr
                 [,arg0, ... ,argM-1]);
-extern void gex_AM_CommitReplyLong[M](
+extern int gex_AM_CommitReplyLong[M](
                 gex_AM_SrcDesc_t sd,
                 gex_AM_Index_t   handler,
                 size_t           nbytes,
