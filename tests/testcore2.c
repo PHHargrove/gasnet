@@ -136,6 +136,7 @@ void ping_medhandler(gex_Token_t token, void *buf, size_t nbytes,
   validate_chunk("Medium Request (pre-reply)", buf, nbytes, iter, chunkidx);
   gex_AM_SrcDesc_t sd;
   int imm = 0;
+  int imm_commit = 0;
   gex_Flags_t flags = TEST_RAND_ONEIN(5) ? GEX_FLAG_IMMEDIATE : 0;
   size_t most_payload = TEST_RAND(nbytes, 2*nbytes);
   int injmode = INJMODE(iter); // [0..2]
@@ -153,6 +154,7 @@ retry:
     case INJ_NP_CB: // Negotiated-payload with client-provided buffer
       // TODO: (lc_opt = &event) is legal, but we lack logic to test/wait outside handler context
       //       additionally, we could not safely send buf with async LC
+      flags |= TEST_RAND_ONEIN(5) ? GEX_FLAG_IMMEDIATE_COMMIT : 0;
       sd = gex_AM_PrepareReplyMedium(token, buf, least_payload, most_payload, GEX_EVENT_NOW, flags, 2);
       imm = (sd == GEX_AM_SRCDESC_NO_OP); // IMMEDIATE was NO OP
       if (imm) break;
@@ -160,10 +162,11 @@ retry:
       assert(gex_AM_SrcDescSize(sd) <= most_payload);
       assert(gex_AM_SrcDescAddr(sd) == buf);
       len = MIN(len, gex_AM_SrcDescSize(sd));
-      gex_AM_CommitReplyMedium2(sd, hidx_pong_medhandler, len, iter, arg1);
+      imm_commit = gex_AM_CommitReplyMedium2(sd, hidx_pong_medhandler, len, iter, arg1);
       break;
 
     case INJ_NP_GB: // Negotiated-payload without client-provided buffer
+      flags |= TEST_RAND_ONEIN(5) ? GEX_FLAG_IMMEDIATE_COMMIT : 0;
       sd = gex_AM_PrepareReplyMedium(token, NULL, least_payload, most_payload, NULL, flags, 2);
       imm = (sd == GEX_AM_SRCDESC_NO_OP); // IMMEDIATE was NO OP
       if (imm) break;
@@ -171,12 +174,17 @@ retry:
       assert(gex_AM_SrcDescSize(sd) <= most_payload);
       len = MIN(len, gex_AM_SrcDescSize(sd));
       memcpy(gex_AM_SrcDescAddr(sd), buf, len);
-      gex_AM_CommitReplyMedium2(sd, hidx_pong_medhandler, len, iter, arg1);
+      imm_commit = gex_AM_CommitReplyMedium2(sd, hidx_pong_medhandler, len, iter, arg1);
       break;
   }
   if (imm) {
     assert(flags & GEX_FLAG_IMMEDIATE);
     flags &= ~GEX_FLAG_IMMEDIATE;
+    goto retry;
+  }
+  if (imm_commit) {
+    assert(flags & GEX_FLAG_IMMEDIATE_COMMIT);
+    flags &= ~GEX_FLAG_IMMEDIATE_COMMIT;
     goto retry;
   }
   if ((injmode != INJ_NP_GB) && TEST_RAND_ONEIN(5)) {
@@ -204,6 +212,7 @@ void ping_longhandler(gex_Token_t token, void *buf, size_t nbytes,
   uint8_t *srcbuf = INSEG(iter) ? buf : longreplysrc+chunkidx*curr_sz;
   uint8_t *dstbuf = peerrepseg+chunkidx*curr_sz;
   int imm = 0;
+  int imm_commit = 0;
   gex_Flags_t flags = TEST_RAND_ONEIN(5) ? GEX_FLAG_IMMEDIATE : 0;
   void * maybe_dest = TEST_RAND_ONEIN(2) ? dstbuf : NULL; // Passing dest_addr to Prepare is optional
   size_t most_payload = TEST_RAND(nbytes, 2*nbytes);
@@ -223,6 +232,7 @@ retry:
     case INJ_NP_CB: // Negotiated-payload with client-provided buffer
       // TODO: (lc_opt = &event) is legal, but we lack logic to test/wait outside handler context
       //       additionally, we could not safely send buf with async LC
+      flags |= TEST_RAND_ONEIN(5) ? GEX_FLAG_IMMEDIATE_COMMIT : 0;
       sd = gex_AM_PrepareReplyLong(token, srcbuf, least_payload, most_payload, maybe_dest, GEX_EVENT_NOW, flags, 2);
       imm = (sd == GEX_AM_SRCDESC_NO_OP); // IMMEDIATE was NO OP
       if (imm) break;
@@ -231,10 +241,11 @@ retry:
       assert(gex_AM_SrcDescAddr(sd) == srcbuf);
       len = MIN(len, gex_AM_SrcDescSize(sd));
       if (srcbuf != buf) memcpy(srcbuf, buf, len); // according to INSEG - not due to Prepare
-      gex_AM_CommitReplyLong2(sd, hidx_pong_longhandler, len, dstbuf, iter, arg1);
+      imm_commit = gex_AM_CommitReplyLong2(sd, hidx_pong_longhandler, len, dstbuf, iter, arg1);
       break;
 
     case INJ_NP_GB: // Negotiated-payload without client-provided buffer
+      flags |= TEST_RAND_ONEIN(5) ? GEX_FLAG_IMMEDIATE_COMMIT : 0;
       sd = gex_AM_PrepareReplyLong(token, NULL, least_payload, most_payload, maybe_dest, NULL, flags, 2);
       imm = (sd == GEX_AM_SRCDESC_NO_OP); // IMMEDIATE was NO OP
       if (imm) break;
@@ -242,12 +253,17 @@ retry:
       assert(gex_AM_SrcDescSize(sd) <= most_payload);
       len = MIN(len, gex_AM_SrcDescSize(sd));
       memcpy(gex_AM_SrcDescAddr(sd), buf, len);
-      gex_AM_CommitReplyLong2(sd, hidx_pong_longhandler, len, dstbuf, iter, arg1);
+      imm_commit = gex_AM_CommitReplyLong2(sd, hidx_pong_longhandler, len, dstbuf, iter, arg1);
       break;
   }
   if (imm) {
     assert(flags & GEX_FLAG_IMMEDIATE);
     flags &= ~GEX_FLAG_IMMEDIATE;
+    goto retry;
+  }
+  if (imm_commit) {
+    assert(flags & GEX_FLAG_IMMEDIATE_COMMIT);
+    flags &= ~GEX_FLAG_IMMEDIATE_COMMIT;
     goto retry;
   }
   if ((injmode != INJ_NP_GB) && !INSEG(iter) && TEST_RAND_ONEIN(5)) {
@@ -504,6 +520,7 @@ void *doit(void *id) {
             gex_AM_SrcDesc_t sd;
             void *srcbuf = srcseg+chunkidx*sz;
             int imm = 0;
+            int imm_commit = 0;
             gex_Flags_t flags = TEST_RAND_ONEIN(5) ? GEX_FLAG_IMMEDIATE : 0;
             size_t most_payload = TEST_RAND(sz, 2*sz);
             int injmode = INJMODE(iter); // [0..2]
@@ -534,6 +551,7 @@ void *doit(void *id) {
                   case 1: lc_opt = GEX_EVENT_NOW;   break;
                   case 2: lc_opt = GEX_EVENT_GROUP; break;
                 }
+                flags |= TEST_RAND_ONEIN(5) ? GEX_FLAG_IMMEDIATE_COMMIT : 0;
                 sd = gex_AM_PrepareRequestMedium(myteam, peerproc, src, least_payload, most_payload, lc_opt, flags, 2);
                 imm = (sd == GEX_AM_SRCDESC_NO_OP); // IMMEDIATE was NO OP
                 if (imm) break;
@@ -541,8 +559,10 @@ void *doit(void *id) {
                 assert(gex_AM_SrcDescSize(sd) <= most_payload);
                 assert(gex_AM_SrcDescAddr(sd) == src);
                 len = MIN(len, gex_AM_SrcDescSize(sd));
-                gex_AM_CommitRequestMedium2(sd, hidx_ping_medhandler, len, iter, arg1);
-                if (lc_opt == GEX_EVENT_GROUP) {
+                imm_commit = gex_AM_CommitRequestMedium2(sd, hidx_ping_medhandler, len, iter, arg1);
+                if (imm_commit) {
+                  // NO-OP
+                } else if (lc_opt == GEX_EVENT_GROUP) {
                   gex_NBI_Wait(GEX_EC_AM,0);
                 } else if (lc_opt != GEX_EVENT_NOW) {
                   (void)gex_Event_QueryLeaf(lc, GEX_EC_LC); // should fail if not a root event
@@ -552,6 +572,7 @@ void *doit(void *id) {
               }
 
               case INJ_NP_GB: // Negotiated-payload without client-provided buffer
+                flags |= TEST_RAND_ONEIN(5) ? GEX_FLAG_IMMEDIATE_COMMIT : 0;
                 sd = gex_AM_PrepareRequestMedium(myteam, peerproc, NULL, least_payload, most_payload, NULL, flags, 2);
                 imm = (sd == GEX_AM_SRCDESC_NO_OP); // IMMEDIATE was NO OP
                 if (imm) break;
@@ -559,12 +580,17 @@ void *doit(void *id) {
                 assert(gex_AM_SrcDescSize(sd) <= most_payload);
                 len = MIN(len, gex_AM_SrcDescSize(sd));
                 memcpy(gex_AM_SrcDescAddr(sd), srcbuf, len);
-                gex_AM_CommitRequestMedium2(sd, hidx_ping_medhandler, len, iter, arg1);
+                imm_commit = gex_AM_CommitRequestMedium2(sd, hidx_ping_medhandler, len, iter, arg1);
                 break;
             }
             if (imm) {
               assert(flags & GEX_FLAG_IMMEDIATE);
               flags &= ~GEX_FLAG_IMMEDIATE;
+              goto retry_med;
+            }
+            if (imm_commit) {
+              assert(flags & GEX_FLAG_IMMEDIATE_COMMIT);
+              flags &= ~GEX_FLAG_IMMEDIATE_COMMIT;
               goto retry_med;
             }
             if (src == tmpbuf) memset(tmpbuf, 0xa5, len); // overwrite source
@@ -582,6 +608,7 @@ void *doit(void *id) {
             void *srcbuf = srcseg+chunkidx*sz;
             void *dstbuf = peerreqseg+chunkidx*sz;
             int imm = 0;
+            int imm_commit = 0;
             gex_Flags_t flags = TEST_RAND_ONEIN(5) ? GEX_FLAG_IMMEDIATE : 0;
             void * maybe_dest = TEST_RAND_ONEIN(2) ? dstbuf : NULL; // Passing dest_addr to Prepare is optional
             size_t most_payload = TEST_RAND(sz, 2*sz);
@@ -613,6 +640,7 @@ void *doit(void *id) {
                   case 1: lc_opt = GEX_EVENT_NOW;   break;
                   case 2: lc_opt = GEX_EVENT_GROUP; break;
                 }
+                flags |= TEST_RAND_ONEIN(5) ? GEX_FLAG_IMMEDIATE_COMMIT : 0;
                 sd = gex_AM_PrepareRequestLong(myteam, peerproc, src, least_payload, most_payload, maybe_dest, lc_opt, flags, 2);
                 imm = (sd == GEX_AM_SRCDESC_NO_OP); // IMMEDIATE was NO OP
                 if (imm) break;
@@ -620,8 +648,10 @@ void *doit(void *id) {
                 assert(gex_AM_SrcDescSize(sd) <= most_payload);
                 assert(gex_AM_SrcDescAddr(sd) == src);
                 len = MIN(len, gex_AM_SrcDescSize(sd));
-                gex_AM_CommitRequestLong2(sd, hidx_ping_longhandler, len, dstbuf, iter, arg1);
-                if (lc_opt == GEX_EVENT_GROUP) {
+                imm_commit = gex_AM_CommitRequestLong2(sd, hidx_ping_longhandler, len, dstbuf, iter, arg1);
+                if (imm_commit) {
+                  // NO-OP
+                } else if (lc_opt == GEX_EVENT_GROUP) {
                   gex_NBI_Wait(GEX_EC_AM,0);
                 } else if (lc_opt != GEX_EVENT_NOW) {
                   (void)gex_Event_QueryLeaf(lc, GEX_EC_LC); // should fail if not a root event
@@ -631,6 +661,7 @@ void *doit(void *id) {
               }
 
               case INJ_NP_GB: // Negotiated-payload without client-provided buffer
+                flags |= TEST_RAND_ONEIN(5) ? GEX_FLAG_IMMEDIATE_COMMIT : 0;
                 sd = gex_AM_PrepareRequestLong(myteam, peerproc, NULL, least_payload, most_payload, maybe_dest, NULL, flags, 2);
                 imm = (sd == GEX_AM_SRCDESC_NO_OP); // IMMEDIATE was NO OP
                 if (imm) break;
@@ -638,12 +669,17 @@ void *doit(void *id) {
                 assert(gex_AM_SrcDescSize(sd) <= most_payload);
                 len = MIN(len, gex_AM_SrcDescSize(sd));
                 memcpy(gex_AM_SrcDescAddr(sd), srcbuf, len);
-                gex_AM_CommitRequestLong2(sd, hidx_ping_longhandler, len, dstbuf, iter, arg1);
+                imm_commit = gex_AM_CommitRequestLong2(sd, hidx_ping_longhandler, len, dstbuf, iter, arg1);
                 break;
             }
             if (imm) {
               assert(flags & GEX_FLAG_IMMEDIATE);
               flags &= ~GEX_FLAG_IMMEDIATE;
+              goto retry_long;
+            }
+            if (imm_commit) {
+              assert(flags & GEX_FLAG_IMMEDIATE_COMMIT);
+              flags &= ~GEX_FLAG_IMMEDIATE_COMMIT;
               goto retry_long;
             }
             if (src == tmpbuf) memset(tmpbuf, 0x5a, len); // overwrite source
