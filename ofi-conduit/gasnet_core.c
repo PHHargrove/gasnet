@@ -969,7 +969,7 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareRequestMedium(
     return gasneti_export_srcdesc(sd);
 }
 
-extern void gasnetc_AM_CommitRequestMediumM(
+extern int gasnetc_AM_CommitRequestMediumM(
                        gex_AM_Index_t          handler,
                        size_t                  nbytes
                        GASNETI_THREAD_FARG,
@@ -982,16 +982,20 @@ extern void gasnetc_AM_CommitRequestMediumM(
 
     GASNETI_COMMON_COMMIT_REQ(sd,handler,nbytes,NULL,nargs_arg,Medium);
 
+    int rc = 0; // assume sucess
     va_list argptr;
     va_start(argptr, sd_arg);
     if (sd->_is_nbrhd) {
         gasnetc_nbrhd_CommitRequest(sd, gasneti_Medium, handler, nbytes, NULL, argptr);
     } else {
-        gasnetc_ofi_CommitMedium(sd, /*isreq*/1, handler, nbytes, argptr GASNETI_THREAD_PASS);
+        rc = gasnetc_ofi_CommitMedium(sd, /*isreq*/1, handler, nbytes, argptr GASNETI_THREAD_PASS);
+        gasneti_assert(!rc || (sd->_flags & GEX_FLAG_IMMEDIATE_COMMIT));
     }
     va_end(argptr);
 
     gasneti_reset_srcdesc(sd);
+
+    return rc;
 }
 
 #endif // GASNET_NATIVE_NP_ALLOC_REQ_MEDIUM
@@ -1035,7 +1039,7 @@ extern gex_AM_SrcDesc_t gasnetc_AM_PrepareReplyMedium(
     return gasneti_export_srcdesc(sd);
 }
 
-extern void gasnetc_AM_CommitReplyMediumM(
+extern int gasnetc_AM_CommitReplyMediumM(
                        gex_AM_Index_t          handler,
                        size_t                  nbytes,
                      #if GASNET_DEBUG
@@ -1047,17 +1051,21 @@ extern void gasnetc_AM_CommitReplyMediumM(
 
     GASNETI_COMMON_COMMIT_REP(sd,handler,nbytes,NULL,nargs_arg,Medium);
 
+    int rc = 0; // assume success
     va_list argptr;
     va_start(argptr, sd_arg);
     if (sd->_is_nbrhd) {
         gasnetc_nbrhd_CommitReply(sd, gasneti_Medium, handler, nbytes, NULL, argptr);
     } else {
         GASNET_POST_THREADINFO(sd->_thread);
-        gasnetc_ofi_CommitMedium(sd, /*isreq*/0, handler, nbytes, argptr GASNETI_THREAD_PASS);
+        rc = gasnetc_ofi_CommitMedium(sd, /*isreq*/0, handler, nbytes, argptr GASNETI_THREAD_PASS);
+        gasneti_assert(!rc || (sd->_flags & GEX_FLAG_IMMEDIATE_COMMIT));
     }
     va_end(argptr);
 
     gasneti_reset_srcdesc(sd);
+
+    return rc;
 }
 
 #endif // GASNET_NATIVE_NP_ALLOC_REP_MEDIUM

@@ -126,9 +126,9 @@
      *OR* if using the reference impl with a {Request,Reply}{Medium,Long}V()
      which implements GEX_FLAG_IMMEDIATE for the network (non-nbrhd)
    */
-// Medium: native NPAM w/o GEX_FLAG_IMMEDIATE_COMMIT support
-//#define GASNETC_AM_COMMIT_REQ_MEDIUM_IMMEDIATE 1
-//#define GASNETC_AM_COMMIT_REP_MEDIUM_IMMEDIATE 1
+// Medium: native NPAM w/ GEX_FLAG_IMMEDIATE_COMMIT support
+#define GASNETC_AM_COMMIT_REQ_MEDIUM_IMMEDIATE 1
+#define GASNETC_AM_COMMIT_REP_MEDIUM_IMMEDIATE 1
 // Long: reference NPAM over FPAM w/ GEX_FLAG_IMMEDIATE support
 #define GASNETC_AM_COMMIT_REQ_LONG_IMMEDIATE 1
 #define GASNETC_AM_COMMIT_REP_LONG_IMMEDIATE 1

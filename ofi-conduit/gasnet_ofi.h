@@ -204,7 +204,7 @@ extern gasneti_AM_SrcDesc_t gasnetc_ofi_PrepareMedium(
                 gex_Flags_t           flags,
                 unsigned int          numargs
                 GASNETI_THREAD_FARG);
-void gasnetc_ofi_CommitMedium(
+int gasnetc_ofi_CommitMedium(
                 gasneti_AM_SrcDesc_t   sd,
                 int                    isreq,
                 gex_AM_Index_t         handler,

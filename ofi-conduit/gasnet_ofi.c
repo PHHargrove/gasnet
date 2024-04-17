@@ -2609,17 +2609,18 @@ int gasnetc_medium_commit(
 
     // Send
     int ret;
+    int is_imm = flags & (GEX_FLAG_IMMEDIATE | GEX_FLAG_IMMEDIATE_COMMIT);
     if(len <= max_buffered_send) {
         OFI_INJECT_RETRY_IMM(&gasnetc_ofi_locks.am_tx,
                              ret = fi_inject(ep, sendbuf, len, am_dest),
-                             poll_type, flags & GEX_FLAG_IMMEDIATE, out_imm);
+                             poll_type, is_imm, out_imm);
         GASNETC_OFI_CHECK_RET(ret, "fi_inject for medium am failed");
         gasnetc_ofi_free_am_header(header);
     } else {
         struct fi_context *op_cxtx = gasnetc_send_ctxt_to_op_ctxt(header);
         OFI_INJECT_RETRY_IMM(&gasnetc_ofi_locks.am_tx,
                              ret = fi_send(ep, sendbuf, len, NULL, am_dest, op_cxtx),
-                             poll_type, flags & GEX_FLAG_IMMEDIATE, out_imm);
+                             poll_type, is_imm, out_imm);
         GASNETC_OFI_CHECK_RET(ret, "fi_send for medium am failed");
 #if GASNET_DEBUG
         gasnetc_paratomic_increment(&pending_am,0);
@@ -2629,7 +2630,7 @@ int gasnetc_medium_commit(
     return 0;
 
 out_imm:
-    gasneti_assert(flags & GEX_FLAG_IMMEDIATE);
+    gasneti_assert(is_imm);
     gasnetc_ofi_free_am_header(header);
     return 1;
 }
@@ -2668,6 +2669,7 @@ extern gasneti_AM_SrcDesc_t gasnetc_ofi_PrepareMedium(
     sd->_is_nbrhd = 0;
     sd->_dest._request._rank = jobrank; // yes, same for request and reply paths
     sd->_size = size;
+    sd->_flags = flags & GEX_FLAG_IMMEDIATE_COMMIT;
 
     if (client_buf) {
         sd->_addr = (/*non-const*/ void *)client_buf;
@@ -2686,7 +2688,7 @@ out_immediate:
     return NULL;
 }
 
-extern void gasnetc_ofi_CommitMedium(
+extern int gasnetc_ofi_CommitMedium(
                 gasneti_AM_SrcDesc_t sd,
                 int isreq,
                 gex_AM_Index_t handler,
@@ -2698,11 +2700,17 @@ extern void gasnetc_ofi_CommitMedium(
     unsigned int numargs = header->sendbuf.argnum;
     gex_Rank_t jobrank = sd->_dest._request._rank;
     const void *source_addr = sd->_gex_buf ? NULL : sd->_addr;
-    gasneti_assert_zeroret(
-        gasnetc_medium_commit(header, /*fixed*/0, jobrank, handler,
-                              source_addr, nbytes,
-                              numargs, argptr, isreq, /*flags*/0
-                              GASNETI_THREAD_PASS));
+    gex_Flags_t flags = sd->_flags;
+
+    int rc = gasnetc_medium_commit(header, /*fixed*/0, jobrank, handler,
+                                   source_addr, nbytes,
+                                   numargs, argptr, isreq, flags
+                                   GASNETI_THREAD_PASS);
+
+    // IMMEDIATE_COMMIT is only permissible reason to return non-zero
+    gasneti_assert(!rc || (flags & GEX_FLAG_IMMEDIATE_COMMIT));
+
+    return rc;
 }
 
 #endif // GASNET_NATIVE_NP_ALLOC_REQ_MEDIUM || GASNET_NATIVE_NP_ALLOC_REP_MEDIUM
