@@ -37,6 +37,8 @@ static long param_B = 0;
 static long param_N = 0;
 
 static int in_segment = 1;
+static int use_np = 0;
+static int np_cbuf = 0;
 
 static enum {
   TEST_POLL_NEXT,
@@ -122,6 +124,17 @@ int main(int argc, char **argv) {
     } else if (!strcmp(argv[arg], "-poll-always")) {
       ++arg;
       poll_mode = TEST_POLL_ALWAYS;
+    } else if (!strcmp(argv[arg], "-fp")) {
+      use_np = 0;
+      ++arg;
+    } else if (!strcmp(argv[arg], "-np-cb")) {
+      use_np = 1;
+      np_cbuf = 1;
+      ++arg;
+    } else if (!strcmp(argv[arg], "-np-gb")) {
+      use_np = 1;
+      np_cbuf = 0;
+      ++arg;
     } else if (argv[arg][0] == '-') {
       help = 1;
       ++arg;
@@ -137,12 +150,35 @@ int main(int argc, char **argv) {
 
   if (argc > arg) { param_SZ = atoi(argv[arg]); ++arg; }
   if (!param_SZ) { param_SZ = 1024*1024; }
-  if (enable_med) {
-    param_SZ = MIN(param_SZ, gex_AM_LUBRequestMedium());
-  }
-  if (enable_long) {
-    param_SZ = MIN(param_SZ, gex_AM_LUBRequestLong());
-  }
+
+  {
+    gex_Event_t *lc_opt = (use_np && !np_cbuf) ? NULL : GEX_EVENT_GROUP;
+    gex_Flags_t imm = use_np ? (GEX_FLAG_IMMEDIATE | GEX_FLAG_IMMEDIATE_COMMIT)
+                            : GEX_FLAG_IMMEDIATE;
+    gex_Flags_t least = np_cbuf ? GEX_FLAG_AM_PREPARE_LEAST_CLIENT
+                                : GEX_FLAG_AM_PREPARE_LEAST_ALLOC;
+    size_t tmp;
+    if (enable_med) {
+      tmp = MIN( gex_AM_MaxRequestMedium(myteam,GEX_RANK_INVALID,lc_opt,0 ,0),
+                 gex_AM_MaxRequestMedium(myteam,GEX_RANK_INVALID,lc_opt,imm,0) );
+      param_SZ = MIN(param_SZ, tmp);
+      if (use_np) {
+        tmp = MIN( gex_AM_MaxRequestMedium(myteam,GEX_RANK_INVALID,lc_opt,least ,0),
+                   gex_AM_MaxRequestMedium(myteam,GEX_RANK_INVALID,lc_opt,least|imm,0) );
+        param_SZ = MIN(param_SZ, tmp);
+      }
+    }
+    if (enable_long) {
+      tmp = MIN( gex_AM_MaxRequestLong(myteam,GEX_RANK_INVALID,lc_opt,0 ,0),
+                 gex_AM_MaxRequestLong(myteam,GEX_RANK_INVALID,lc_opt,imm,0) );
+      param_SZ = MIN(param_SZ, tmp);
+      if (use_np) {
+        tmp = MIN( gex_AM_MaxRequestLong(myteam,GEX_RANK_INVALID,lc_opt,least ,0),
+                   gex_AM_MaxRequestLong(myteam,GEX_RANK_INVALID,lc_opt,least|imm,0) );
+        param_SZ = MIN(param_SZ, tmp);
+      }
+    }
+   }
 
   if (!param_Z) param_Z = 500;
 
@@ -181,8 +217,13 @@ int main(int argc, char **argv) {
              "                 but poll only between loops over peers\n"
              "    -poll-always advance to the next peer upon back pressure,\n"
              "                 but poll before every IMMEDIATE operation\n"
+             "  The '-fp', '-np-gb' or '-np-cb' option selects Fixed- or Negotiated-Payload\n"
+             "    for Medium and Long AMs, as follows:\n"
+             "      -fp        Fixed-Payload (default)\n"
+             "      -np-gb     Negotiated-Payload with GASNet-provided buffer\n"
+             "      -np-cb     Negotiated-Payload with client-provided buffer\n"
              "  Note that maxsz will be reduced if RequestMedium or RequestLong are\n"
-             "  to be timed and maxsz would exceed the respective LUBRequest limit.\n"
+             "  to be timed and maxsz would exceed the respective MaxRequest limit.\n"
            );
   if (help || argc > arg) test_usage();
 
@@ -344,15 +385,36 @@ void report(const char *name, gex_Flags_t imm_flag, double elapsed, double *prev
   *prev = elapsed;
 }
 
+GASNETT_INLINE(injectMed)
+int injectMed(gex_Rank_t dest, gex_Flags_t flags) {
+  if (!use_np) {
+    // FPAM
+    return gex_AM_RequestMedium0(myteam, dest, hidx_noop_handler, local_addr, param_SZ, GEX_EVENT_GROUP, flags);
+  } else {
+    if (flags) flags |= GEX_FLAG_IMMEDIATE_COMMIT;
+    gex_AM_SrcDesc_t sd;
+    if (np_cbuf) {
+      // NPAM w/ client-allocated buffer
+      sd = gex_AM_PrepareRequestMedium(myteam, dest, local_addr, param_SZ, param_SZ, GEX_EVENT_GROUP, flags, 0);
+      if (sd == GEX_AM_SRCDESC_NO_OP) return 1;
+    } else {
+      // NPAM w/ GASNet-allocated buffer
+      sd = gex_AM_PrepareRequestMedium(myteam, dest, NULL, param_SZ, param_SZ, NULL, flags, 0);
+      if (sd == GEX_AM_SRCDESC_NO_OP) return 1;
+      memcpy(gex_AM_SrcDescAddr(sd), local_addr, param_SZ);
+    }
+    assert(gex_AM_SrcDescSize(sd) == param_SZ);
+    return gex_AM_CommitRequestMedium0(sd, hidx_noop_handler, param_SZ);
+  }
+}
+
 void doMed(gex_Flags_t imm_flag) {
   if (myrank) {
     passive();
   } else {
     init_remain();
     gasnett_tick_t start_ticks = gasnett_ticks_now();
-    ACTIVE( gex_AM_RequestMedium0(myteam, r, hidx_noop_handler, local_addr, param_SZ,
-                                  GEX_EVENT_GROUP, imm_flag),
-            GEX_EC_AM );
+    ACTIVE( injectMed(r, imm_flag), GEX_EC_AM );
     gasnett_tick_t end_ticks = gasnett_ticks_now();
     double elapsed = 1e-9 * gasnett_ticks_to_ns(end_ticks - start_ticks);
 
@@ -363,15 +425,40 @@ void doMed(gex_Flags_t imm_flag) {
   }
 }
 
+GASNETT_INLINE(injectLong)
+int injectLong(gex_Rank_t dest, gex_Flags_t flags) {
+  void *dest_addr = TEST_SEG(dest);
+  if (!use_np) {
+    // FPAM
+    return gex_AM_RequestLong0(myteam, dest, hidx_noop_handler, local_addr, param_SZ,
+                               dest_addr, GEX_EVENT_GROUP, flags);
+  } else {
+    if (flags) flags |= GEX_FLAG_IMMEDIATE_COMMIT;
+    gex_AM_SrcDesc_t sd;
+    if (np_cbuf) {
+      // NPAM w/ client-allocated buffer
+      sd = gex_AM_PrepareRequestLong(myteam, dest, local_addr, param_SZ, param_SZ,
+                                     dest_addr, GEX_EVENT_GROUP, flags, 0);
+      if (sd == GEX_AM_SRCDESC_NO_OP) return 1;
+    } else {
+      // NPAM w/ GASNet-allocated buffer
+      sd = gex_AM_PrepareRequestLong(myteam, dest, NULL, param_SZ, param_SZ,
+                                     dest_addr, NULL, flags, 0);
+      if (sd == GEX_AM_SRCDESC_NO_OP) return 1;
+      memcpy(gex_AM_SrcDescAddr(sd), local_addr, param_SZ);
+    }
+    assert(gex_AM_SrcDescSize(sd) == param_SZ);
+    return gex_AM_CommitRequestLong0(sd, hidx_noop_handler, param_SZ, dest_addr);
+  }
+}
+
 void doLong(gex_Flags_t imm_flag) {
   if (myrank) {
     passive();
   } else {
     init_remain();
     gasnett_tick_t start_ticks = gasnett_ticks_now();
-    ACTIVE( gex_AM_RequestLong0(myteam, r, hidx_noop_handler, local_addr, param_SZ,
-                                TEST_SEG(r), GEX_EVENT_GROUP, imm_flag),
-            GEX_EC_AM );
+    ACTIVE( injectLong(r, imm_flag), GEX_EC_AM );
     gasnett_tick_t end_ticks = gasnett_ticks_now();
     double elapsed = 1e-9 * gasnett_ticks_to_ns(end_ticks - start_ticks);
 
