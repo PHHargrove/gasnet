@@ -446,6 +446,26 @@ extern void gasneti_freezeForDebugger(void) {
 GASNETC_CLIENT_EXTRA_DECLS
 #endif
 
+// Public interface to allocate thread-specific gex_Client_InitHints_t
+gex_Client_InitHints_t *gex_Client_InitHints(void) {
+  gasneti_threaddata_t *td = gasneti_init_threaddata();
+  gasneti_assert(td);
+  gasneti_assert(! td->client_inithints);
+  gex_Client_InitHints_t *result = gasneti_calloc(1, sizeof(*result));
+  td->client_inithints = result;
+  return result;
+}
+
+// Internal interface to free thread-specific gex_Client_InitHints_t
+void gasneti_consume_inithints(void) {
+  GASNET_BEGIN_FUNCTION(); // OK - not a critical-path
+  gasneti_threaddata_t * const td = GASNETI_MYTHREAD;
+  if (td) {
+    gasneti_free(td->client_inithints);
+    td->client_inithints = NULL;
+  }
+}
+
 #ifndef _GEX_CLIENT_T
 #ifndef gasneti_import_client
 gasneti_Client_t gasneti_import_client(gex_Client_t _client) {

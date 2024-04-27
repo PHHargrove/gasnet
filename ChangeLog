@@ -49,6 +49,8 @@ GASNet-EX ChangeLog
 * GASNet-EX Spec v0.18: (details in docs/GASNet-EX.txt)
   - Specification for AM Longs has been clarified to explicitly permit
     `nbytes==0` even when the destination EP lacks a bound segment.
+  - New `gex_Client_InitHints()` enables conduit-specifc arguments to
+    `gex_Client_Init()`;
 
 * General and Misc.
   - Disable "threadinfo-opt" by default on aarch64 (Linux and macOS)

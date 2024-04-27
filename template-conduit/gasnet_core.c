@@ -265,6 +265,9 @@ extern int gasnetc_Client_Init(
   gasneti_assert(argv);
 #endif
 
+  // (###) if applicable, collect conduit-specific hints prior "consumption", below
+  gasneti_consume_inithints();
+
   //  main init
   // TODO-EX: must split off per-client and per-endpoint portions
   if (!gasneti_init_done) { // First client

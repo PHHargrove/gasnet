@@ -697,6 +697,70 @@ gex_Flags_t  gex_Client_QueryFlags(gex_Client_t client);
 // Query client name passed to gex_Client_Init()
 const char * gex_Client_QueryName(gex_Client_t client);
 
+// Hints consumed by gex_Client_Init
+// [Since spec v0.18]
+//
+// A client may optionally provide hints to be consumed by `gex_Client_Init()`.
+// The call `gex_Client_InitHints()` returns a pointer to a library-owned,
+// thread-specific data structure for this purpose.
+//
+// For the provided hints to be effective, this call and the subsequent call to
+// `gex_Client_Init()` must be made from the same thread, with no other calls to
+// GASNet between.  In particular, the client should avoid returning control to
+// its caller between these two calls if that might permit such a caller to run
+// code in another GASNet client.
+//
+// If the client references the returned data structure after return from
+// `gex_Client_Init()`, then the behavior is undefined.
+//
+// The data structure is a union of structs `gex_[conduit name]_hints` for every
+// conduit, each with a `gex_Flags_t gex_flags` field.  Additional fields can
+// be present as may be added in future revisions of this specification.
+// However, reference to union members other than for the current conduit result
+// in undefined behavior.  In particular, future releases may remove conduits
+// and their union members.
+//
+// Additional fields for conduit-independent hints may be added in future
+// specifications.
+//
+// A client may assume the data structure has been zero-initialized (and thus
+// the `gex_flags` fields will be zero, meeting the current requirements, below).
+//
+// Supported Hints:
+// + All conduits
+//   - Flags
+//     `gex_Flags_t gex_flags`
+//     Every conduit's hints includes a `gex_flags` field.
+//     Currently, this must zero for the conduit in use.
+// + As more fields are added, their documentation will appear here.
+//
+typedef struct {
+  union {
+    struct {
+      gex_Flags_t    gex_flags;
+    } gex_aries_hints;
+    struct {
+      gex_Flags_t    gex_flags;
+    } gex_ibv_hints;
+    struct {
+      gex_Flags_t    gex_flags;
+    } gex_mpi_hints;
+    struct {
+      gex_Flags_t    gex_flags;
+    } gex_smp_hints;
+    struct {
+      gex_Flags_t    gex_flags;
+    } gex_ofi_hints;
+    struct {
+      gex_Flags_t    gex_flags;
+    } gex_ucx_hints;
+    struct {
+      gex_Flags_t    gex_flags;
+    } gex_udp_hints;
+  } gex_hints;
+} gex_Client_InitHints_t;
+gex_Client_InitHints_t *gex_Client_InitHints(void);
+
 // Initialize the client
 // This is a collective call over all processes comprising this GASNet job.
 // Currently supports only one call per job.
@@ -718,6 +782,9 @@ const char * gex_Client_QueryName(gex_Client_t client);
 //     (defined in gasnet.h). Only permitted for use in one client per process.
 //   Otherwise must be 0.
 //   This is a single-valued parameter.
+//
+// * See above for documentation on `gex_Client_InitHints()`, which provides
+//   additional "out of band" inputs to this call. [Since spec v0.18]
 //
 // There is an implicit barrier synchronization prior to return from this call
 // to ensure that creation of communications resources has completed on all

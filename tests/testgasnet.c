@@ -343,6 +343,13 @@ int main(int argc, char **argv) {
 
   gex_AM_Entry_t handlers[] = { EVERYTHING_SEG_HANDLERS() ALLAM_HANDLERS() };
 
+  // gex_Client_InitHints() is documented as providing zero-initialized hints structure
+  // Technically UB to access fields of other conduits (to allow removal)
+  // However, smp conduit should be safe
+  gex_Client_InitHints_t *hints = gex_Client_InitHints();
+  assert_always(hints);
+  assert_always(! hints->gex_hints.gex_smp_hints.gex_flags);
+
   GASNET_Safe(gex_Client_Init(&myclient, &myep, &myteam, clientname, &argc, &argv, clientflags));
   if (GEX_SEGMENT_INVALID != gex_EP_QuerySegment(myep)) {
     MSG("*** ERROR - FAILED EP NO-SEGMENT TEST!!!!!");

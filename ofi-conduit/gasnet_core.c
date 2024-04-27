@@ -269,6 +269,8 @@ extern int gasnetc_Client_Init(
   gasneti_assert(argv);
 #endif
 
+  gasneti_consume_inithints();
+
   //  main init
   // TODO-EX: must split off per-client and per-endpoint portions
   if (!gasneti_init_done) { // First client

@@ -393,6 +393,13 @@ extern gex_AM_Entry_t const *gasnetc_get_handlertable(void);
 extern gex_AM_Entry_t const *gasnete_get_handlertable(void);
 
 /* ------------------------------------------------------------------------------------ */
+/* Management of thread-specific gex_Client_InitHints_t
+*/
+
+// Internal interface to free thread-specific gex_Client_InitHints_t
+extern void gasneti_consume_inithints(void);
+
+/* ------------------------------------------------------------------------------------ */
 // TODO-EX: Please remove this!
 //
 // These macros are a "necessary evil" until all internal interfaces have been
@@ -1079,6 +1086,11 @@ typedef struct _gasneti_threaddata_t {
   // This includes, at least, the RDMADISSEM barrier.
   gasneti_aop_t *nbi_ff_aop;
   unsigned int nbi_ff_depth;
+
+  // Client_InitHints
+  // Allocated by gex_Client_InitHints()
+  // Consumed by gex_Client_Init()
+  gex_Client_InitHints_t *client_inithints;
 
   //
   // Conduit-specific data
