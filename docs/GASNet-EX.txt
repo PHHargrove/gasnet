@@ -697,6 +697,40 @@ gex_Flags_t  gex_Client_QueryFlags(gex_Client_t client);
 // Query client name passed to gex_Client_Init()
 const char * gex_Client_QueryName(gex_Client_t client);
 
+// Hints consumed by gex_Client_Init
+//
+// A client may optionally set fields in the variable `gex_Client_Init_Hints`,
+// allocated by the library.  This "struct of structs" provides means for a
+// client to pass "hints" to logic running within `gex_Client_Init()`.
+//
+// Clients may assume this variable has been zero-initialized.  To support
+// multiple calls to `gex_Client_Init()`, each call will zero-initialize this
+// variable, and a client must not modify this variable other than in
+// preparation for a call to `gex_Client_Init()`.  A later revision of this
+// specification will provide additional guidance for preventing conflicts
+// in a multi-client application.
+//
+// There are nested structs `gex_[conduit name]_hints` for every conduit, with
+// an `int gex_reserved` as the last field of each.  Additional fields may be
+// present, and may be added in future revisions of this specification.
+// Additionally, there is a `gex_global_hints` with `int gex_reserved` as the
+// last field.  Here, also, future specifications may add additional fields.
+// All `gex_reserved` fields must be zero.
+//
+// Supported Hints:
+// + As fields are added, their documentation will appear here.
+extern struct {
+  struct {
+    [... conduit-specific hints ...]
+    int             gex_reserved;
+  } gex_[conduit name]_hints;
+  [...]
+  struct {
+    [... global hints ...]
+    int             gex_reserved;
+  } gex_global_hints;
+} gex_Client_Init_Hints;
+
 // Initialize the client
 // This is a collective call over all processes comprising this GASNet job.
 // Currently supports only one call per job.
@@ -718,6 +752,8 @@ const char * gex_Client_QueryName(gex_Client_t client);
 //     (defined in gasnet.h). Only permitted for use in one client per process.
 //   Otherwise must be 0.
 //   This is a single-valued parameter.
+// * See above for documentation on `gex_Client_Init_Hints`, which provides
+//   additional inputs to this call.
 //
 // There is an implicit barrier synchronization prior to return from this call
 // to ensure that creation of communications resources has completed on all

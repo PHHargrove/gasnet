@@ -323,6 +323,16 @@ extern void gasneti_check_config_preinit(void) {
       gasneti_memcheck_all();
     }
   }
+
+  // Client_Init hints
+  gasneti_assert_int(gex_Client_Init_Hints.gex_global_hints.gex_reserved ,==, 0);
+  gasneti_assert_int(gex_Client_Init_Hints.gex_aries_hints.gex_reserved  ,==, 0);
+  gasneti_assert_int(gex_Client_Init_Hints.gex_ibv_hints.gex_reserved    ,==, 0);
+  gasneti_assert_int(gex_Client_Init_Hints.gex_mpi_hints.gex_reserved    ,==, 0);
+  gasneti_assert_int(gex_Client_Init_Hints.gex_ofi_hints.gex_reserved    ,==, 0);
+  gasneti_assert_int(gex_Client_Init_Hints.gex_smp_hints.gex_reserved    ,==, 0);
+  gasneti_assert_int(gex_Client_Init_Hints.gex_ucx_hints.gex_reserved    ,==, 0);
+  gasneti_assert_int(gex_Client_Init_Hints.gex_udp_hints.gex_reserved    ,==, 0);
 }
 
 static void gasneti_check_portable_conduit(void);
@@ -441,6 +451,8 @@ extern void gasneti_freezeForDebugger(void) {
 }
 /* ------------------------------------------------------------------------------------ */
 // Client management
+
+gex_Client_Init_Hints_t gex_Client_Init_Hints = {{0},};
 
 #ifdef GASNETC_CLIENT_EXTRA_DECLS
 GASNETC_CLIENT_EXTRA_DECLS

@@ -504,6 +504,35 @@ struct gasneti_endpoint_internal_s;
   #define gex_TM_QuerySize(tm)                 ((gex_Rank_t)gasneti_import_tm_nonpair(tm)->_size)
 #endif
 
+// Hints for gex_Client_Init
+typedef struct gex_Client_Init_Hints_s {
+  struct {
+    int             gex_reserved;
+  } gex_aries_hints;
+  struct {
+    int             gex_reserved;
+  } gex_ibv_hints;
+  struct {
+    int             gex_reserved;
+  } gex_mpi_hints;
+  struct {
+    int             gex_reserved;
+  } gex_ofi_hints;
+  struct {
+    int             gex_reserved;
+  } gex_smp_hints;
+  struct {
+    int             gex_reserved;
+  } gex_ucx_hints;
+  struct {
+    int             gex_reserved;
+  } gex_udp_hints;
+  struct {
+    int             gex_reserved;
+  } gex_global_hints;
+} gex_Client_Init_Hints_t;
+extern gex_Client_Init_Hints_t gex_Client_Init_Hints;
+
 // TODO-EX: remove these legacy checks
 #ifdef _GASNET_NODE_T
 #error "out-of-date #define of _GASNET_NODE_T"
