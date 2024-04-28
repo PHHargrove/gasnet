@@ -467,7 +467,7 @@ typedef struct {
 } gasnetc_memreg_t;
 
 #if GASNETI_CONDUIT_THREADS
-  typedef struct {
+  typedef struct gasnetc_progress_thread_s {
     /* Initialized by create_cq or spawn_progress_thread: */
     pthread_t               thread_id;
     struct {
@@ -486,6 +486,8 @@ typedef struct {
     void                    *fn_arg;
     gasnetc_atomic_t        *serialize_poll;
     gasnetc_atomic_t        *exclusive_poll;
+    void                    (*init_hook)(struct gasnetc_progress_thread_s * const thread);
+    void                    *conduit_data[2];
   } gasnetc_progress_thread_t;
 #else
   typedef void gasnetc_progress_thread_t;

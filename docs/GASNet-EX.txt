@@ -732,6 +732,24 @@ const char * gex_Client_QueryName(gex_Client_t client);
 //     `gex_Flags_t gex_flags`
 //     Every conduit's hints includes a `gex_flags` field.
 //     Currently, this must zero for the conduit in use.
+// + ibv-conduit
+//   - Initialization hook for ibv-conduit receive progress thread
+//     `void (*gex_ibv_rcv_thread_init_fn)(const char *hca_list, void *cdata);`
+//     `void *gex_ibv_rcv_thread_init_cdata;`
+//     This pair of fields provide means for the client to register a callback
+//     which will run when ibv-conduit's receive progress thread (enabled by
+//     `GASNET_RCV_THREAD`) initializes.  The function is invoked with two
+//     arguments: a comma-delimited list of the HCAs for which the thread will
+//     progress completions, and the `void *` provided by the client via the
+//     field `gex_ibv_rcv_thread_init_cdata`.
+//     Callbacks are prohibited from making any GASNet calls.
+//     Because progress threads start asynchronously it is not safe to assume
+//     the callback will run prior to return from `gex_Client_Init()`.
+//   - Initialization hook for ibv-conduit send progress thread
+//     `void (*gex_ibv_snd_thread_init_fn)(const char *hca_list, void *cdata);`
+//     `void *gex_ibv_snd_thread_init_cdata;`
+//     Same as the `...rcv_thread...` fields above, but applied to the threads
+//     enabled by `GASNET_SND_THREAD`.
 // + As more fields are added, their documentation will appear here.
 //
 typedef struct {
@@ -741,6 +759,12 @@ typedef struct {
     } gex_aries_hints;
     struct {
       gex_Flags_t    gex_flags;
+      // Initialization hook for ibv-conduit receive progress thread
+      void (*gex_ibv_rcv_thread_init_fn)(const char *hca_list, void *cdata);
+      void *gex_ibv_rcv_thread_init_cdata;
+      // Initialization hook for ibv-conduit send  progress thread
+      void (*gex_ibv_rcv_thread_init_fn)(const char *hca_list, void *cdata);
+      void *gex_ibv_snd_thread_init_cdata;
     } gex_ibv_hints;
     struct {
       gex_Flags_t    gex_flags;

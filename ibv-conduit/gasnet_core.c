@@ -2759,8 +2759,6 @@ extern int gasnetc_Client_Init(
   gasneti_assert(argv);
 #endif
 
-  gasneti_consume_inithints();
-
   //  main init
   // TODO-EX: must split off per-client and per-endpoint portions
   if (!gasneti_init_done) { // First client
@@ -2781,8 +2779,10 @@ extern int gasnetc_Client_Init(
 
   if (0 == (flags & GASNETI_FLAG_INIT_LEGACY)) {
     /*  primary attach  */
-    if (GASNET_OK != gasnetc_attach_primary())
+    if (GASNET_OK != gasnetc_attach_primary()) {
+      gasneti_consume_inithints();
       GASNETI_RETURN_ERRR(RESOURCE,"Error in primary attach");
+    }
 
     /* ensure everything is initialized across all nodes */
     gasnet_barrier(0, GASNET_BARRIERFLAG_UNNAMED);
@@ -2790,6 +2790,7 @@ extern int gasnetc_Client_Init(
     gasneti_attach_done = 0; // Pending client call to gasnet_attach()
   }
 
+  gasneti_consume_inithints();
   return GASNET_OK;
 }
 

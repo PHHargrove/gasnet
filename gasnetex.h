@@ -513,6 +513,10 @@ typedef struct {
     } gex_aries_hints;
     struct {
       gex_Flags_t    gex_flags;
+      void (*gex_ibv_rcv_thread_init_fn)(const char *, void *);
+      void *gex_ibv_rcv_thread_init_cdata;
+      void (*gex_ibv_snd_thread_init_fn)(const char *, void *);
+      void *gex_ibv_snd_thread_init_cdata;
     } gex_ibv_hints;
     struct {
       gex_Flags_t    gex_flags;

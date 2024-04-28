@@ -59,6 +59,8 @@ static void * gasnetc_progress_thread(void *arg)
   int fd = compl_hndl->fd;
   fd_set readfds;
 
+  if (pthr_p->init_hook) pthr_p->init_hook(pthr_p);
+
   /* Setup completion channel for non-blocking access.
    * This way pthread_cancel() never needs to interrupt ibv calls.
    */
