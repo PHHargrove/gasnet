@@ -40,14 +40,7 @@ extern void gasnete_init(void) {
 
   gasneti_assert(gasneti_nodes >= 1 && gasneti_mynode < gasneti_nodes);
 
-  { gasneti_threaddata_t *threaddata = NULL;
-  #if GASNETI_MAX_THREADS > 1
-    /* register first thread (optimization) */
-    threaddata = _gasneti_mythread_slow();
-  #else
-    /* register only thread (required) */
-    threaddata = gasnete_new_threaddata();
-  #endif
+  { gasneti_threaddata_t *threaddata = gasneti_init_threaddata();
   #if !GASNETI_DISABLE_REFERENCE_EOP
     /* cause the first pool of eops to be allocated (optimization) */
     GASNET_POST_THREADINFO(threaddata);

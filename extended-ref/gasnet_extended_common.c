@@ -399,6 +399,22 @@ extern void * gasnete_new_threaddata(void)) {
   }
 #endif
 
+// Allocate threaddata in the first call to gex_Client_Init() (via gasnete_init())
+// Subsequent calls return the result from the first.
+// NOT for use in any other context.
+gasneti_threaddata_t *gasneti_init_threaddata(void) {
+  GASNET_BEGIN_FUNCTION();
+  gasneti_threaddata_t *threaddata = GASNETI_MYTHREAD;
+  if (!threaddata) {
+  #if GASNETI_MAX_THREADS > 1
+    threaddata = _gasneti_mythread_slow(); // register first thread (optimization)
+  #else
+    threaddata = gasnete_new_threaddata(); // register only thread (required)
+  #endif
+  }
+  return threaddata;
+}
+
 void gasneti_finalize_all_nbi_ff(gex_Event_t **events_p, size_t *count_p GASNETI_THREAD_FARG)
 {
   const gasnete_threadidx_t mytid = GASNETI_MYTHREAD->threadidx;

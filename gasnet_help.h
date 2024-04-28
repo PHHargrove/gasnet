@@ -1083,6 +1083,8 @@ extern void gasneti_fatal_threadoverflow(const char *_subsystem);
   #endif
 #endif
 
+extern struct _gasneti_threaddata_t *gasneti_init_threaddata(void);
+
 /* register a cleanup function to run when the calling thread exits 
    not guaranteed to run during process exits (gasnet_exit), but should
    run for dynamic thread exits when the process is continuing.
