@@ -710,8 +710,13 @@ const char * gex_Client_QueryName(gex_Client_t client);
 // its caller between these two calls if that might permit such a caller to run
 // code in another GASNet client.
 //
+// A client may assume the data structure has been zero-initialized prior to
+// the first call to `gex_Client_InitHints()`, and thus the `gex_flags` fields
+// will be zero (meeting the current requirements, below).
+//
 // Multiple calls from the same thread without an intervening call to
-// `gex_Client_Init()` will return the same value.
+// `gex_Client_Init()` will return a pointer to the same data structure,
+// preserving any values set by the client (not re-zeroing).
 //
 // If the client references the returned data structure after return from
 // `gex_Client_Init()`, then the behavior is undefined.
@@ -725,9 +730,6 @@ const char * gex_Client_QueryName(gex_Client_t client);
 //
 // Additional fields for conduit-independent hints may be added in future
 // specifications.
-//
-// A client may assume the data structure has been zero-initialized (and thus
-// the `gex_flags` fields will be zero, meeting the current requirements, below).
 //
 // Supported Hints:
 // + All conduits
