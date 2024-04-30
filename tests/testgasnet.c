@@ -349,6 +349,8 @@ int main(int argc, char **argv) {
   gex_Client_InitHints_t *hints = gex_Client_InitHints();
   assert_always(hints);
   assert_always(! hints->gex_hints.gex_smp_hints.gex_flags);
+  // Multiple calls back-to-back should return same value
+  assert_always(hints == gex_Client_InitHints());
 
   GASNET_Safe(gex_Client_Init(&myclient, &myep, &myteam, clientname, &argc, &argv, clientflags));
   if (GEX_SEGMENT_INVALID != gex_EP_QuerySegment(myep)) {

@@ -710,6 +710,9 @@ const char * gex_Client_QueryName(gex_Client_t client);
 // its caller between these two calls if that might permit such a caller to run
 // code in another GASNet client.
 //
+// Multiple calls from the same thread without an intervening call to
+// `gex_Client_Init()` will return the same value.
+//
 // If the client references the returned data structure after return from
 // `gex_Client_Init()`, then the behavior is undefined.
 //

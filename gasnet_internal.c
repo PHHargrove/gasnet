@@ -450,9 +450,10 @@ GASNETC_CLIENT_EXTRA_DECLS
 gex_Client_InitHints_t *gex_Client_InitHints(void) {
   gasneti_threaddata_t *td = gasneti_init_threaddata();
   gasneti_assert(td);
-  gasneti_assert(! td->client_inithints);
-  gex_Client_InitHints_t *result = gasneti_calloc(1, sizeof(*result));
-  td->client_inithints = result;
+  gex_Client_InitHints_t *result = td->client_inithints;
+  if (!result) {
+    result = td->client_inithints = gasneti_calloc(1, sizeof(*result));
+  }
   return result;
 }
 
