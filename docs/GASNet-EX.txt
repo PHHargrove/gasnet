@@ -732,29 +732,50 @@ const char * gex_Client_QueryName(gex_Client_t client);
 // specifications.
 //
 // Supported Hints:
+// ================
 // + All conduits
 //   - Flags
 //     `gex_Flags_t gex_flags`
 //     Every conduit's hints includes a `gex_flags` field.
 //     Currently, this must zero for the conduit in use.
+//
 // + ibv-conduit
-//   - Initialization hook for ibv-conduit receive progress thread
-//     `void (*gex_ibv_rcv_thread_init_fn)(const char *hca_list, void *cdata);`
-//     `void *gex_ibv_rcv_thread_init_cdata;`
-//     This pair of fields provide means for the client to register a callback
-//     which will run when ibv-conduit's receive progress thread (enabled by
-//     `GASNET_RCV_THREAD`) initializes.  The function is invoked with two
-//     arguments: a comma-delimited list of the HCAs for which the thread will
-//     progress completions, and the `void *` provided by the client via the
-//     field `gex_ibv_rcv_thread_init_cdata`.
-//     Callbacks are prohibited from making any GASNet calls.
-//     Because progress threads start asynchronously it is not safe to assume
-//     the callback will run prior to return from `gex_Client_Init()`.
-//   - Initialization hook for ibv-conduit send progress thread
-//     `void (*gex_ibv_snd_thread_init_fn)(const char *hca_list, void *cdata);`
-//     `void *gex_ibv_snd_thread_init_cdata;`
-//     Same as the `...rcv_thread...` fields above, but applied to the threads
-//     enabled by `GASNET_SND_THREAD`.
+//   - Initialization hook for ibv-conduit progress thread(s)
+//     `void (*gex_ibv_thread_init_fn)(const char *hca_list,
+//                                     unsigned int roles,
+//                                     unsigned int count,
+//                                     unsigned int rank,
+//                                     void *cdata);`
+//     `void *gex_ibv_thread_init_cdata;`
+//
+//     This pair of fields provides means for the client to register a callback
+//     which will run once at initialization from each of ibv-conduit's
+//     progress threads (enabled by `GASNET_RCV_THREAD` and `GASNET_SND_THREAD`).
+//     This may allow a client to pin CPU and memory affinity for this thread
+//     before it begins doing its work.
+//
+//     The callback function is invoked with five arguments:
+//     * `hca_list`: a comma-delimited list of the HCAs for which the thread
+//       will progress completions
+//     * `roles`: a bitwise-or of one or more of the following
+//         GEX_IBV_RCV_THREAD
+//         GEX_IBV_SND_THREAD
+//       These bits indicate which role or roles the thread is serving.
+//       Note that a properly written callback must not assume these two are
+//       mutually exclusive.
+//     * `count` and `rank`
+//       The `count` argument gives the total number of progress threads, and
+//       the `rank` gives each thread a unique identity in the range `[0, count)`.
+//       The algorithm for assigning ranks is undefined.
+//     * `cdata`: the `gex_ibv_thread_init_cdata` value provided by the client
+//
+//     Callbacks are permitted to make calls only to GASNet-EX APIs with the
+//     prefixes `gasnett_` or `gex_System_`.
+//
+//     The implementation does not guarantee serialization of callbacks.
+//     However, the implementation will ensure that all progress threads have
+//     completed their callback prior to return from `gex_Client_Init()`.
+//
 // + As more fields are added, their documentation will appear here.
 //
 typedef struct {
@@ -764,12 +785,13 @@ typedef struct {
     } gex_aries_hints;
     struct {
       gex_Flags_t    gex_flags;
-      // Initialization hook for ibv-conduit receive progress thread
-      void (*gex_ibv_rcv_thread_init_fn)(const char *hca_list, void *cdata);
-      void *gex_ibv_rcv_thread_init_cdata;
-      // Initialization hook for ibv-conduit send  progress thread
-      void (*gex_ibv_rcv_thread_init_fn)(const char *hca_list, void *cdata);
-      void *gex_ibv_snd_thread_init_cdata;
+      // Initialization hook for ibv-conduit progress thread(s)
+      void (*gex_ibv_thread_init_fn)(const char *hca_list,
+                                     unsigned int roles,
+                                     unsigned int count,
+                                     unsigned int rank,
+                                     void *cdata);
+      void *gex_ibv_thread_init_cdata;
     } gex_ibv_hints;
     struct {
       gex_Flags_t    gex_flags;
