@@ -333,6 +333,13 @@ void test_libgasnet_tools(void) {
   MSG("*** passed libgasnet_tools test!!");
 }
 /* ------------------------------------------------------------------------------------ */
+static void foo(const char *hca_list, unsigned int roles, unsigned int count, unsigned int rank, void *cdata) {
+  printf("@ pthread %lu in rank %d (of %d) is %s thread for %s (th %d of %d) with cdata='%s'\n",
+          pthread_self(), gex_System_QueryJobRank(), gex_System_QueryJobSize(),
+          (roles & GASNET_IBV_RCV_THREAD) ? "RCV": "SND",
+          hca_list, rank, count, (const char *)cdata);
+}
+/* ------------------------------------------------------------------------------------ */
 static const char *clientname = "testgasnet";
 static const gex_Flags_t clientflags = 0;
 int main(int argc, char **argv) {
@@ -355,6 +362,11 @@ int main(int argc, char **argv) {
   assert_always(hints->gex_hints.gex_smp_hints.gex_flags == 0xcafef00d);
   hints->gex_hints.gex_smp_hints.gex_flags = 0;
 
+#if GASNET_CONDUIT_IBV
+  hints->gex_hints.gex_ibv_hints.gex_thread_init_fn = foo;
+  hints->gex_hints.gex_ibv_hints.gex_thread_init_cdata = (void *)"Hello, World";
+#endif
+
   GASNET_Safe(gex_Client_Init(&myclient, &myep, &myteam, clientname, &argc, &argv, clientflags));
   if (GEX_SEGMENT_INVALID != gex_EP_QuerySegment(myep)) {
     MSG("*** ERROR - FAILED EP NO-SEGMENT TEST!!!!!");
@@ -365,6 +377,7 @@ int main(int argc, char **argv) {
   myrank = gex_TM_QueryRank(myteam);
   numranks = gex_TM_QuerySize(myteam);
 
+  MSG("Main thread %lu\n", pthread_self());
   local_segsz = gasnet_getMaxLocalSegmentSize();
   global_segsz = gasnet_getMaxGlobalSegmentSize();
   #if GASNET_SEGMENT_EVERYTHING

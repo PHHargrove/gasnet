@@ -2861,14 +2861,41 @@ static struct ibv_srq * gasnetc_create_srq(gasnetc_hca_t *hca, const int max_wr)
 }
 #endif
 
-typedef void (*gasnetc_sndrcv_init_hook_t)(const char *hca_list, void *cdata);
+typedef void (*gasnetc_sndrcv_init_hook_t)(const char *hca_list,
+                                           unsigned int roles,
+                                           unsigned int count,
+                                           unsigned int rank,
+                                           void *cdata);
 
-static void gasnetc_sndrcv_init_wrapper(gasnetc_progress_thread_t *pthr_p) {
+#if GASNETC_USE_RCV_THREAD
+static void gasnetc_rcv_init_wrapper(gasnetc_progress_thread_t *pthr_p) {
+gasneti_console_message("TH","RCV");
   gasnetc_hca_t *hca = pthr_p->fn_arg;
   gasnetc_sndrcv_init_hook_t fn = (gasnetc_sndrcv_init_hook_t)pthr_p->conduit_data[0];
   void * client_data = pthr_p->conduit_data[1];
-  fn(hca->hca_id, client_data);
+  gasneti_assert(gasnetc_use_rcv_thread == !!gasnetc_use_rcv_thread); // must be 0 or 1
+  gasneti_assert(gasnetc_use_snd_thread == !!gasnetc_use_snd_thread); // must be 0 or 1
+  unsigned int count = gasnetc_num_hcas * (gasnetc_use_rcv_thread + gasnetc_use_snd_thread);
+  unsigned int rank =  hca->hca_index;
+  // TODO: freeze here pending go-ahead from ClientInit
+  fn(hca->hca_id, GASNET_IBV_RCV_THREAD, count, rank, client_data);
 }
+#endif
+
+#if GASNETC_USE_SND_THREAD
+static void gasnetc_snd_init_wrapper(gasnetc_progress_thread_t *pthr_p) {
+gasneti_console_message("TH","SND");
+  gasnetc_hca_t *hca = pthr_p->fn_arg;
+  gasnetc_sndrcv_init_hook_t fn = (gasnetc_sndrcv_init_hook_t)pthr_p->conduit_data[0];
+  void * client_data = pthr_p->conduit_data[1];
+  gasneti_assert(gasnetc_use_rcv_thread == !!gasnetc_use_rcv_thread); // must be 0 or 1
+  gasneti_assert(gasnetc_use_snd_thread == !!gasnetc_use_snd_thread); // must be 0 or 1
+  unsigned int count = gasnetc_num_hcas * (gasnetc_use_rcv_thread + gasnetc_use_snd_thread);
+  unsigned int rank =  hca->hca_index + gasnetc_use_rcv_thread * gasnetc_num_hcas;
+  // TODO: freeze here pending go-ahead from ClientInit
+  fn(hca->hca_id, GASNET_IBV_SND_THREAD, count, rank, client_data);
+}
+#endif
 
 extern int gasnetc_sndrcv_init(gasnetc_EP_t ep) {
   gasnetc_hca_t		*hca;
@@ -3338,10 +3365,10 @@ extern void gasnetc_sndrcv_start_thread(void) {
         hca->rcv_thread.thread_rate.ns = ((uint64_t)1E9) / rcv_max_rate;
       }
       hca->rcv_thread.keep_alive.ns = gasneti_getenv_int_withdefault("GASNET_RCV_THREAD_IDLE", 0, 0);
-      if (hints && hints->gex_hints.gex_ibv_hints.gex_ibv_rcv_thread_init_fn) {
-        hca->rcv_thread.init_hook = gasnetc_sndrcv_init_wrapper;
-        hca->rcv_thread.conduit_data[0] = (void *) hints->gex_hints.gex_ibv_hints.gex_ibv_rcv_thread_init_fn;
-        hca->rcv_thread.conduit_data[1] =          hints->gex_hints.gex_ibv_hints.gex_ibv_rcv_thread_init_cdata;
+      if (hints && hints->gex_hints.gex_ibv_hints.gex_thread_init_fn) {
+        hca->rcv_thread.init_hook = gasnetc_rcv_init_wrapper;
+        hca->rcv_thread.conduit_data[0] = (void *) hints->gex_hints.gex_ibv_hints.gex_thread_init_fn;
+        hca->rcv_thread.conduit_data[1] =          hints->gex_hints.gex_ibv_hints.gex_thread_init_cdata;
       }
     #if GASNETC_SERIALIZE_POLL_CQ
       gasneti_assert(!gasnetc_rcv_thread_poll_exclusive ||
@@ -3378,10 +3405,10 @@ extern void gasnetc_sndrcv_start_thread(void) {
         hca->snd_thread.thread_rate.ns = ((uint64_t)1E9) / snd_max_rate;
       }
       hca->snd_thread.keep_alive.ns = gasneti_getenv_int_withdefault("GASNET_SND_THREAD_IDLE", 0, 0);
-      if (hints && hints->gex_hints.gex_ibv_hints.gex_ibv_snd_thread_init_fn) {
-        hca->snd_thread.init_hook = gasnetc_sndrcv_init_wrapper;
-        hca->snd_thread.conduit_data[0] = (void *) hints->gex_hints.gex_ibv_hints.gex_ibv_snd_thread_init_fn;
-        hca->snd_thread.conduit_data[1] =          hints->gex_hints.gex_ibv_hints.gex_ibv_snd_thread_init_cdata;
+      if (hints && hints->gex_hints.gex_ibv_hints.gex_thread_init_fn) {
+        hca->snd_thread.init_hook = gasnetc_snd_init_wrapper;
+        hca->snd_thread.conduit_data[0] = (void *) hints->gex_hints.gex_ibv_hints.gex_thread_init_fn;
+        hca->snd_thread.conduit_data[1] =          hints->gex_hints.gex_ibv_hints.gex_thread_init_cdata;
       }
     #if GASNETC_SERIALIZE_POLL_CQ
       gasneti_assert(!gasnetc_snd_thread_poll_exclusive ||

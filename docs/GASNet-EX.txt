@@ -741,12 +741,12 @@ const char * gex_Client_QueryName(gex_Client_t client);
 //
 // + ibv-conduit
 //   - Initialization hook for ibv-conduit progress thread(s)
-//     `void (*gex_ibv_thread_init_fn)(const char *hca_list,
-//                                     unsigned int roles,
-//                                     unsigned int count,
-//                                     unsigned int rank,
-//                                     void *cdata);`
-//     `void *gex_ibv_thread_init_cdata;`
+//     `void (*gex_thread_init_fn)(const char *hca_list,
+//                                 unsigned int roles,
+//                                 unsigned int count,
+//                                 unsigned int rank,
+//                                 void *cdata);`
+//     `void *gex_thread_init_cdata;`
 //
 //     This pair of fields provides means for the client to register a callback
 //     which will run once at initialization from each of ibv-conduit's
@@ -758,8 +758,8 @@ const char * gex_Client_QueryName(gex_Client_t client);
 //     * `hca_list`: a comma-delimited list of the HCAs for which the thread
 //       will progress completions
 //     * `roles`: a bitwise-or of one or more of the following
-//         GEX_IBV_RCV_THREAD
-//         GEX_IBV_SND_THREAD
+//         GASNET_IBV_RCV_THREAD
+//         GASNET_IBV_SND_THREAD
 //       These bits indicate which role or roles the thread is serving.
 //       Note that a properly written callback must not assume these two are
 //       mutually exclusive.
@@ -767,7 +767,7 @@ const char * gex_Client_QueryName(gex_Client_t client);
 //       The `count` argument gives the total number of progress threads, and
 //       the `rank` gives each thread a unique identity in the range `[0, count)`.
 //       The algorithm for assigning ranks is undefined.
-//     * `cdata`: the `gex_ibv_thread_init_cdata` value provided by the client
+//     * `cdata`: the `gex_thread_init_cdata` value provided by the client
 //
 //     Callbacks are permitted to make calls only to GASNet-EX APIs with the
 //     prefixes `gasnett_` or `gex_System_`.
@@ -786,12 +786,12 @@ typedef struct {
     struct {
       gex_Flags_t    gex_flags;
       // Initialization hook for ibv-conduit progress thread(s)
-      void (*gex_ibv_thread_init_fn)(const char *hca_list,
+      void (*gex_thread_init_fn)(const char *hca_list,
                                      unsigned int roles,
                                      unsigned int count,
                                      unsigned int rank,
                                      void *cdata);
-      void *gex_ibv_thread_init_cdata;
+      void *gex_thread_init_cdata;
     } gex_ibv_hints;
     struct {
       gex_Flags_t    gex_flags;

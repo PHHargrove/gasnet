@@ -506,17 +506,14 @@ struct gasneti_endpoint_internal_s;
 
 // Hints for gex_Client_Init
 typedef struct {
-  gex_Flags_t    gex_flags;
   union {
     struct {
       gex_Flags_t    gex_flags;
     } gex_aries_hints;
     struct {
       gex_Flags_t    gex_flags;
-      void (*gex_ibv_rcv_thread_init_fn)(const char *, void *);
-      void *gex_ibv_rcv_thread_init_cdata;
-      void (*gex_ibv_snd_thread_init_fn)(const char *, void *);
-      void *gex_ibv_snd_thread_init_cdata;
+      void (*gex_thread_init_fn)(const char *, unsigned int, unsigned int, unsigned int, void *);
+      void *gex_thread_init_cdata;
     } gex_ibv_hints;
     struct {
       gex_Flags_t    gex_flags;
@@ -536,6 +533,13 @@ typedef struct {
   } gex_hints;
 } gex_Client_InitHints_t;
 extern gex_Client_InitHints_t *gex_Client_InitHints(void);
+
+#if GASNET_CONDUIT_IBV
+  // Bits used in `roles` argument to `gex_ibv_hints.gex_thread_init_fn()`
+  #define GASNET_IBV_SND_THREAD     (1U)
+  #define GASNET_IBV_RCV_THREAD     (2U)     // TODO conditional and move to gasnetex.h
+#endif
+
 
 // TODO-EX: remove these legacy checks
 #ifdef _GASNET_NODE_T
