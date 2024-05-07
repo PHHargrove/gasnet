@@ -716,7 +716,11 @@ const char * gex_Client_QueryName(gex_Client_t client);
 // * flags control the creation of the primordial objects. Supported flags:
 //   + GEX_FLAG_USES_GASNET1 - created client requests the use of GASNet-1 APIs
 //     (defined in gasnet.h). Only permitted for use in one client per process.
-//   Otherwise must be 0.
+//   + GEX_FLAG_DEFER_THREADS [Since spec v0.18]
+//     Client requests that the conduit defer launching of internal progress
+//     threads.  See `gex_System_QueryProgressThreads()` for information on the
+//     means for the client to control launch of the progress threads, if any,
+//     after return from `gex_Client_Init()`.
 //   This is a single-valued parameter.
 //
 // There is an implicit barrier synchronization prior to return from this call
@@ -1436,6 +1440,96 @@ extern int gex_EP_PublishBoundSegment(
 // Only valid after gex_Client_Init()
 // [Since spec v0.14]
 int gex_System_QueryHiddenAMConcurrencyLevel(void);
+
+// Query deferred progress threads
+// [Since spec v0.18]
+//
+// The `gex_System_QueryProgressThreads()` query provides information about any
+// progress threads enabled in the library but not started due to passing of
+// `GEX_FLAG_DEFER_THREADS` to `gex_Client_Init()`.  The information provided is
+// intended to allow the client to make decisions about such issues as CPU and
+// memory affinity prior to calling `pthread_create()` to start these threads.
+//
+// + A client which passes `GEX_FLAG_DEFER_THREADS` to `gex_Client_Init()` is
+//   required to make a subsequent call to this query and to start each of
+//   the threads describe in the result.
+// + If `GEX_FLAG_DEFER_THREADS` was not passed to `gex_Client_Init()`, then
+//   calls to this query are erroneous (returning `GASNET_ERR_RESOURCE` if
+//   there are no other errors).
+// + Each thread must be started using a call to `pthread_create()` with its
+//   third and fourth arguments as provided by the query result.
+// + The client may start the threads in any order and/or concurrently.
+// + In general, failure to start all threads prior to `gasnet_exit()` or
+//   process termination (whether normal or abnormal) leads to undefined
+//   behavior.  However, a given conduit may relax this restriction (see the
+//   conduit-specific README).
+// + Other than `gasnet_exit()`, there are no restrictions on GASNet calls which
+//   the client may make prior to starting the progress threads.  This means the
+//   client may communicate as necessary to collect information needed to make
+//   decisions regarding CPU and/or memory locality.
+// + The result is in library-owned memory and must not be modified or freed by
+//   the client.
+// + The lifetime of the result extends from return from this call until all the
+//   progress threads start.  Consequently, accesses to the result memory after
+//   the last `pthread_create()` for progress threads have undefined behavior.
+// + Multiple calls to this query between `gex_Client_Init()` and the last call
+//   to `pthread_create()` for progress threads will return the identical
+//   result.  In particular, there are no adjustments for threads created in the
+//   interval(s) between calls.
+// + The `client` argument is the client created by `gex_Client_Init()`.
+// + The `count_p` argument is a pointer to an `unsigned int` which, upon
+//   successful return, will contain the number of deferred progress threads.
+// + The `info_p` argument is a pointer to a `const gex_ProgressThreadInfo_t *`
+//   which, upon successful return, will contain the address of an array (of
+//   length `*count_p` of structures each describing a single progress thread.
+//   See the description of `gex_ProgressThreadInfo_t`, below, for details.
+// + The `flags` argument is reserved for future use and must currently be zero.
+// + If the `count_p` or `info_p` arguments are `NULL`, or if the `flags`
+//   argument is non-zero, `GASNET_ERR_BAD_ARG` is returned in the absence of
+//   other errors.
+// + If the call returns an error (non-zero), then the content of the locations
+//   named by `count_p` and `info_p` are undefined.
+// + If there are multiple reportable errors, the precedence is undefined.
+int gex_System_QueryProgressThreads(
+                gex_Client_t                     client,
+                unsigned int                    *count_p,
+                const gex_ProgressThreadInfo_t **info_p,
+                gex_Flags_t                      flags);
+
+// Type to describe deferred progress threads
+// [Since spec v0.18]
+//
+// The result of the `gex_System_QueryProgressThreads()` query is an array
+// of zero or more of this structure, each describing a single progress thread
+// for which the conduit has deferred launch due to `GEX_FLAG_DEFER_THREADS`
+// in the `flags` passed to `gex_Client_Init()`:
+//
+// + gex_device_list
+//   This field is a non-NULL pointer to a comma-delimited string listing the
+//   "devices" for which this thread will provide progress.  The nature of the
+//   comma-delimited names is conduit-defined (in the respective README).
+// + gex_thread_roles
+//   This field is a bitwise-OR of one or more GEX_THREAD_ROLE_* constants
+//   (below) indicating the role or roles this thread takes in progressing
+//   communications.
+// + gex_progress_fn and gex_progress_arg
+//   This pair are the function and argument which the client should pass as
+//   the third and fourth argument to `pthread_create()`.
+typedef struct {
+  const char *     gex_device_list;
+  unsigned int     gex_thread_roles;
+  void *           (*gex_progress_fn) (void *);
+  void *           gex_progress_arg;
+} gex_ProgressThreadInfo_t;
+
+// Thread roles in gex_ProgressThreadInfo_t
+// [Since spec v0.18]
+#define GEX_THREAD_ROLE_RCV ???
+#define GEX_THREAD_ROLE_SND ???
+
+//
+// AM handlers
+//
 
 // Client-facing type for describing one AM handler
 // This type is an alternative to (*not* interchangeable with) gasnet_handlerentry_t
