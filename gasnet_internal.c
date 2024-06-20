@@ -1997,6 +1997,71 @@ static  union {
     uint32_t hostid;
 } gasneti_my_hostid;
 
+
+// gasneti_host_nonce()
+//
+// Returns the hostid, or equivalent, as a "nonce" string suitable for use in,
+// for instance, generation of filenames.  This string is never NULL or empty,
+// uses only characters in [a-z0-9], and is identical for all processes on the
+// same host (and different on distinct hosts, of course).
+//
+// Note that absence of upper-case letters avoids collision on case-insensitive
+// file systems.
+const char *gasneti_host_nonce(void) {
+  static const char *result = NULL;
+
+  if (!result) {
+    switch (gasneti_hostid_alg) {
+      case gasneti_hostid_alg_invalid:
+        // Either called "too erly" or conduit is using gasneti_nodemapParse()
+        // directly instead of via gasneti_nodemapInit().
+      #if GASNET_CONDUIT_SMP // Current only smp-conduit uses nodemapParse() directly
+        // FALLS THROUGH to use of hashed hostname.
+        // Unfortunately, this assumes that we never use this nonce on a shared
+        // filesystem without a reliable gasneti_gethostname().
+      #else
+        gasneti_unreachable_error(("gasneti_host_nonce called before gasneti_nodemapInit()"));
+        break;
+      #endif
+
+      case gasneti_hostid_alg_conduit:
+        // The conduit is permitted to provide ids which are not single-valued,
+        // as long as they are sufficient for each process to compute the same
+        // division of the job into processes.  So, we cannot use it to generate
+        // this nonce.  So, we fall back to use of hashed hostname.
+        // TODO: if/when we again have a "conduit" case, it might be valuable
+        // to have the means for a conduit to provide the nonce if hostnames
+        // are not reliable for some reason.
+        result = gasneti_sappendf(NULL, "%"PRIx64, gasneti_hosthash());
+        break;
+
+      case gasneti_hostid_alg_gethostid:
+        result = gasneti_sappendf(NULL, "%x", gasneti_my_hostid.hostid);
+        break;
+
+      case gasneti_hostid_alg_hostname:
+        result = gasneti_sappendf(NULL, "%"PRIx64, gasneti_my_hostid.hostname);
+        break;
+
+      case gasneti_hostid_alg_trivial:
+        // TODO: this is *very* susceptible to collision when using a shared file
+        // system.  However, this option is undocumented and intended only for
+        // testing purposes right now.
+        result = gasneti_sappendf(NULL, "%d", gasneti_mynode);
+        break;
+
+      default: gasneti_unreachable_error(("Unknown host detect algorithm %i", (int)gasneti_hostid_alg));
+    }
+    gasneti_assert(result); // non-NULL
+    gasneti_assert(result[0]); // non-empty
+    gasneti_assert(strlen(result) ==
+                   strspn(result, "abcdefghijklmnopqrstuvwxyz0123456789")); // only valid chars
+    gasneti_leak((void * /*strip const*/)result);
+  }
+
+  return result;
+}
+
 // gasneti_format_host_detect()
 //
 // Returns the hostid, or equivalent, as a printable string (possibly empty).
