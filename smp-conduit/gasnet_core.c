@@ -404,9 +404,11 @@ static void gasnetc_join_children(void) {
 }
 
 #if GASNET_PSHM
-/* Broadcast usable prior to bring-up of PSHM
-   This is used for the NbrhdBcast fn in gasneti_pshm_init() */
-static void gasnetc_bootstrapNbrhdBroadcast(void *src, size_t len, void *dest, int root)
+// Broadcast usable prior to bring-up of PSHM
+// This is used for the NbrhdBcast fn in gasneti_pshm_init()
+// Also suitable as a HostBcast
+// However, supports only (root == 0)
+static void gasnetc_bootstrapSubsetBroadcast(void *src, size_t len, void *dest, int root)
 {
   ssize_t rc;
   int i;
@@ -547,7 +549,7 @@ static int gasnetc_init(
   {
     struct gasnetc_exit_data *tmp;
 
-    tmp = gasneti_pshm_init(&gasnetc_bootstrapNbrhdBroadcast, GASNETC_EXIT_DATA_SZ);
+    tmp = gasneti_pshm_init(&gasnetc_bootstrapSubsetBroadcast, GASNETC_EXIT_DATA_SZ);
     if (!gasneti_mynode) {
       /* Relocate the pid table to shared space */
       GASNETI_MEMCPY(tmp, gasnetc_exit_data, GASNETC_EXIT_DATA_SZ);

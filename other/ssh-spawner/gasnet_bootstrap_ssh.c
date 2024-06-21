@@ -166,8 +166,8 @@ enum {
   BOOTSTRAP_CMD_EXCHG1,
   BOOTSTRAP_CMD_TRANS0,
   BOOTSTRAP_CMD_TRANS1,
-  BOOTSTRAP_CMD_SNBCAST0,
-  BOOTSTRAP_CMD_SNBCAST1,
+  BOOTSTRAP_CMD_SBCAST0,
+  BOOTSTRAP_CMD_SBCAST1,
 };
 
 static const int c_one  = 1;
@@ -2008,11 +2008,11 @@ static void cmd_TRANS(char cmd, int i) {
   }
 }
 
-/* TODO: this gets *much* easier if/when we truly have a single control proc per node */
-static void cmd_SNBCAST(char cmd, int i) {
+// TODO: this gets *much* easier if/when we truly have a single control proc per host
+static void cmd_SBCAST(char cmd, int i) {
   /* Comands: */
-  const char cmd0 = BOOTSTRAP_CMD_SNBCAST0;
-  const char cmd1 = BOOTSTRAP_CMD_SNBCAST1;
+  const char cmd0 = BOOTSTRAP_CMD_SBCAST0;
+  const char cmd1 = BOOTSTRAP_CMD_SBCAST1;
 
   /* State: */
   static uint8_t *data = NULL;
@@ -2142,9 +2142,9 @@ static void dispatch(char cmd, int k) {
       cmd_TRANS(cmd, k);
       break;
 
-    case BOOTSTRAP_CMD_SNBCAST0:
-    case BOOTSTRAP_CMD_SNBCAST1:
-      cmd_SNBCAST(cmd, k);
+    case BOOTSTRAP_CMD_SBCAST0:
+    case BOOTSTRAP_CMD_SBCAST1:
+      cmd_SBCAST(cmd, k);
       break;
 
     default:
@@ -2723,9 +2723,9 @@ static void bootstrapBroadcast(void *src, size_t len, void *dest, int rootnode) 
   }
 }
 
-static void bootstrapNbrhdBroadcast(void *src, size_t len, void *dest, int rootnode_arg) {
-  char cmd0 = BOOTSTRAP_CMD_SNBCAST0;
-  char cmd1 = BOOTSTRAP_CMD_SNBCAST1;
+static void bootstrapSubsetBroadcast(void *src, size_t len, void *dest, int rootnode_arg) {
+  char cmd0 = BOOTSTRAP_CMD_SBCAST0;
+  char cmd1 = BOOTSTRAP_CMD_SBCAST1;
   const gex_Rank_t rootnode = rootnode_arg;
   struct iovec iov[4];
 
@@ -2753,7 +2753,8 @@ static gasneti_spawnerfn_t const spawnerfn = {
   bootstrapBarrier,
   bootstrapExchange,
   bootstrapBroadcast,
-  bootstrapNbrhdBroadcast,
+  bootstrapSubsetBroadcast, // Nbrhd
+  bootstrapSubsetBroadcast, // Host
   bootstrapAlltoall,
   bootstrapAbort,
   bootstrapCleanup,

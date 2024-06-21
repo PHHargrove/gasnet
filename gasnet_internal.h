@@ -440,6 +440,7 @@ typedef struct {
   gasneti_bootstrapExchangefn_t Exchange;
   gasneti_bootstrapBroadcastfn_t Broadcast;
   void (*NbrhdBroadcast)(void *src, size_t len, void *dest, int rootnode);
+  void (*HostBroadcast)(void *src, size_t len, void *dest, int rootnode);
   void (*Alltoall)(void *src, size_t len, void *dest);
   void (*Abort)(int exitcode);
   void (*Cleanup)(void);

@@ -1465,6 +1465,33 @@ static void spawner_test(void) {
 
   gasneti_spawner->Cleanup();
 
+  { // HostBroadcast
+    // We need a constant number of iterations for this collective call.
+    // However, gasneti_myhost.node_count is not always single-valued.
+    // So this could double-test some roots
+    for (int i = 0; i < iters1; ++i) {
+      gex_Rank_t root = gasneti_myhost.nodes[i % gasneti_myhost.node_count];
+      for (size_t sz = 1; sz <= sizeof(datum_t); sz *= 2) {
+        INIT_DATUM(my_datum, i, gasneti_mynode, sz);
+        gasneti_spawner->HostBroadcast(my_datum, sz, other_datum, root);
+        CHECK_DATUM(other_datum, i, root, sz, "HostBroadcast");
+      }
+    }
+  }
+
+  { // HostBroadcast (in-place)
+    for (int i = 0; i < iters1; ++i) {
+      gex_Rank_t root = gasneti_myhost.nodes[i % gasneti_myhost.node_count];
+      for (size_t sz = 1; sz <= sizeof(datum_t); sz *= 2) {
+        INIT_DATUM(other_datum, i, gasneti_mynode, sz);
+        gasneti_spawner->HostBroadcast(other_datum, sz, other_datum, root);
+        CHECK_DATUM(other_datum, i, root, sz, "HostBroadcast (in-place)");
+      }
+    }
+  }
+
+  gasneti_spawner->Cleanup();
+
   { // Exchange
     for (int i = 0; i < iters1; ++i) {
       for (size_t sz = 1; sz <= sizeof(datum_t); sz *= 2) {
