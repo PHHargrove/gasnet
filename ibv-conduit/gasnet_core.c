@@ -165,6 +165,14 @@ int gasnetc_qp_timeout, gasnetc_qp_retry_count;
 
 static int gasnetc_exit_in_signal = 0;  // to avoid certain things in signal context
 
+// Because some glibc headers annotate nearly all system calls with
+// `__attribute__ ((__warn_unused_result__))`, we need to do *something*
+// with the return values to avoid gcc warnings.
+// However, there is not much one can/should do in signal context.
+// This is a stupid hack to deal with this.
+// Cloned from `gasneti_rc_unused` in the backtrace logic.
+static int gasnetc_rc_unused;
+
 /* ------------------------------------------------------------------------------------ */
 
 /* conduit-specific firehose region parameters
@@ -1843,7 +1851,7 @@ static void gasnetc_odp_shutdown(void) {
   if (gasnetc_use_odp) {
     if (gasnetc_exit_in_signal) {
       static const char msg[] = "WARNING: ODP shutdown in signal context\n";
-      (void) write(STDERR_FILENO, msg, sizeof(msg) - 1);
+      gasnetc_rc_unused = write(STDERR_FILENO, msg, sizeof(msg) - 1);
       (void) fsync(STDERR_FILENO);
     }
     gasnetc_hca_t *hca;
@@ -3284,23 +3292,23 @@ static void gasnetc_exit_sighandler(int sig) {
   /* note - can't call trace macros here, or even sprintf */
   if (sig == SIGALRM) {
     static const char msg[] = "gasnet_exit(): WARNING: timeout during exit... goodbye.  [";
-    (void) write(STDERR_FILENO, msg, sizeof(msg) - 1);
-    (void) write(STDERR_FILENO, state, state_len);
-    (void) write(STDERR_FILENO, "]\n", 2);
+    gasnetc_rc_unused = write(STDERR_FILENO, msg, sizeof(msg) - 1);
+    gasnetc_rc_unused = write(STDERR_FILENO, state, state_len);
+    gasnetc_rc_unused = write(STDERR_FILENO, "]\n", 2);
   } else {
     static const char msg1[] = "gasnet_exit(): ERROR: signal ";
     static const char msg2[] = " received during exit... goodbye.  [";
     char digit;
 
-    (void) write(STDERR_FILENO, msg1, sizeof(msg1) - 1);
+    gasnetc_rc_unused = write(STDERR_FILENO, msg1, sizeof(msg1) - 1);
 
     char sigstr[4];
     size_t n = gasneti_utoa(sig, sigstr, sizeof(sigstr), 10);
-    (void) write(STDERR_FILENO, sigstr, n);
+    gasnetc_rc_unused = write(STDERR_FILENO, sigstr, n);
     
-    (void) write(STDERR_FILENO, msg2, sizeof(msg2) - 1);
-    (void) write(STDERR_FILENO, state, state_len);
-    (void) write(STDERR_FILENO, "]\n", 2);
+    gasnetc_rc_unused = write(STDERR_FILENO, msg2, sizeof(msg2) - 1);
+    gasnetc_rc_unused = write(STDERR_FILENO, state, state_len);
+    gasnetc_rc_unused = write(STDERR_FILENO, "]\n", 2);
   }
   (void) fsync(STDERR_FILENO);
 
