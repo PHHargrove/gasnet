@@ -40,6 +40,12 @@ GASNet-EX ChangeLog
   - Support for hwloc, used conditionally by ibv- and ofi-conduits, now
     defaults to thread-scope (not process-scope) for the cpuset query.
     See GASNET_HWLOC_QUERY in the top-level GASNet README for details.
+  - The implementation of PSHM now defaults to avoiding allocation of shared
+    memory when there can be no sharing (i.e. in a single-process nbhrd),
+    instead using `mmap(MAP_ANONYNOUS)` or similar.
+    See the descriptipon of the environment variable `GASNET_USE_PSHM_SINGLETON`
+    in `README` for more details, including use of this variable to restore
+    the old behavior.
 
 * Notable bugs fixed in this release: (details at https://gasnet-bugs.lbl.gov)
   - bug4165 - ucx: AMMediumRequest bandwidth problems
