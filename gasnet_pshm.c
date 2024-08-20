@@ -570,6 +570,7 @@ static uintptr_t get_queue_mem(int nodes)
 static size_t gasneti_pshmnet_memory_needed_pernode(gasneti_pshm_rank_t nodes)
 {
   /* Space for the message payloads */
+  if (nodes == 1) return 0;
   if_pf (!gasneti_pshmnet_queue_mem) {
     gasneti_pshmnet_queue_mem = get_queue_mem(nodes);
   }
@@ -634,12 +635,14 @@ gasneti_pshmnet_init(void *region, size_t regionlen, gasneti_pshm_rank_t pshmnod
 #endif
   gasneti_mutex_init(&vnet->alloc_lock);
 
-  /* initialize my own allocator */
-  myregion = (void *)((uintptr_t)region + (szpernode * gasneti_pshm_mynode));
-  gasneti_assert_align(myregion, GASNETI_PSHMNET_PAGESIZE);
-  vnet->my_allocator = gasneti_pshmnet_init_allocator(myregion, gasneti_pshmnet_queue_mem);
+  // initialize my own allocator, only if any intra-nbrhd AM traffic is possible
+  if (pshmnodes > 1) {
+    myregion = (void *)((uintptr_t)region + (szpernode * gasneti_pshm_mynode));
+    gasneti_assert_align(myregion, GASNETI_PSHMNET_PAGESIZE);
+    vnet->my_allocator = gasneti_pshmnet_init_allocator(myregion, gasneti_pshmnet_queue_mem);
+  }
 
-  /* initialize my own queue header */
+  // initialize my own queue header, even if any no intra-nbrhd AM traffic is possible
   vnet->queues = (gasneti_pshmnet_queue_t*)((uintptr_t)region + szpernode * pshmnodes);
   gasneti_assert_align(vnet->queues, GASNETI_PSHMNET_PAGESIZE);
   vnet->my_queue = &vnet->queues[gasneti_pshm_mynode];
