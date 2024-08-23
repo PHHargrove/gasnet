@@ -1989,8 +1989,14 @@ if test "$enabled_hugetlbfs" != 'no'; then
    GASNET_MSG_ERROR([User requested --enable-hugetlbfs but the header and/or library could not be found])
  fi
  if test "$have_hugetlbfs" = 'yes'; then
-   GASNET_IF_ENABLED(hugetlbfs-whole-archive, [Use --whole-archive with libhugetlbfs],
-                     [HUGETLBFS_LIBS="-Wl,--whole-archive,$HUGETLBFS_LIBS,--no-whole-archive"])
+   GASNET_IF_ENABLED_NOHELP(hugetlbfs-whole-archive,
+                     [ if test "$HUGETLBFS_LIBS" = '-lhugetlbfs'; then
+                         HUGETLBFS_LIBS="-Wl,--whole-archive,-lhugetlbfs,--no-whole-archive"
+                       else
+                         GASNET_MSG_ERROR([dnl
+User requested --enable-hugetlbfs-whole-archive, which is a deprecated option available only when libhugetlbfs is the only library required.  Please configure using the fully-general --with-hugeflbfs-libs option instead.])
+                       fi
+                     ])
  fi
 fi
 with_pshm=no
