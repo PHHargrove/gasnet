@@ -310,19 +310,20 @@ run-tests: force
 	done ;                                                                          \
 	echo "TESTS COMPLETE"
 
+TESTEXIT_EXE=testexit@EXESUFFIX@
 TESTEXIT_SCRIPT=run-testexit
 TESTEXIT_SEQMAX=13
 TESTEXIT_PARMAX=18
 do-run-testexit: force
 	@echo "Building $(TESTEXIT_SCRIPT) script..."
 	@echo "#!/bin/sh" > $(TESTEXIT_SCRIPT)
-	@nodes=$${TEST_NODES-2} ; args="" ; file="testexit" ;             \
+	@nodes=$${TEST_NODES-2} ; args="" ; file="$(TESTEXIT_EXE)" ;      \
          BACKSLASH='\' export BACKSLASH ;                                 \
          DQUOTE='"' export DQUOTE ;                                       \
          awk_cmdbuild=`echo "$(awk_cmdbuild)"` ; 			  \
          cmd=`echo "$(CONDUIT_RUNCMD)" | eval @AWK@ \'$$awk_cmdbuild\'` ; \
 	 echo "INTERACTIVE_RUNCMD='$$cmd'"                        >> $(TESTEXIT_SCRIPT)
-	@echo "BATCH_RUNCMD='testexit'"                           >> $(TESTEXIT_SCRIPT)
+	@echo "BATCH_RUNCMD='$(TESTEXIT_EXE)'"                    >> $(TESTEXIT_SCRIPT)
 	@echo '#BATCH_RUNCMD="$$INTERACTIVE_RUNCMD"'              >> $(TESTEXIT_SCRIPT)
 	@echo 'if test "$$PBS_O_WORKDIR" ; then '                 >> $(TESTEXIT_SCRIPT)
 	@echo '  cd "$$PBS_O_WORKDIR"'                            >> $(TESTEXIT_SCRIPT)
@@ -367,10 +368,10 @@ do-run-testexit: force
 	   fi ;                                                              \
 	   if test "$$i" = "$(TESTEXIT_SEQMAX)" ; then                       \
 	     echo 'threadmode=`@PERL@ -n -e '"'"'$(perl_threadscan)'"'"' ' \
-                  'testexit@EXESUFFIX@ 2> /dev/null`'      >> $(TESTEXIT_SCRIPT) ; \
+                  '$(TESTEXIT_EXE) 2> /dev/null`'          >> $(TESTEXIT_SCRIPT) ; \
 	     echo 'if test "$$threadmode" = "SEQ" -o ' \
                        '"$$threadmode" = "PARSYNC" ; then' >> $(TESTEXIT_SCRIPT) ; \
-	     echo '  echo "WARNING: testexit was compiled' \
+	     echo '  echo "WARNING: $(TESTEXIT_EXE) was compiled' \
                   'in GASNET_$$threadmode mode"'           >> $(TESTEXIT_SCRIPT) ; \
 	     echo '  echo "WARNING: be sure to recompile the test in' \
                   'GASNET_PAR mode for full results"'      >> $(TESTEXIT_SCRIPT) ; \

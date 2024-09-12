@@ -200,7 +200,7 @@ $(RUN_TESTS_TARGETS): tests-clean
 
 .PRECIOUS: run-testexit
 run-testexit: force
-	@if test ! -x testexit ; then \
+	@if test -z '$(TESTEXIT_EXE)' -a ! -x testexit; then \
 	  $(MAKE) testexit-par || exit $$? ; \
 	fi
 	@$(MAKE) do-run-testexit	
