@@ -861,6 +861,17 @@ static const char *mtu_to_str(enum ibv_mtu mtu) {
 }
 #endif
 
+#if GASNETC_USE_RCV_THREAD || GASNETC_USE_SND_THREAD
+static const char *poll_mode(int serialize, int exclusive) {
+  if (serialize) {
+    return "SERIALIZED";
+  } else if (exclusive) {
+    return "EXCLUSIVE";
+  }
+  return "UNSERIALIZED";
+}
+#endif
+
 static char *gasnetc_auto_ports(const char * env_val);
 
 /* Process defaults and the environment to get configuration settings */
@@ -973,6 +984,8 @@ static int gasnetc_load_settings(void) {
     } else {
       gasneti_fatalerror("GASNET_RCV_THREAD_POLL_MODE \"%s\" is not valid", tmp);
     }
+    gasnetc_rcv_thread_rate = gasneti_getenv_int_withdefault("GASNET_RCV_THREAD_RATE", 0, 0);
+    gasnetc_rcv_thread_idle = gasneti_getenv_int_withdefault("GASNET_RCV_THREAD_IDLE", 0, 0);
   }
 #endif
   gasnetc_use_snd_thread = gasneti_getenv_yesno_withdefault("GASNET_SND_THREAD", 0);
@@ -991,6 +1004,8 @@ static int gasnetc_load_settings(void) {
     } else {
       gasneti_fatalerror("GASNET_RCV_THREAD_POLL_MODE \"%s\" is not valid", tmp);
     }
+    gasnetc_snd_thread_rate = gasneti_getenv_int_withdefault("GASNET_SND_THREAD_RATE", 0, 0);
+    gasnetc_snd_thread_idle = gasneti_getenv_int_withdefault("GASNET_SND_THREAD_IDLE", 0, 0);
   }
 #endif
 
@@ -1143,12 +1158,26 @@ static int gasnetc_load_settings(void) {
 #if GASNETC_USE_RCV_THREAD
   GASNETI_TRACE_PRINTF(I,  ("  GASNET_RCV_THREAD               = %d (%sabled)", gasnetc_use_rcv_thread,
 				gasnetc_use_rcv_thread ? "en" : "dis"));
+  if (gasnetc_use_rcv_thread) {
+    GASNETI_TRACE_PRINTF(I,  ("  GASNET_RCV_THREAD_RATE          = %u", gasnetc_rcv_thread_rate));
+    GASNETI_TRACE_PRINTF(I,  ("  GASNET_RCV_THREAD_IDLE          = %"PRIu64, gasnetc_rcv_thread_idle));
+    GASNETI_TRACE_PRINTF(I,  ("  GASNET_RCV_THREAD_POLL_MODE     = %s",
+                              poll_mode(gasnetc_rcv_thread_poll_serialize,
+                                        gasnetc_rcv_thread_poll_exclusive)));
+  }
 #else
   GASNETI_TRACE_PRINTF(I,  ("  GASNET_RCV_THREAD               disabled at build time"));
 #endif
 #if GASNETC_USE_SND_THREAD
   GASNETI_TRACE_PRINTF(I,  ("  GASNET_SND_THREAD               = %d (%sabled)", gasnetc_use_snd_thread,
 				gasnetc_use_snd_thread ? "en" : "dis"));
+  if (gasnetc_use_snd_thread) {
+    GASNETI_TRACE_PRINTF(I,  ("  GASNET_SND_THREAD_RATE          = %u", gasnetc_snd_thread_rate));
+    GASNETI_TRACE_PRINTF(I,  ("  GASNET_SND_THREAD_IDLE          = %"PRIu64, gasnetc_snd_thread_idle));
+    GASNETI_TRACE_PRINTF(I,  ("  GASNET_SND_THREAD_POLL_MODE     = %s",
+                              poll_mode(gasnetc_snd_thread_poll_serialize,
+                                        gasnetc_snd_thread_poll_exclusive)));
+  }
 #else
   GASNETI_TRACE_PRINTF(I,  ("  GASNET_SND_THREAD               disabled at build time"));
 #endif

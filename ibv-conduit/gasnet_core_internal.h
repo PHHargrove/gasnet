@@ -472,10 +472,14 @@ extern uint64_t *gasnetc_ratomic_sink; // TODO: one per HCA
   #if GASNETC_USE_RCV_THREAD
     extern int gasnetc_rcv_thread_poll_serialize;
     extern int gasnetc_rcv_thread_poll_exclusive;
+    extern unsigned int gasnetc_rcv_thread_rate;
+    extern uint64_t gasnetc_rcv_thread_idle;
   #endif
   #if GASNETC_USE_SND_THREAD
     extern int gasnetc_snd_thread_poll_serialize;
     extern int gasnetc_snd_thread_poll_exclusive;
+    extern unsigned int gasnetc_snd_thread_rate;
+    extern uint64_t gasnetc_snd_thread_idle;
   #endif
 #else
   #define GASNETC_POLL_CQ_UP(sema_p)        do {} while (0)

@@ -67,10 +67,14 @@ int					gasnetc_num_qps;
 #if GASNETC_USE_RCV_THREAD && GASNETC_SERIALIZE_POLL_CQ
 int                                     gasnetc_rcv_thread_poll_serialize = -1;
 int                                     gasnetc_rcv_thread_poll_exclusive = -1;
+unsigned int                            gasnetc_rcv_thread_rate = 0;
+uint64_t                                gasnetc_rcv_thread_idle = 0;
 #endif
 #if GASNETC_USE_SND_THREAD && GASNETC_SERIALIZE_POLL_CQ
 int                                     gasnetc_snd_thread_poll_serialize = -1;
 int                                     gasnetc_snd_thread_poll_exclusive = -1;
+unsigned int                            gasnetc_snd_thread_rate = 0;
+uint64_t                                gasnetc_snd_thread_idle = 0;
 #endif
 
 // TODO: multi-client will need this to be per-client
@@ -3489,17 +3493,16 @@ extern void gasnetc_sndrcv_start_thread(gex_Flags_t init_flags) {
   int defer = !!(init_flags & GEX_FLAG_DEFER_THREADS);
   #if GASNETC_USE_RCV_THREAD
   if (gasnetc_use_rcv_thread) {
-    int rcv_max_rate = gasneti_getenv_int_withdefault("GASNET_RCV_THREAD_RATE", 0, 0);
     gasnetc_hca_t *hca;
 
     GASNETC_FOR_ALL_HCA(hca) {
       /* spawn the RCV thread */
       hca->rcv_thread.fn = gasnetc_rcv_thread;
       hca->rcv_thread.fn_arg = hca;
-      if (rcv_max_rate > 0) {
-        hca->rcv_thread.thread_rate.ns = ((uint64_t)1E9) / rcv_max_rate;
+      if (gasnetc_rcv_thread_rate > 0) {
+        hca->rcv_thread.thread_rate.ns = ((uint64_t)1E9) / gasnetc_rcv_thread_rate;
       }
-      hca->rcv_thread.keep_alive.ns = gasneti_getenv_int_withdefault("GASNET_RCV_THREAD_IDLE", 0, 0);
+      hca->rcv_thread.keep_alive.ns = gasnetc_rcv_thread_idle;
     #if GASNETC_SERIALIZE_POLL_CQ
       gasneti_assert(!gasnetc_rcv_thread_poll_exclusive ||
                      !gasnetc_rcv_thread_poll_serialize); // mutually exclusive
@@ -3533,17 +3536,16 @@ extern void gasnetc_sndrcv_start_thread(gex_Flags_t init_flags) {
   #endif
   #if GASNETC_USE_SND_THREAD
   if (gasnetc_use_snd_thread) {
-    int snd_max_rate = gasneti_getenv_int_withdefault("GASNET_SND_THREAD_RATE", 0, 0);
     gasnetc_hca_t *hca;
 
     GASNETC_FOR_ALL_HCA(hca) {
       /* spawn the SND thread */
       hca->snd_thread.fn = gasnetc_snd_thread;
       hca->snd_thread.fn_arg = hca;
-      if (snd_max_rate > 0) {
-        hca->snd_thread.thread_rate.ns = ((uint64_t)1E9) / snd_max_rate;
+      if (gasnetc_snd_thread_rate > 0) {
+        hca->snd_thread.thread_rate.ns = ((uint64_t)1E9) / gasnetc_snd_thread_rate;
       }
-      hca->snd_thread.keep_alive.ns = gasneti_getenv_int_withdefault("GASNET_SND_THREAD_IDLE", 0, 0);
+      hca->snd_thread.keep_alive.ns = gasnetc_snd_thread_idle;
     #if GASNETC_SERIALIZE_POLL_CQ
       gasneti_assert(!gasnetc_snd_thread_poll_exclusive ||
                      !gasnetc_snd_thread_poll_serialize); // mutually exclusive
